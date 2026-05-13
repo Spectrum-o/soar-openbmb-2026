@@ -1,8 +1,21 @@
 #!/bin/bash
-# Launch MiniCPM-SALA inference server.
+# Launch MiniCPM-SALA inference server with tuned chunked prefill parameters.
+#
+# Tuning history (RTX PRO 6000 Blackwell, 64 prompts × 4096-in × 512-out random-ids):
+#   chunked_prefill_size=8192  -> 267.67 tok/s out, 34049ms TTFT  (baseline)
+#   chunked_prefill_size=32768 -> 425.58 tok/s out, 13545ms TTFT  (+59% throughput)
+#   chunked_prefill_size=65536 -> 488.84 tok/s out, 12529ms TTFT  (+83% total)
+#
+# Gotchas:
+#   - sglang default --max-prefill-tokens=16384 caps actual prefill regardless of
+#     chunked-prefill-size. Must set --max-prefill-tokens to match.
+#   - With large chunks, sglang's auto-calc of mem_fraction_static can go negative.
+#     Must explicitly set --mem-fraction-static (0.80 verified working on Blackwell).
+#
 # Usage:
-#   bash run_sala.sh                    # defaults to ./models/MiniCPM-SALA
+#   bash run_sala.sh
 #   MODEL_PATH=/abs/path bash run_sala.sh
+#   PORT=8000 bash run_sala.sh
 
 set -e
 
@@ -30,8 +43,10 @@ python3 -m sglang.launch_server \
     --trust-remote-code \
     --disable-radix-cache \
     --attention-backend minicpm_flashinfer \
-    --chunked-prefill-size 8192 \
+    --chunked-prefill-size 65536 \
+    --max-prefill-tokens 65536 \
     --max-running-requests 32 \
+    --mem-fraction-static 0.80 \
     --skip-server-warmup \
     --port "${PORT}" \
     --dense-as-sparse
