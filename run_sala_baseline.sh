@@ -1,16 +1,9 @@
 #!/bin/bash
-# Launch MiniCPM-SALA inference server with FP8 KV cache quantization.
-# Compare against run_sala_baseline.sh (bf16 KV cache) to measure impact.
-#
-# Why FP8 KV cache:
-#   - KV cache size halved (bf16 -> fp8) -> more concurrency / longer context
-#   - decode is memory-bound -> less HBM traffic -> faster
-#   - quality cost is typically < 1% on benchmarks (verify with eval_model.py)
-#
+# BASELINE: launch MiniCPM-SALA with default (bf16) KV cache.
+# Use this for A/B comparison against run_sala.sh (which enables FP8 KV cache).
 # Usage:
-#   bash run_sala.sh                    # defaults to ./models/MiniCPM-SALA
-#   MODEL_PATH=/abs/path bash run_sala.sh
-#   KV_DTYPE=fp8_e5m2 bash run_sala.sh  # try e5m2 variant
+#   bash run_sala_baseline.sh                    # defaults to ./models/MiniCPM-SALA
+#   MODEL_PATH=/abs/path bash run_sala_baseline.sh
 
 set -e
 
@@ -18,7 +11,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${REPO_ROOT}/sglang_minicpm_sala_env"
 MODEL_PATH="${MODEL_PATH:-${REPO_ROOT}/models/MiniCPM-SALA}"
 PORT="${PORT:-31111}"
-KV_DTYPE="${KV_DTYPE:-fp8_e4m3}"
 
 if [ ! -d "${VENV_DIR}" ]; then
     echo "Error: venv not found at ${VENV_DIR}"
@@ -41,7 +33,6 @@ python3 -m sglang.launch_server \
     --attention-backend minicpm_flashinfer \
     --chunked-prefill-size 8192 \
     --max-running-requests 32 \
-    --kv-cache-dtype "${KV_DTYPE}" \
     --skip-server-warmup \
     --port "${PORT}" \
     --dense-as-sparse
