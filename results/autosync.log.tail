@@ -1,6 +1,3 @@
-rm 'test/srt/test_data_parallelism.py'
-rm 'test/srt/test_deepep_internode.py'
-rm 'test/srt/test_deepep_intranode.py'
 rm 'test/srt/test_deepep_low_latency.py'
 rm 'test/srt/test_disaggregation.py'
 rm 'test/srt/test_disaggregation_different_tp.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    0b3fed9f8..f4f7df03c  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T14:39:14Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   f4f7df03c..777eb0b3b  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T14:44:20Z
