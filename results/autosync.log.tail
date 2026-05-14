@@ -1,6 +1,3 @@
-rm 'test/srt/test_ebnf_constrained.py'
-rm 'test/srt/test_embedding_openai_server.py'
-rm 'test/srt/test_enable_thinking.py'
 rm 'test/srt/test_eplb.py'
 rm 'test/srt/test_eval_accuracy_large.py'
 rm 'test/srt/test_eval_fp8_accuracy.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    62d7a0864..11339a34e  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T14:54:30Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   11339a34e..3c333bb6a  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T14:59:36Z
