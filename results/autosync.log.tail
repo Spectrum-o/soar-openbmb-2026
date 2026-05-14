@@ -1,6 +1,3 @@
-rm 'python/sglang/srt/models/llavavid.py'
-rm 'python/sglang/srt/models/mimo.py'
-rm 'python/sglang/srt/models/mimo_mtp.py'
 rm 'python/sglang/srt/models/minicpm.py'
 rm 'python/sglang/srt/models/minicpm3.py'
 rm 'python/sglang/srt/models/minicpmo.py'
@@ -498,3 +495,6 @@ Branch 'results' set up to track remote branch 'results' from 'origin'.
 To github.com:Spectrum-o/soar-openbmb-2026.git
    7c41c8fc0..adebb3066  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:02:00Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   adebb3066..0d003d97d  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:07:06Z
