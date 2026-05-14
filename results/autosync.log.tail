@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/moe/moe_align_kernel.cu'
-rm 'sgl-kernel/csrc/moe/moe_fused_gate.cu'
-rm 'sgl-kernel/csrc/moe/moe_topk_softmax_kernels.cu'
 rm 'sgl-kernel/csrc/moe/nvfp4_blockwise_moe.cu'
 rm 'sgl-kernel/csrc/moe/prepare_moe_input.cu'
 rm 'sgl-kernel/csrc/speculative/eagle_utils.cu'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    0859a0d70..4d893b381  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:58:25Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   4d893b381..7ea9185f1  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:03:30Z
