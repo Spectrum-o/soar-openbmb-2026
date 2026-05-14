@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/gemm/nvfp4_quant_kernels.cu'
-rm 'sgl-kernel/csrc/gemm/nvfp4_scaled_mm_entry.cu'
-rm 'sgl-kernel/csrc/gemm/nvfp4_scaled_mm_kernels.cu'
 rm 'sgl-kernel/csrc/gemm/per_tensor_quant_fp8.cu'
 rm 'sgl-kernel/csrc/gemm/per_token_group_quant_8bit.cu'
 rm 'sgl-kernel/csrc/gemm/per_token_quant_fp8.cu'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    dea6f6452..f503632f9  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:38:03Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   f503632f9..98bb45298  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:43:09Z
