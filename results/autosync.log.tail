@@ -1,6 +1,3 @@
-rm 'python/sglang/test/attention/test_flashattn_mla_backend.py'
-rm 'python/sglang/test/attention/test_prefix_chunk_info.py'
-rm 'python/sglang/test/few_shot_gsm8k.py'
 rm 'python/sglang/test/few_shot_gsm8k_engine.py'
 rm 'python/sglang/test/long_prompt.txt'
 rm 'python/sglang/test/run_eval.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    cb0ce5ec8..5dc11e43d  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T05:53:57Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   5dc11e43d..c9340968c  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T05:59:04Z
