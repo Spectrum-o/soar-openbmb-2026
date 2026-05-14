@@ -1,6 +1,3 @@
-rm 'test/lang/test_bind_cache.py'
-rm 'test/lang/test_choices.py'
-rm 'test/lang/test_litellm_backend.py'
 rm 'test/lang/test_openai_backend.py'
 rm 'test/lang/test_srt_backend.py'
 rm 'test/lang/test_tracing.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    4ec50e83c..fdb1eff52  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:52:08Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   fdb1eff52..7c86b229e  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:57:13Z
