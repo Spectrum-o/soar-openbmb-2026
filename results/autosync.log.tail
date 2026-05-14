@@ -1,6 +1,3 @@
-rm 'test/srt/test_mla_tp.py'
-rm 'test/srt/test_modelopt.py'
-rm 'test/srt/test_modelopt_fp8kvcache.py'
 rm 'test/srt/test_models_from_modelscope.py'
 rm 'test/srt/test_moe_deepep.py'
 rm 'test/srt/test_moe_deepep_eval_accuracy_large.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    0104c1ed2..5c1c91779  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T16:00:58Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   5c1c91779..e9786efd1  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T16:06:04Z
