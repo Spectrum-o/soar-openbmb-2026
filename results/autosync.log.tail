@@ -1,6 +1,3 @@
-rm 'python/sglang/srt/models/minicpmv.py'
-rm 'python/sglang/srt/models/mistral.py'
-rm 'python/sglang/srt/models/mixtral.py'
 rm 'python/sglang/srt/models/mixtral_quant.py'
 rm 'python/sglang/srt/models/mllama.py'
 rm 'python/sglang/srt/models/mllama4.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    0d003d97d..69dd88ed3  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:12:10Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   69dd88ed3..f8d099f18  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:17:15Z
