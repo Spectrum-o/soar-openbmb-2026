@@ -1,6 +1,3 @@
-rm 'sgl-kernel/tests/speculative/test_eagle_utils.py'
-rm 'sgl-kernel/tests/speculative/test_speculative_sampling.py'
-rm 'sgl-kernel/tests/test_activation.py'
 rm 'sgl-kernel/tests/test_apply_token_bitmask_inplace.py'
 rm 'sgl-kernel/tests/test_awq_dequant.py'
 rm 'sgl-kernel/tests/test_bmm_fp8.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    2fa92661b..b4048b4fa  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:54:22Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   b4048b4fa..549e094de  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:59:31Z
