@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/attention/merge_attn_states.cu'
-rm 'sgl-kernel/csrc/attention/vertical_slash_index.cu'
-rm 'sgl-kernel/csrc/common_extension.cc'
 rm 'sgl-kernel/csrc/cpu/CMakeLists.txt'
 rm 'sgl-kernel/csrc/cpu/activation.cpp'
 rm 'sgl-kernel/csrc/cpu/bmm.cpp'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    9db1eba50..00d6c2177  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:31:58Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   00d6c2177..63d0927c8  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:37:03Z
