@@ -1,0 +1,7 @@
+# Concurrency / batch sweep — how many concurrent requests sglang serves at once.
+# All using the winning chunked-prefill config from earlier sweep.
+
+mrr_16_chunk65k,--attention-backend minicpm_flashinfer --chunked-prefill-size 65536 --max-prefill-tokens 65536 --max-running-requests 16 --mem-fraction-static 0.80
+mrr_32_chunk65k,--attention-backend minicpm_flashinfer --chunked-prefill-size 65536 --max-prefill-tokens 65536 --max-running-requests 32 --mem-fraction-static 0.80
+mrr_48_chunk65k,--attention-backend minicpm_flashinfer --chunked-prefill-size 65536 --max-prefill-tokens 65536 --max-running-requests 48 --mem-fraction-static 0.80
+mrr_64_chunk65k,--attention-backend minicpm_flashinfer --chunked-prefill-size 65536 --max-prefill-tokens 65536 --max-running-requests 64 --mem-fraction-static 0.80

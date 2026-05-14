@@ -1,0 +1,5 @@
+# Attention backend A/B — flashinfer vs flashattn (FA3) on the same workload.
+# Both use the winning chunked-prefill config.
+
+backend_flashinfer,--attention-backend minicpm_flashinfer --chunked-prefill-size 65536 --max-prefill-tokens 65536 --max-running-requests 32 --mem-fraction-static 0.80
+backend_flashattn, --attention-backend minicpm_flashattn  --chunked-prefill-size 65536 --max-prefill-tokens 65536 --max-running-requests 32 --mem-fraction-static 0.80
