@@ -1,6 +1,3 @@
-rm 'sgl-router/src/tree.rs'
-rm 'sgl-router/v0.1.0.md'
-rm 'test/README.md'
 rm 'test/lang/example_image.png'
 rm 'test/lang/run_suite.py'
 rm 'test/lang/test_anthropic_backend.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    a4423cfbc..a6e522f27  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:41:55Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   a6e522f27..4ec50e83c  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:47:02Z
