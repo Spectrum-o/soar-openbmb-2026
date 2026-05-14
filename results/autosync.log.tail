@@ -1,6 +1,3 @@
-rm 'test/srt/test_expert_distribution.py'
-rm 'test/srt/test_expert_location_updater.py'
-rm 'test/srt/test_fa3.py'
 rm 'test/srt/test_fim_completion.py'
 rm 'test/srt/test_flashmla.py'
 rm 'test/srt/test_fp8_kernel.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    3c333bb6a..f9bdb52c1  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:04:41Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   f9bdb52c1..a2b656b37  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:09:49Z
