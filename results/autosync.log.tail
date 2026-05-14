@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/gemm/per_tensor_quant_fp8.cu'
-rm 'sgl-kernel/csrc/gemm/per_token_group_quant_8bit.cu'
-rm 'sgl-kernel/csrc/gemm/per_token_quant_fp8.cu'
 rm 'sgl-kernel/csrc/gemm/qserve_w4a8_per_chn_gemm.cu'
 rm 'sgl-kernel/csrc/gemm/qserve_w4a8_per_group_gemm.cu'
 rm 'sgl-kernel/csrc/grammar/apply_token_bitmask_inplace_cuda.cu'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    f503632f9..98bb45298  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:43:09Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   98bb45298..784cb1f17  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:48:15Z
