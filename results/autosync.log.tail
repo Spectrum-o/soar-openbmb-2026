@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/speculative/packbit.cu'
-rm 'sgl-kernel/csrc/speculative/pytorch_extension_utils_rocm.h'
-rm 'sgl-kernel/csrc/speculative/speculative_sampling.cu'
 rm 'sgl-kernel/csrc/speculative/speculative_sampling.cuh'
 rm 'sgl-kernel/csrc/torch_extension_rocm.cc'
 rm 'sgl-kernel/include/sgl_flash_kernel_ops.h'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    7ea9185f1..97486c884  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:08:35Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   97486c884..9877eb934  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:13:42Z
