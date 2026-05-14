@@ -1,6 +1,3 @@
-rm 'test/srt/test_block_int8.py'
-rm 'test/srt/test_bnb.py'
-rm 'test/srt/test_cache_report.py'
 rm 'test/srt/test_chunked_prefill.py'
 rm 'test/srt/test_create_kvindices.py'
 rm 'test/srt/test_custom_allreduce.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    f2a74e3c2..2d77378ba  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T14:29:02Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   2d77378ba..0b3fed9f8  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T14:34:08Z
