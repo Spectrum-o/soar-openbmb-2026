@@ -1,6 +1,3 @@
-rm 'test/srt/test_fp8_kvcache.py'
-rm 'test/srt/test_full_deepseek_v3.py'
-rm 'test/srt/test_function_call_parser.py'
 rm 'test/srt/test_fused_moe.py'
 rm 'test/srt/test_get_weights_by_name.py'
 rm 'test/srt/test_gguf.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    a2b656b37..bf5b33744  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:14:55Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   bf5b33744..25b897656  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:20:01Z
