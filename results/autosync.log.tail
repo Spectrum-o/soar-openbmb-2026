@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/elementwise/rope.cu'
-rm 'sgl-kernel/csrc/flash_extension.cc'
-rm 'sgl-kernel/csrc/gemm/awq_kernel.cu'
 rm 'sgl-kernel/csrc/gemm/bmm_fp8.cu'
 rm 'sgl-kernel/csrc/gemm/fp8_blockwise_gemm_kernel.cu'
 rm 'sgl-kernel/csrc/gemm/fp8_gemm_kernel.cu'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    8a3ab074f..af7298fdf  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:22:48Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   af7298fdf..fd12cd04e  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:27:53Z
