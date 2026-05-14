@@ -1,6 +1,3 @@
-rm 'python/sglang/srt/models/siglip.py'
-rm 'python/sglang/srt/models/stablelm.py'
-rm 'python/sglang/srt/models/torch_native_llama.py'
 rm 'python/sglang/srt/models/transformers.py'
 rm 'python/sglang/srt/models/xverse.py'
 rm 'python/sglang/srt/models/xverse_moe.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    ddbb64c1c..da007d795  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:52:52Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   da007d795..e53c34301  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:57:57Z
