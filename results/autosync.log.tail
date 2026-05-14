@@ -1,6 +1,3 @@
-rm 'test/srt/test_input_embeddings.py'
-rm 'test/srt/test_int8_kernel.py'
-rm 'test/srt/test_io_struct.py'
 rm 'test/srt/test_json_constrained.py'
 rm 'test/srt/test_json_mode.py'
 rm 'test/srt/test_kv_events.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    ad9c439fd..b6606370e  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:35:31Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   b6606370e..c62d2f236  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:40:36Z
