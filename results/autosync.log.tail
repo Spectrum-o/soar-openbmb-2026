@@ -1,6 +1,3 @@
-rm 'test/srt/test_metrics.py'
-rm 'test/srt/test_mla.py'
-rm 'test/srt/test_mla_deepseek_v3.py'
 rm 'test/srt/test_mla_flashinfer.py'
 rm 'test/srt/test_mla_fp8.py'
 rm 'test/srt/test_mla_int8_deepseek_v3.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    688b4c462..c513c856d  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:50:48Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   c513c856d..0104c1ed2  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:55:54Z
