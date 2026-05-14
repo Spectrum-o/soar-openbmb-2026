@@ -1,6 +1,3 @@
-rm 'sgl-kernel/tests/test_fp4_quantize.py'
-rm 'sgl-kernel/tests/test_fp8_blockwise_gemm.py'
-rm 'sgl-kernel/tests/test_fp8_blockwise_moe.py'
 rm 'sgl-kernel/tests/test_fp8_gemm.py'
 rm 'sgl-kernel/tests/test_int8_gemm.py'
 rm 'sgl-kernel/tests/test_lightning_attention_decode.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    d7b45dd44..b4ea59946  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T11:14:55Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   b4ea59946..4f73e4efc  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T11:20:11Z
