@@ -1,6 +1,3 @@
-rm 'python/sglang/srt/sampling/penaltylib/__init__.py'
-rm 'python/sglang/srt/sampling/penaltylib/frequency_penalty.py'
-rm 'python/sglang/srt/sampling/penaltylib/min_new_tokens.py'
 rm 'python/sglang/srt/sampling/penaltylib/orchestrator.py'
 rm 'python/sglang/srt/sampling/penaltylib/presence_penalty.py'
 rm 'python/sglang/srt/sampling/sampling_batch_info.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    f20ff140a..7f9565fd0  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T05:18:18Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   7f9565fd0..7c32d87c4  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T05:23:25Z
