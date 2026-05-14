@@ -1,6 +1,3 @@
-rm 'scripts/version_branch_to_tag.sh'
-rm 'sgl-kernel/.clang-format'
-rm 'sgl-kernel/CMakeLists.txt'
 rm 'sgl-kernel/LICENSE'
 rm 'sgl-kernel/Makefile'
 rm 'sgl-kernel/README.md'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    f8533e417..b00a83f5b  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:35:54Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   b00a83f5b..aa637d7f1  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:41:00Z
