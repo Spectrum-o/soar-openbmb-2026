@@ -1,6 +1,3 @@
-rm 'sgl-kernel/benchmark/bench_per_token_group_quant_8bit.py'
-rm 'sgl-kernel/benchmark/bench_per_token_quant_fp8.py'
-rm 'sgl-kernel/benchmark/bench_qserve_w4a8_gemm.py'
 rm 'sgl-kernel/build.sh'
 rm 'sgl-kernel/cmake/utils.cmake'
 rm 'sgl-kernel/csrc/allreduce/custom_all_reduce.cu'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    e9d5b3a5a..49f1f2dc2  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:06:31Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   49f1f2dc2..a81d230a0  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:11:36Z
