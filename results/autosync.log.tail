@@ -1,6 +1,3 @@
-rm 'sgl-kernel/LICENSE'
-rm 'sgl-kernel/Makefile'
-rm 'sgl-kernel/README.md'
 rm 'sgl-kernel/THIRDPARTYNOTICES.txt'
 rm 'sgl-kernel/benchmark/bench_awq_dequant.py'
 rm 'sgl-kernel/benchmark/bench_fp8_blockwise_gemm.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    b00a83f5b..aa637d7f1  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:41:00Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   aa637d7f1..d176a471c  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:46:05Z
