@@ -1,6 +1,3 @@
-rm 'sgl-pdlb/py_src/sgl_pdlb/__init__.py'
-rm 'sgl-pdlb/pyproject.toml'
-rm 'sgl-pdlb/src/io_struct.rs'
 rm 'sgl-pdlb/src/lb_state.rs'
 rm 'sgl-pdlb/src/lib.rs'
 rm 'sgl-pdlb/src/main.rs'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    349528414..52841b39e  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T11:56:02Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   52841b39e..279544c94  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:01:07Z
