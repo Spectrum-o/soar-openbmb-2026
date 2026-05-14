@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/cpu/qkv_proj.cpp'
-rm 'sgl-kernel/csrc/cpu/rope.cpp'
-rm 'sgl-kernel/csrc/cpu/shm.cpp'
 rm 'sgl-kernel/csrc/cpu/shm.h'
 rm 'sgl-kernel/csrc/cpu/topk.cpp'
 rm 'sgl-kernel/csrc/cpu/torch_extension_cpu.cpp'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    cdb41c909..956b25b8d  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:02:28Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   956b25b8d..0095b4d66  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:07:33Z
