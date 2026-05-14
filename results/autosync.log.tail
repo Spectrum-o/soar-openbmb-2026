@@ -1,6 +1,3 @@
-rm 'python/sglang/test/runners.py'
-rm 'python/sglang/test/send_one.py'
-rm 'python/sglang/test/simple_eval_common.py'
 rm 'python/sglang/test/simple_eval_gpqa.py'
 rm 'python/sglang/test/simple_eval_humaneval.py'
 rm 'python/sglang/test/simple_eval_math.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    c9340968c..fcde91b33  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:04:09Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   fcde91b33..318e21c2d  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:09:14Z
