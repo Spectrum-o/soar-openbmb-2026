@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/cutlass_extensions/gemm/gemm_with_epilogue_visitor.h'
-rm 'sgl-kernel/csrc/elementwise/activation.cu'
-rm 'sgl-kernel/csrc/elementwise/fused_add_rms_norm_kernel.cu'
 rm 'sgl-kernel/csrc/elementwise/rope.cu'
 rm 'sgl-kernel/csrc/flash_extension.cc'
 rm 'sgl-kernel/csrc/gemm/awq_kernel.cu'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    60ae0aae3..8a3ab074f  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:17:42Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   8a3ab074f..af7298fdf  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:22:48Z
