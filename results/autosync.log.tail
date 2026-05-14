@@ -1,6 +1,3 @@
-rm 'test/srt/cpu/test_shared_expert.py'
-rm 'test/srt/cpu/test_topk.py'
-rm 'test/srt/cpu/utils.py'
 rm 'test/srt/double-sparsity-config-Llama-3.1-8B-Instruct.json'
 rm 'test/srt/experiment_runner.py'
 rm 'test/srt/kv_cache_scales_llama3_1_8b.json'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    71a4aebd4..f916669a7  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:27:51Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   f916669a7..f0990315f  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:32:56Z
