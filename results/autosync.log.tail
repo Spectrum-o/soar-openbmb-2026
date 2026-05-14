@@ -1,6 +1,3 @@
-rm 'test/srt/cpu/test_extend.py'
-rm 'test/srt/cpu/test_gemm.py'
-rm 'test/srt/cpu/test_moe.py'
 rm 'test/srt/cpu/test_norm.py'
 rm 'test/srt/cpu/test_qkv_proj_with_rope.py'
 rm 'test/srt/cpu/test_rope.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    7b48d69e5..819dbdd9a  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:17:42Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   819dbdd9a..71a4aebd4  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:22:46Z
