@@ -1,6 +1,3 @@
-rm 'test/srt/test_gptqmodel_dynamic.py'
-rm 'test/srt/test_health_check.py'
-rm 'test/srt/test_hicache.py'
 rm 'test/srt/test_hicache_mla.py'
 rm 'test/srt/test_hicache_page.py'
 rm 'test/srt/test_hidden_states.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    25b897656..a3113c299  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:25:07Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   a3113c299..ad9c439fd  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T15:30:12Z
