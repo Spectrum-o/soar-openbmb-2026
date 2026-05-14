@@ -27,27 +27,64 @@ source /root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/bin/activate
 uv pip install "llmcompressor>=0.4" datasets
 ```
 
-The base venv also does **not** include `flash-attn` (it installs
-`flash-linear-attention` for SALA's linear attention layers, but not the
-mainline `flash-attn` package). HuggingFace transformers requires `flash-attn`
-to load the SALA model with `attn_implementation="flash_attention_2"`, which
-is a hard requirement (the model code asserts it in
-`modeling_minicpm_sala.py:1328`).
+#### Critical version pins (the entire reason this took a day to set up)
+
+The base install script doesn't pin transformers or flash-linear-attention,
+so you'll get whatever was latest at install time. SALA's modeling code was
+written against specific versions and breaks on newer ones. Pin these
+explicitly with `--no-deps --force-reinstall` so other packages stay put:
+
+| Package | Pinned version | Why |
+|---|---|---|
+| `transformers` | `4.57.1` | sglang/python/pyproject.toml pins this; SALA uses `is_torch_fx_available` (gone in 5.x) and `DynamicLayer.max_cache_len` kwarg (added 4.57) |
+| `flash-linear-attention` | `0.3.0` | `chunk_simple_gla` accepts `head_first` (removed in 0.5) AND `fused_recurrent_simple_gla` accepts `g_gamma` (added in 0.3). 0.4.x has a different module layout that breaks SALA's imports |
+| `flash-attn` | `>=2.8.0` | Newer Blackwell support. Dao-AILab publishes prebuilt wheels for cu128+torch2.9+py312 — `pip` picks these automatically (`uv` may not) |
+| `torch` | `2.9.1+cu128` | sglang pyproject pin; flash-attn wheel is built against this |
+| `tokenizers` | `>=0.22,<=0.23` | required by transformers 4.57 |
+| `huggingface-hub` | `0.34.x` | required by transformers 4.57 |
+
+Apply (use plain pip, not uv — uv 0.11 hangs in flash-attn's setup.py):
 
 ```bash
-uv pip install ninja
-MAX_JOBS=20 uv pip install flash-attn --no-build-isolation
-python -c "import flash_attn; print(flash_attn.__version__)"  # verify
+pip install --no-deps --force-reinstall "torch==2.9.1" --index-url https://download.pytorch.org/whl/cu128
+pip install --no-deps --force-reinstall "torchvision==0.24.1" --index-url https://download.pytorch.org/whl/cu128
+pip install --no-deps --force-reinstall "transformers==4.57.1" "tokenizers>=0.22,<=0.23" "huggingface-hub==0.34.0"
+pip install --no-deps flash-linear-attention==0.3.0
+pip install flash-attn --no-build-isolation    # ~5 min, uses prebuilt wheel via pip
 ```
 
-If compile fails on Blackwell (sm_120), force the arch:
+#### Verify environment
+
 ```bash
-TORCH_CUDA_ARCH_LIST="12.0" MAX_JOBS=20 uv pip install flash-attn --no-build-isolation
+cat > /tmp/check.py <<'EOF'
+import torch, transformers, flash_attn, fla
+from fla.ops.simple_gla import chunk_simple_gla
+from fla.ops.simple_gla.fused_recurrent import fused_recurrent_simple_gla
+import inspect
+print(f"torch={torch.__version__} transformers={transformers.__version__} flash_attn={flash_attn.__version__}")
+print(f"chunk_simple_gla.head_first: {'head_first' in inspect.signature(chunk_simple_gla).parameters}")
+print(f"fused_recurrent_simple_gla.g_gamma: {'g_gamma' in inspect.signature(fused_recurrent_simple_gla).parameters}")
+EOF
+sed -i 's/^[[:space:]]*//' /tmp/check.py
+python /tmp/check.py
 ```
 
-`flash-attn` is only needed for the quantization step. Once the W4A16 model
-is produced, sglang's own FA3 kernels handle serving and `flash-attn` is
-optional.
+Expected output:
+```
+torch=2.9.1+cu128 transformers=4.57.1 flash_attn=2.8.x
+chunk_simple_gla.head_first: True
+fused_recurrent_simple_gla.g_gamma: True
+```
+
+Once you've got a working venv, immediately freeze it for disaster recovery:
+```bash
+pip freeze > /root/autodl-fs/zyn/requirements_known_good.txt
+```
+
+If anything (including other users on a shared instance) clobbers the venv:
+```bash
+pip install --no-deps -r /root/autodl-fs/zyn/requirements_known_good.txt
+```
 
 ### 2. Run quantization
 
