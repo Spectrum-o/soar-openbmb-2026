@@ -1,6 +1,3 @@
-rm 'sgl-kernel/python/sgl_kernel/grammar.py'
-rm 'sgl-kernel/python/sgl_kernel/moe.py'
-rm 'sgl-kernel/python/sgl_kernel/sampling.py'
 rm 'sgl-kernel/python/sgl_kernel/sparse_flash_attn.py'
 rm 'sgl-kernel/python/sgl_kernel/speculative.py'
 rm 'sgl-kernel/python/sgl_kernel/utils.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    ed54057f6..07ac665e6  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:39:07Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   07ac665e6..4ac7fa9a6  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:44:12Z
