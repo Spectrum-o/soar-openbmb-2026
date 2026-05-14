@@ -147,6 +147,10 @@ def main():
 
     oneshot(
         model=model,
+        # Pass the already-loaded tokenizer so llmcompressor's pre_process
+        # doesn't try to re-instantiate it via AutoProcessor (which fails on
+        # SALA without trust_remote_code_model=True).
+        processor=tokenizer,
         dataset=tokenized,
         recipe=recipe,
         max_seq_length=args.max_seq_len,
