@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/cpu/shm.h'
-rm 'sgl-kernel/csrc/cpu/topk.cpp'
-rm 'sgl-kernel/csrc/cpu/torch_extension_cpu.cpp'
 rm 'sgl-kernel/csrc/cpu/vec.h'
 rm 'sgl-kernel/csrc/cutlass_extensions/epilogue/epilogue_per_row_per_col_scale.h'
 rm 'sgl-kernel/csrc/cutlass_extensions/gemm/gemm_universal_base_compat.h'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    956b25b8d..0095b4d66  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:07:33Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   0095b4d66..60ae0aae3  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T09:12:38Z
