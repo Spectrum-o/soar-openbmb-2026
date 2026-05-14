@@ -1,6 +1,3 @@
-rm 'test/srt/kv_cache_scales_llama3_8b.json'
-rm 'test/srt/kv_cache_scales_qwen2_1_5b.json'
-rm 'test/srt/models/compare.py'
 rm 'test/srt/models/lora/test_lora.py'
 rm 'test/srt/models/lora/test_lora_backend.py'
 rm 'test/srt/models/lora/test_lora_cuda_graph.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    f0990315f..1ab54fb10  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:38:01Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   1ab54fb10..21ce3d78e  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:43:10Z
