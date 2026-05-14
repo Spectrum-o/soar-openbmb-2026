@@ -1,6 +1,3 @@
-rm 'test/srt/models/lora/test_lora_tp.py'
-rm 'test/srt/models/lora/test_multi_lora_backend.py'
-rm 'test/srt/models/lora/utils.py'
 rm 'test/srt/models/test_clip_models.py'
 rm 'test/srt/models/test_compressed_tensors_models.py'
 rm 'test/srt/models/test_dummy_grok_models.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    21ce3d78e..c7fcb58a3  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:48:15Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   c7fcb58a3..3551cb1db  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:53:20Z
