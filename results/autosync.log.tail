@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/cpu/gemm_int8.cpp'
-rm 'sgl-kernel/csrc/cpu/interface.cpp'
-rm 'sgl-kernel/csrc/cpu/moe.cpp'
 rm 'sgl-kernel/csrc/cpu/moe_fp8.cpp'
 rm 'sgl-kernel/csrc/cpu/moe_int8.cpp'
 rm 'sgl-kernel/csrc/cpu/norm.cpp'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    22bb7b8ca..512ee5ecd  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:52:18Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   512ee5ecd..cdb41c909  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:57:23Z
