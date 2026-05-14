@@ -1,6 +1,3 @@
-rm 'sgl-router/py_test/test_launch_router.py'
-rm 'sgl-router/py_test/test_launch_server.py'
-rm 'sgl-router/pyproject.toml'
 rm 'sgl-router/src/lib.rs'
 rm 'sgl-router/src/logging.rs'
 rm 'sgl-router/src/prometheus.rs'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    7ba765123..e2348e17e  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:26:34Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   e2348e17e..8b3c37d37  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:31:41Z
