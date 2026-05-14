@@ -1,6 +1,3 @@
-rm 'scripts/deprecated/test_httpserver_llava.py'
-rm 'scripts/deprecated/test_httpserver_reuse.py'
-rm 'scripts/deprecated/test_jump_forward.py'
 rm 'scripts/deprecated/test_robust.py'
 rm 'scripts/export_deepseek_nextn.py'
 rm 'scripts/fix_corrupted_json.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    943bd83e6..ee0772701  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:00:14Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   ee0772701..5ea727962  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:05:22Z
