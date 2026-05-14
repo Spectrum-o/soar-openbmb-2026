@@ -27,6 +27,28 @@ source /root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/bin/activate
 uv pip install "llmcompressor>=0.4" datasets
 ```
 
+The base venv also does **not** include `flash-attn` (it installs
+`flash-linear-attention` for SALA's linear attention layers, but not the
+mainline `flash-attn` package). HuggingFace transformers requires `flash-attn`
+to load the SALA model with `attn_implementation="flash_attention_2"`, which
+is a hard requirement (the model code asserts it in
+`modeling_minicpm_sala.py:1328`).
+
+```bash
+uv pip install ninja
+MAX_JOBS=20 uv pip install flash-attn --no-build-isolation
+python -c "import flash_attn; print(flash_attn.__version__)"  # verify
+```
+
+If compile fails on Blackwell (sm_120), force the arch:
+```bash
+TORCH_CUDA_ARCH_LIST="12.0" MAX_JOBS=20 uv pip install flash-attn --no-build-isolation
+```
+
+`flash-attn` is only needed for the quantization step. Once the W4A16 model
+is produced, sglang's own FA3 kernels handle serving and `flash-attn` is
+optional.
+
 ### 2. Run quantization
 
 ```bash
