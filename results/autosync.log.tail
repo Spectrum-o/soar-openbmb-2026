@@ -1,6 +1,3 @@
-rm 'sgl-kernel/include/sgl_kernel_ops.h'
-rm 'sgl-kernel/include/sgl_kernel_torch_shim.h'
-rm 'sgl-kernel/include/utils.h'
 rm 'sgl-kernel/pyproject.toml'
 rm 'sgl-kernel/pyproject_cpu.toml'
 rm 'sgl-kernel/pyproject_rocm.toml'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    9877eb934..61aa4ebbd  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:18:47Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   61aa4ebbd..bae940ab9  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:23:53Z
