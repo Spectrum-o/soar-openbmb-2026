@@ -1,6 +1,3 @@
-rm 'scripts/amd_ci_exec.sh'
-rm 'scripts/amd_ci_install_dependency.sh'
-rm 'scripts/amd_ci_start_container.sh'
 rm 'scripts/ci_install_dependency.sh'
 rm 'scripts/ci_install_rust.sh'
 rm 'scripts/deprecated/convert_yi_vl.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    f6655a257..a39be02f3  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:39:48Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   a39be02f3..c75d1643f  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:44:54Z
