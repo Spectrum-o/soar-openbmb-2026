@@ -1,6 +1,3 @@
-rm 'python/sglang/srt/models/llama_embedding.py'
-rm 'python/sglang/srt/models/llama_reward.py'
-rm 'python/sglang/srt/models/llava.py'
 rm 'python/sglang/srt/models/llavavid.py'
 rm 'python/sglang/srt/models/mimo.py'
 rm 'python/sglang/srt/models/mimo_mtp.py'
@@ -498,3 +495,6 @@ remote:
 To github.com:Spectrum-o/soar-openbmb-2026.git
  * [new branch]          results -> results
 Branch 'results' set up to track remote branch 'results' from 'origin'.
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   7c41c8fc0..adebb3066  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:02:00Z
