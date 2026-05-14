@@ -1,6 +1,3 @@
-rm 'test/srt/test_nightly_gsm8k_eval.py'
-rm 'test/srt/test_nightly_gsm8k_eval_amd.py'
-rm 'test/srt/test_no_chunked_prefill.py'
 rm 'test/srt/test_no_overlap_scheduler.py'
 rm 'test/srt/test_openai_adapter.py'
 rm 'test/srt/test_openai_function_calling.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    a06b82ae8..b500c226b  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T16:16:16Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   b500c226b..4395f6587  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T16:21:21Z
