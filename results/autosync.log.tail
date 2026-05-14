@@ -1,6 +1,3 @@
-rm 'test/srt/models/test_clip_models.py'
-rm 'test/srt/models/test_compressed_tensors_models.py'
-rm 'test/srt/models/test_dummy_grok_models.py'
 rm 'test/srt/models/test_embedding_models.py'
 rm 'test/srt/models/test_encoder_embedding_models.py'
 rm 'test/srt/models/test_generation_models.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    c7fcb58a3..3551cb1db  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:53:20Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   3551cb1db..5d87cd0e0  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:58:26Z
