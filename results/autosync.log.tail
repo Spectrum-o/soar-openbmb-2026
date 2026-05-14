@@ -1,6 +1,3 @@
-rm 'sgl-kernel/python/sgl_kernel/sparse_flash_attn.py'
-rm 'sgl-kernel/python/sgl_kernel/speculative.py'
-rm 'sgl-kernel/python/sgl_kernel/utils.py'
 rm 'sgl-kernel/python/sgl_kernel/version.py'
 rm 'sgl-kernel/rename_wheels.sh'
 rm 'sgl-kernel/setup_rocm.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    07ac665e6..4ac7fa9a6  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:44:12Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   4ac7fa9a6..2fa92661b  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T10:49:17Z
