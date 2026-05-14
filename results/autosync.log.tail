@@ -1,6 +1,3 @@
-rm 'test/srt/configs/llama_405b.yaml'
-rm 'test/srt/configs/random_config.yaml'
-rm 'test/srt/configs/random_flashinfer_vs_triton_config.yaml'
 rm 'test/srt/configs/sharegpt_config.yaml'
 rm 'test/srt/cpu/test_activation.py'
 rm 'test/srt/cpu/test_decode.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    0edc30caf..ea42a1742  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:07:29Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   ea42a1742..7b48d69e5  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:12:34Z
