@@ -1,6 +1,3 @@
-rm 'test/srt/models/test_mtp_models.py'
-rm 'test/srt/models/test_qwen_models.py'
-rm 'test/srt/models/test_reward_models.py'
 rm 'test/srt/models/test_transformers_models.py'
 rm 'test/srt/models/test_unsloth_models.py'
 rm 'test/srt/models/test_vlm_models.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    182a793b8..5e430121c  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T14:08:38Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   5e430121c..3898f00f4  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T14:13:44Z
