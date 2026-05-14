@@ -1,6 +1,3 @@
-rm 'sgl-kernel/benchmark/bench_moe_align_block_size.py'
-rm 'sgl-kernel/benchmark/bench_moe_ep_post_reorder.py'
-rm 'sgl-kernel/benchmark/bench_moe_ep_pre_reorder.py'
 rm 'sgl-kernel/benchmark/bench_moe_fused_gate.py'
 rm 'sgl-kernel/benchmark/bench_moe_topk_softmax.py'
 rm 'sgl-kernel/benchmark/bench_per_tensor_quant_fp8.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    4312fcf06..422a25514  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:56:15Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   422a25514..e9d5b3a5a  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:01:24Z
