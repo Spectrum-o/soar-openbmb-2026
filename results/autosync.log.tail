@@ -1,6 +1,3 @@
-rm 'scripts/deprecated/convert_yi_vl.sh'
-rm 'scripts/deprecated/test_curl.sh'
-rm 'scripts/deprecated/test_flashinfer.py'
 rm 'scripts/deprecated/test_httpserver_concurrent.py'
 rm 'scripts/deprecated/test_httpserver_decode.py'
 rm 'scripts/deprecated/test_httpserver_decode_stream.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    c75d1643f..72b6c7453  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:50:03Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   72b6c7453..943bd83e6  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:55:07Z
