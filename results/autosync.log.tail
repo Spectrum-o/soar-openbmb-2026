@@ -1,6 +1,3 @@
-rm 'python/sglang/srt/models/yivl.py'
-rm 'python/sglang/srt/openai_api/adapter.py'
-rm 'python/sglang/srt/openai_api/protocol.py'
 rm 'python/sglang/srt/openai_api/utils.py'
 rm 'python/sglang/srt/operations.py'
 rm 'python/sglang/srt/operations_strategy.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    e53c34301..4e12b1dc1  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T05:03:02Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   4e12b1dc1..d34d6391e  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T05:08:06Z
