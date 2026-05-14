@@ -1,6 +1,3 @@
-rm 'test/srt/configs/sharegpt_config.yaml'
-rm 'test/srt/cpu/test_activation.py'
-rm 'test/srt/cpu/test_decode.py'
 rm 'test/srt/cpu/test_extend.py'
 rm 'test/srt/cpu/test_gemm.py'
 rm 'test/srt/cpu/test_moe.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    ea42a1742..7b48d69e5  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:12:34Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   7b48d69e5..819dbdd9a  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:17:42Z
