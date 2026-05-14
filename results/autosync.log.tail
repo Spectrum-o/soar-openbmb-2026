@@ -1,6 +1,3 @@
-rm 'python/sglang/test/test_fp4_moe.py'
-rm 'python/sglang/test/test_layernorm.py'
-rm 'python/sglang/test/test_programs.py'
 rm 'python/sglang/test/test_utils.py'
 rm 'python/sglang/utils.py'
 rm 'python/sglang/version.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    ae61311e1..d759df632  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:29:38Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   d759df632..f6655a257  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:34:42Z
