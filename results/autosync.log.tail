@@ -1,6 +1,3 @@
-rm 'scripts/playground/lora/lora_hf_play.py'
-rm 'scripts/playground/lora/lora_vllm_play.py'
-rm 'scripts/playground/reference_hf.py'
 rm 'scripts/playground/router/test_tree.py'
 rm 'scripts/playground/router/tree.py'
 rm 'scripts/update_kernel_whl_index.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    f391a33b8..0761ee45d  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:25:44Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   0761ee45d..f8533e417  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T07:30:50Z
