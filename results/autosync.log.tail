@@ -1,6 +1,3 @@
-rm 'sgl-kernel/csrc/cpu/common.h'
-rm 'sgl-kernel/csrc/cpu/decode.cpp'
-rm 'sgl-kernel/csrc/cpu/extend.cpp'
 rm 'sgl-kernel/csrc/cpu/gemm.cpp'
 rm 'sgl-kernel/csrc/cpu/gemm.h'
 rm 'sgl-kernel/csrc/cpu/gemm_fp8.cpp'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    63d0927c8..87d609545  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:42:08Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   87d609545..22bb7b8ca  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:47:13Z
