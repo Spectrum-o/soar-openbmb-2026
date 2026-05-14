@@ -1,6 +1,3 @@
-rm 'test/lang/test_openai_backend.py'
-rm 'test/lang/test_srt_backend.py'
-rm 'test/lang/test_tracing.py'
 rm 'test/lang/test_vertexai_backend.py'
 rm 'test/srt/configs/deepseek_v3.yaml'
 rm 'test/srt/configs/deepseek_v3_long_context.yaml'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    fdb1eff52..7c86b229e  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:57:13Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   7c86b229e..0edc30caf  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T13:02:24Z
