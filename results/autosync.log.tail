@@ -1,6 +1,3 @@
-rm 'python/sglang/srt/models/phi3_small.py'
-rm 'python/sglang/srt/models/phi4mm.py'
-rm 'python/sglang/srt/models/pixtral.py'
 rm 'python/sglang/srt/models/qwen.py'
 rm 'python/sglang/srt/models/qwen2.py'
 rm 'python/sglang/srt/models/qwen2_5_vl.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    05e383fc1..90b1eebac  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:27:25Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   90b1eebac..722d9fd98  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T04:32:29Z
