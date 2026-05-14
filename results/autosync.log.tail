@@ -1,6 +1,3 @@
-rm 'python/sglang/test/simple_eval_mgsm.py'
-rm 'python/sglang/test/simple_eval_mmlu.py'
-rm 'python/sglang/test/test_activation.py'
 rm 'python/sglang/test/test_block_fp8.py'
 rm 'python/sglang/test/test_block_fp8_ep.py'
 rm 'python/sglang/test/test_custom_ops.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    318e21c2d..67c34ac73  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:14:20Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   67c34ac73..95f83b5ce  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T06:19:28Z
