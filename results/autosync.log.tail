@@ -1,6 +1,3 @@
-rm 'sgl-kernel/build.sh'
-rm 'sgl-kernel/cmake/utils.cmake'
-rm 'sgl-kernel/csrc/allreduce/custom_all_reduce.cu'
 rm 'sgl-kernel/csrc/allreduce/custom_all_reduce.cuh'
 rm 'sgl-kernel/csrc/allreduce/custom_all_reduce.hip'
 rm 'sgl-kernel/csrc/allreduce/custom_all_reduce_hip.cuh'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    49f1f2dc2..a81d230a0  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:11:36Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   a81d230a0..2066d8f8f  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T08:16:41Z
