@@ -1,6 +1,3 @@
-rm 'sgl-router/Cargo.toml'
-rm 'sgl-router/MANIFEST.in'
-rm 'sgl-router/README.md'
 rm 'sgl-router/py_src/sglang_router/__init__.py'
 rm 'sgl-router/py_src/sglang_router/launch_router.py'
 rm 'sgl-router/py_src/sglang_router/launch_server.py'
@@ -498,3 +495,6 @@ To github.com:Spectrum-o/soar-openbmb-2026.git
 To github.com:Spectrum-o/soar-openbmb-2026.git
    22a6c2543..18a865ba9  results -> results
 [1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:11:18Z
+To github.com:Spectrum-o/soar-openbmb-2026.git
+   18a865ba9..335384996  results -> results
+[1;36m[bootstrap][0m autosync: pushed at 2026-05-14T12:16:23Z
