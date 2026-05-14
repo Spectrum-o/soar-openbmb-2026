@@ -103,11 +103,15 @@ def main():
 
     print("[1/4] Loading tokenizer and model...")
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    # MiniCPM-SALA's remote modeling code asserts attn_implementation == "flash_attention_2"
+    # (modeling_minicpm_sala.py:1328) because its InfLLMv2 sparse attention is only
+    # wired through flash_attention_2; eager/sdpa abort. Requires flash-attn installed.
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         torch_dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=True,
+        attn_implementation="flash_attention_2",
     )
 
     print("[2/4] Loading and tokenizing calibration data...")
