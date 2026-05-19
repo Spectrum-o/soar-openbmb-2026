@@ -29,19 +29,39 @@ if [ -z "${INPUT_DIR}" ] || [ -z "${OUTPUT_DIR}" ]; then
     exit 2
 fi
 
-# Calibration data: prefer SOAR's perf_public_set.jsonl when present.
-# Path is the convention from local_eval.sh — adjust via env var
-# CALIB_JSONL if needed.
-CALIB_JSONL="${CALIB_JSONL:-/root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl}"
-NUM_CALIB="${NUM_CALIB:-256}"
+# Calibration data resolution order (CRITICAL — getting this wrong was the
+# root cause of the 2026-05-19 acc=42 submissions):
+#   1. $CALIB_JSONL env var (if set and file exists)
+#   2. perf_public_set.jsonl bundled inside this tarball  ← default on platform
+#   3. /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl  ← AutoDL convention
+#   4. synthetic fallback (last resort, LOW quality, will likely fail eval)
+BUNDLED_CALIB="${SCRIPT_DIR}/perf_public_set.jsonl"
+AUTODL_CALIB="/root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl"
+
+if [ -n "${CALIB_JSONL:-}" ] && [ -f "${CALIB_JSONL}" ]; then
+    : # user override
+elif [ -f "${BUNDLED_CALIB}" ]; then
+    CALIB_JSONL="${BUNDLED_CALIB}"
+elif [ -f "${AUTODL_CALIB}" ]; then
+    CALIB_JSONL="${AUTODL_CALIB}"
+else
+    CALIB_JSONL=""
+fi
+
+# 150 rows in perf_public_set.jsonl (30 each across mcq / niah / qa / fwe / cwe).
+# Use all of them by default; no random sampling needed at this size.
+NUM_CALIB="${NUM_CALIB:-150}"
+# max_calib_len 4096: balances coverage with quantization time. Most rows are
+# much longer than 4K tokens (median ~30K, p90 ~117K) — we sample the prefix
+# for activation distribution.
 MAX_CALIB_LEN="${MAX_CALIB_LEN:-4096}"
 
 CALIB_ARGS=()
-if [ -f "${CALIB_JSONL}" ]; then
+if [ -n "${CALIB_JSONL}" ]; then
     CALIB_ARGS+=(--calib-jsonl "${CALIB_JSONL}")
     echo "[prepare_model] using calibration from: ${CALIB_JSONL}"
 else
-    echo "[prepare_model] WARNING: ${CALIB_JSONL} not found — falling back to synthetic calibration (lower quality)"
+    echo "[prepare_model] WARNING: no calibration file found — synthetic fallback will likely fail correctness gate" >&2
 fi
 CALIB_ARGS+=(--num-calib "${NUM_CALIB}" --max-calib-len "${MAX_CALIB_LEN}")
 
