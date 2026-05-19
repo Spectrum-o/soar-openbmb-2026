@@ -65,8 +65,34 @@ else
 fi
 CALIB_ARGS+=(--num-calib "${NUM_CALIB}" --max-calib-len "${MAX_CALIB_LEN}")
 
-python3 "${SCRIPT_DIR}/quantize_gptqmodel_w4a16.py" \
+# Safety: hard cap the quantize wall time so we fail cleanly INSIDE the
+# 5h platform budget if anything hangs.
+#   - Expected normal time on RTX PRO 6000 (96GB): 20-40 min for 150
+#     samples * 4096 tokens.
+#   - We abort at 180 min. Past that, prepare_model.sh exits non-zero
+#     and the platform marks the submission as "failed midway" (doesn't
+#     consume a slot) BEFORE the 5h hard timeout kicks in (which would).
+QUANT_TIMEOUT_MIN="${QUANT_TIMEOUT_MIN:-180}"
+
+# Disk offload during quantization is slow on this workload — RTX PRO
+# 6000 has 96GB VRAM, which fits the 18GB BF16 model + Hessian
+# workspace comfortably. Disabling disk offload prevents thrashing.
+# --no-offload-disk passes through to the quantize script.
+EXTRA_ARGS+=(--no-offload-disk)
+
+echo "[prepare_model] quantize timeout: ${QUANT_TIMEOUT_MIN} min"
+
+timeout "${QUANT_TIMEOUT_MIN}m" python3 "${SCRIPT_DIR}/quantize_gptqmodel_w4a16.py" \
     --input "${INPUT_DIR}" \
     --output "${OUTPUT_DIR}" \
     "${CALIB_ARGS[@]}" \
     "${EXTRA_ARGS[@]}"
+quant_exit=$?
+
+if [ "${quant_exit}" -eq 124 ]; then
+    echo "[prepare_model] FATAL: quantization exceeded ${QUANT_TIMEOUT_MIN} min wall time; aborting cleanly" >&2
+    exit 124
+elif [ "${quant_exit}" -ne 0 ]; then
+    echo "[prepare_model] quantize exited ${quant_exit}" >&2
+    exit "${quant_exit}"
+fi
