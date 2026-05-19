@@ -342,31 +342,37 @@ def load_model(
 ):
     """Load BF16 model under GPTQModel's wrapper.
 
-    Avoids the previous version's 6-way fallback. If this call shape
-    fails, we surface the error so we know exactly what's wrong.
+    NOTE on max_memory: GPTQModel 7.0 passes unrecognized kwargs all the
+    way through to HF's auto_factory `from_config(...)` -> `cls(config,
+    **kwargs)`. For SALA, that hits `MiniCPMSALAForCausalLM.__init__`
+    which does NOT accept `max_memory` (custom modeling loaded via
+    trust_remote_code). So we only attach `max_memory` if the user
+    explicitly opted in via --gpu-max-mem. Default = pass nothing about
+    memory and let GPTQModel auto-detect, which is fine on a 96GB GPU.
+    (cpu_max_mem default was the culprit that broke the 2026-05-19
+    20:30 submission.)
     """
     from gptqmodel import GPTQModel  # type: ignore
-
-    max_memory: dict[Any, str] = {}
-    if gpu_max_mem:
-        max_memory[0] = gpu_max_mem
-    max_memory["cpu"] = cpu_max_mem
-
-    print(f"[load] GPTQModel.load(...)  max_memory={max_memory}", flush=True)
-    print(
-        f"[load] use_disk_offload={use_disk_offload}",
-        flush=True,
-    )
 
     kwargs: dict[str, Any] = {
         "trust_remote_code": True,
     }
+
+    # Only attach max_memory when explicitly requested.
+    max_memory: dict[Any, str] = {}
+    if gpu_max_mem:
+        max_memory[0] = gpu_max_mem
+    # Intentionally NOT defaulting a "cpu" entry — see docstring.
     if max_memory:
         kwargs["max_memory"] = max_memory
-    # GPTQModel >= 6 introduced `offload_to_disk`. Older versions ignore it.
+
     if use_disk_offload:
+        # `offload_to_disk` is a GPTQModel-recognized flag (not passed
+        # through to the model constructor), so it's safe.
         kwargs["offload_to_disk"] = True
 
+    print(f"[load] GPTQModel.load(...)  kwargs={sorted(kwargs.keys())}",
+          flush=True)
     return GPTQModel.load(input_dir, quant_config, **kwargs)
 
 
