@@ -67,23 +67,21 @@ CALIB_ARGS+=(--num-calib "${NUM_CALIB}" --max-calib-len "${MAX_CALIB_LEN}")
 
 # Safety: hard cap the quantize wall time so we fail cleanly INSIDE the
 # 5h platform budget if anything hangs.
-#   - Expected normal time on RTX PRO 6000 (96GB): 35-60 min, comprising:
-#       JIT compile of GPTQModel CUDA kernels (first run):    10-15 min
-#       BF16 model load:                                       2 min
-#       Calibration forward (150 samples × 4096 tokens):       5-10 min
-#       Per-layer GPTQ optimization × 32 layers:               16-32 min
-#       Save quantized weights (~5GB):                         2-3 min
-#   - Total budget breakdown for a successful run:
-#       prepare_env:   ~ 5 min
-#       quantize:      ~50 min (typical, see above)
-#       bench S1+8+max:~95 min (matches the 2026-05-19 RTN runs)
-#       eval_model.py: ~15 min
-#       TOTAL:        ~165 min ≈ 2.75 h  (well under 5h)
-#   - We abort at 75 min. Past that, prepare_model.sh exits 124 and the
+#   - Expected normal time on RTX PRO 6000 (96GB): 45-75 min on the
+#     SOAR platform's gptqmodel 7.0 + torch 2.9.1, because cpp
+#     extensions require torch>=2.11 (verified from 20:30 submission log)
+#     so GPTQ falls back to pure-Python path (~30% slower than cpp).
+#   - We abort at 90 min. Past that, prepare_model.sh exits 124 and the
 #     platform marks the submission as "failed midway" (does NOT consume
 #     a slot per user's reported rule), well before the 5h hard timeout
 #     (which WOULD consume the slot).
-QUANT_TIMEOUT_MIN="${QUANT_TIMEOUT_MIN:-75}"
+#   - Total budget on a successful run:
+#       prepare_env:   ~ 5 min
+#       quantize:      ~60 min (typical pure-Python path)
+#       bench S1+8+max:~95 min (matches the 2026-05-19 RTN runs)
+#       eval_model.py: ~15 min
+#       TOTAL:        ~175 min ≈ 2.9 h  (still well under 5h)
+QUANT_TIMEOUT_MIN="${QUANT_TIMEOUT_MIN:-90}"
 
 # Disk offload during quantization is slow on this workload — RTX PRO
 # 6000 has 96GB VRAM, which fits the 18GB BF16 model + Hessian
