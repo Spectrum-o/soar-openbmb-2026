@@ -242,6 +242,53 @@ def load_calibration_prompts(
 # ---------------------------------------------------------------------------
 # MiniCPM-SALA model registration
 # ---------------------------------------------------------------------------
+def force_flash_attention_2_for_sala() -> None:
+    """Monkey-patch AutoConfig.from_pretrained to set _attn_implementation
+    on the SALA config before GPTQModel ever instantiates the model.
+
+    The SALA custom modeling has a hard assertion at the top of
+    MiniCPMInfLLMv2Attention.__init__:
+
+        assert self.config._attn_implementation == "flash_attention_2", \\
+            "Only flash_attention_2 is supported for sparse attention"
+
+    GPTQModel uses the from_config(...) codepath (not from_pretrained),
+    which does NOT run the attn_implementation auto-routing that
+    `from_pretrained(attn_implementation=...)` would. So we hook in
+    earlier — when AutoConfig loads — and set the attribute on the
+    config object before it's handed off to the model constructor.
+
+    flash_attn package itself does NOT need to be installed at quant
+    time; the assertion only reads the config string. The forward
+    Hessian pass DOES need flash_attn at runtime — but the SOAR base
+    environment ships it (verified: the BF16 baseline submission ran
+    successfully).
+    """
+    from transformers import AutoConfig  # type: ignore
+
+    _orig_from_pretrained = AutoConfig.from_pretrained
+
+    def _patched_from_pretrained(*args, **kwargs):
+        cfg = _orig_from_pretrained(*args, **kwargs)
+        try:
+            if getattr(cfg, "model_type", "") == "minicpm_sala":
+                cfg._attn_implementation = "flash_attention_2"
+                # Avoid transformers' "auto-set" override warning by
+                # marking it as explicitly chosen.
+                setattr(cfg, "_attn_implementation_autoset", True)
+                print(
+                    "[patch] forced minicpm_sala._attn_implementation"
+                    " = flash_attention_2",
+                    flush=True,
+                )
+        except Exception as exc:
+            print(f"[patch] WARNING: couldn't set _attn_implementation: {exc}",
+                  flush=True)
+        return cfg
+
+    AutoConfig.from_pretrained = _patched_from_pretrained
+
+
 def register_minicpm_sala_with_gptqmodel() -> None:
     """Teach GPTQModel that `minicpm_sala` looks like `minicpm`.
 
@@ -512,6 +559,11 @@ def main() -> int:
         )
 
     # Lazy import — only after we know it's not a dry run.
+    # IMPORTANT: monkey-patch BEFORE register/load — SALA's modeling code
+    # has a hard assertion on _attn_implementation == "flash_attention_2"
+    # inside MiniCPMInfLLMv2Attention.__init__ that fires at model
+    # instantiation time (BEFORE we can do anything else).
+    force_flash_attention_2_for_sala()
     register_minicpm_sala_with_gptqmodel()
     quant_config = make_quant_config(args.bits, args.group_size)
 
