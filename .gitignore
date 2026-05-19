@@ -266,3 +266,8 @@ python/sglang/_version.py
 *.tar.gz
 submission_*/sglang/
 
+
+# Local smoke-bench artifacts
+scripts/bench_results.csv
+scripts/logs/
+
