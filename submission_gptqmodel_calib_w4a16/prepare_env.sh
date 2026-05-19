@@ -22,6 +22,39 @@ fi
 echo "[prepare_env] installing GPTQModel + supporting packages"
 uv pip install -v "gptqmodel>=7.0,<8.0" "transformers>=4.45" accelerate ninja
 
+# Install flash-attn. SALA's HF modeling code (loaded via trust_remote_code)
+# hard-asserts `_attn_implementation == "flash_attention_2"` at __init__
+# (modeling_minicpm_sala.py:1328), and transformers >= 5.0 ADDITIONALLY
+# does a strict import-check that requires the flash_attn package to be
+# importable at model instantiation time (modeling_utils.py:1714).
+#
+# The 2026-05-19 21:16 submission crashed in 17s here:
+#   ImportError: FlashAttention2 has been toggled on, but it cannot be used
+#   due to the following error: the package for FlashAttention2 doesn't
+#   seem to be installed.
+#
+# Platform env (confirmed from prior submission logs): torch 2.9.1+cu128,
+# python 3.10. The exact-match prebuilt wheel from mjun0812's repo is
+# `flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl` — about
+# 253 MB, installs in seconds, no source compile. Using the direct URL
+# avoids the `+cu128` local-version bug that breaks pip's wheel auto-
+# resolution from `pip install flash-attn`.
+echo "[prepare_env] installing flash-attn 2.8.3 (exact wheel for torch 2.9 + cu128 + py3.10)"
+FLASH_ATTN_WHEEL="https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl"
+if ! uv pip install --no-build-isolation "${FLASH_ATTN_WHEEL}"; then
+    echo "[prepare_env] direct wheel install failed; falling back to source build" >&2
+    if ! uv pip install --no-build-isolation flash-attn; then
+        echo "[prepare_env] FATAL: flash-attn install failed both ways" >&2
+        exit 1
+    fi
+fi
+
+# Verify the import works before proceeding — fail fast if anything's wrong.
+if ! python3 -c "import flash_attn; print(f'flash_attn {flash_attn.__version__} import OK')"; then
+    echo "[prepare_env] FATAL: flash_attn imports failed after install" >&2
+    exit 1
+fi
+
 # GPTQ/Marlin runtime expects fp16-compatible MiniCPM sparse attention helpers.
 # This patch was verified necessary in earlier submissions — the sparse
 # backend hardcodes bf16, but Marlin GEMM emits fp16.
