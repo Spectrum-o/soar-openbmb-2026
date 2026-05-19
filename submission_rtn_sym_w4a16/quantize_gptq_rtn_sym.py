@@ -12,10 +12,17 @@ that convention:
 
 The quantization itself is symmetric round-to-nearest (no calibration set,
 no external dependencies). For each (group, output_channel) we compute
-    scale = max(abs(w)) / 2**(bits-1)
+    scale = max(abs(w)) / (2**(bits-1) - 1)        # = abs_max / 7 for 4-bit
     signed_q = clamp(round(w / scale), -2**(bits-1), 2**(bits-1) - 1)
     stored_q = signed_q + 2**(bits-1)
     stored_zero = 2**(bits-1)              # bias-8, identical for all groups
+
+The `/ (2**(bits-1) - 1)` choice (rather than `/ 2**(bits-1)`) makes +abs_max
+map exactly to q_unsigned = 15, matching the uint4b8 dequant formula
+`value = (q_unsigned - 8) * scale`. Using `/ 2**(bits-1)` instead causes the
+top positive bin to be clamped, losing ~12.5% of the magnitude at outliers --
+this was the 2026-05-19 submission bug that scored acc_ori=42.51 vs the
+~82 BF16 baseline.
 
 This is enough to run through Marlin and pass the SOAR correctness gate;
 heavier methods (GPTQ with Hessian, AWQ, etc.) can be layered on later.
@@ -64,9 +71,16 @@ def quantize_weight_rtn_symmetric(weight: torch.Tensor, bits: int, group_size: i
     # (out, in) -> (out, num_groups, group_size)
     w = weight.float().reshape(out_features, num_groups, group_size)
 
-    # Symmetric scale per (out_channel, group)
+    # Symmetric scale per (out_channel, group).
+    # NOTE: divide by (half - 1) = 7 for 4-bit, NOT half = 8. The dequant
+    # formula in Marlin's uint4b8 path is `value = (q_unsigned - 8) * scale`,
+    # so the maximum representable value is 7 * scale. To make +abs_max map
+    # exactly to q_unsigned=15, scale must satisfy 7 * scale == abs_max.
+    # Using `/ half` (= 8) systematically dampens +ve outliers by ~12.5% and
+    # was the root cause of the 2026-05-19 submission scoring acc_ori=42.51
+    # vs BF16 baseline ~82.
     w_absmax = w.abs().amax(dim=2, keepdim=True).clamp(min=1e-10)
-    scales = w_absmax / half                  # shape (out, num_groups, 1)
+    scales = w_absmax / (half - 1)            # shape (out, num_groups, 1)
 
     # Quantize -> signed -> shift to unsigned [0, 2^bits - 1]
     q_signed = torch.clamp(torch.round(w / scales), signed_min, signed_max)

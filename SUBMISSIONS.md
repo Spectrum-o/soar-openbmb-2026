@@ -20,10 +20,14 @@ Tracks every tarball produced for the OpenBMB SOAR 2026 platform.
 | 2026-05-15 | `soar_gptqmodel_marlin_fp8kv_submission_20260515.tar.gz` | (not in repo) | 🔴 | — | GPTQModel route + FP8 KV. FP8 KV path incompatible with MiniCPM sparse backend (FlashAttention only supports fp16/bf16). |
 | 2026-05-15 | `soar_gptqmodel_marlin_fp8kv_submission_20260515_v2.tar.gz` | `submission_soar_w4a16/` | 🔴 | — | Retry of above; same FP8 KV incompatibility. |
 | 2026-05-19 | `soar_official_rtn_w4a16_g128_marlin_cfg_submission_20260519.tar.gz` | (not in repo) | 🔴 startup | — | RTN + Marlin. Failed: `Unsupported quantization config: bits=4, sym=False`. RTN script wrote asymmetric config; Marlin requires `sym=True`. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_g128_marlin_submission_20260519.tar.gz` | `submission_rtn_sym_w4a16/` | ⏳ | — | **v1 of symmetric RTN.** Fix for the sym=False bug; baseline of the v* series. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v2_chunk32k_submission_20260519.tar.gz` | `submission_rtn_sym_v2_chunk32k/` | 📦 | — | v1 + `--chunked-prefill-size 32768 --max-prefill-tokens 32768`. Local microbench predicted +59% throughput. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v3_mixedchunk_submission_20260519.tar.gz` | `submission_rtn_sym_v3_mixedchunk/` | 📦 | — | v2 + `--enable-mixed-chunk` (SARATHI piggyback). Helps S8/Smax. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v4_aggressive_submission_20260519.tar.gz` | `submission_rtn_sym_v4_aggressive/` | 📦 | — | v3 + `--mem-fraction-static 0.92 --enable-piecewise-cuda-graph`. Highest risk in this batch. |
+| 2026-05-19 | `soar_rtn_sym_w4a16_g128_marlin_submission_20260519.tar.gz` | `submission_rtn_sym_w4a16/` (pre-fix) | 🔴 acc | 0.0 | **v1 of symmetric RTN.** Started OK (sym=True fix worked), ran 5h, but `acc_ori=42.51` vs ~82 baseline → correctness gate failed → `final_score=0`. Root cause: scale formula bug (`/ half` instead of `/ (half - 1)`) clamped +ve outliers by 12.5%. Bench durations recorded: S1=599.97s, S8=969.73s, Smax=2259.68s. |
+| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v2_chunk32k_submission_20260519.tar.gz` | `submission_rtn_sym_v2_chunk32k/` (pre-fix) | 🔴 superseded | — | Same scale bug as v1 — would also fail correctness. Replaced by `_scalefix` build. |
+| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v3_mixedchunk_submission_20260519.tar.gz` | `submission_rtn_sym_v3_mixedchunk/` (pre-fix) | 🔴 superseded | — | Same scale bug as v1 — would also fail correctness. Replaced by `_scalefix` build. |
+| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v4_aggressive_submission_20260519.tar.gz` | `submission_rtn_sym_v4_aggressive/` (pre-fix) | 🔴 superseded | — | Same scale bug as v1 — would also fail correctness. Replaced by `_scalefix` build. |
+| 2026-05-19 | `soar_rtn_sym_w4a16_g128_marlin_submission_20260519_scalefix.tar.gz` | `submission_rtn_sym_w4a16/` | 📦 | — | **v1.1.** Fix for the scale formula bug (`scales = w_absmax / (half - 1)`). Submit this NEXT — disambiguates "scale bug" vs "RTN itself too lossy". |
+| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v2_chunk32k_submission_20260519_scalefix.tar.gz` | `submission_rtn_sym_v2_chunk32k/` | 📦 | — | v2 with scale fix. Submit after v1.1 confirms correctness gate clears. |
+| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v3_mixedchunk_submission_20260519_scalefix.tar.gz` | `submission_rtn_sym_v3_mixedchunk/` | 📦 | — | v3 with scale fix. |
+| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v4_aggressive_submission_20260519_scalefix.tar.gz` | `submission_rtn_sym_v4_aggressive/` | 📦 | — | v4 with scale fix. |
 
 ## Reference
 
@@ -34,6 +38,7 @@ Tracks every tarball produced for the OpenBMB SOAR 2026 platform.
   - FP8 KV cache (`--kv-cache-dtype fp8_*`) does NOT work with the MiniCPM sparse backend.
   - `sym=True` is required by `--quantization gptq_marlin` (Marlin kernel uses `uint4b8`).
   - `--disable-cuda-graph` is for diagnosing startup errors only — baseline runs WITH CUDA graph.
+  - **For 4-bit symmetric quant with uint4b8: `scale = max(abs(w)) / (2^(bits-1) - 1)` = `/ 7`, NOT `/ 8`.** Using `/ 8` clamps the top positive bin and was the 2026-05-19 acc=42.51 bug.
 
 ## How to submit a queued (📦) tarball next
 
