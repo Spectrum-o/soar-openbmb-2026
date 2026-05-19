@@ -269,5 +269,6 @@ submission_*/sglang/
 
 # Local smoke-bench artifacts
 scripts/bench_results.csv
+scripts/eval_results.csv
 scripts/logs/
 
