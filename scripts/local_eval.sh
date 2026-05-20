@@ -99,7 +99,15 @@ QUANT_OUT="${QUANT_OUT:-${QUANT_BASE}/${VARIANT_NAME}-quantized}"
 
 # --- Extract SGLANG_SERVER_ARGS from variant's prepare_env.sh ---
 PREPARE_ENV="${REPO_ROOT}/${VARIANT_DIR}/prepare_env.sh"
-QUANT_SCRIPT="${REPO_ROOT}/${VARIANT_DIR}/quantize_gptq_rtn_sym.py"
+PREPARE_MODEL="${REPO_ROOT}/${VARIANT_DIR}/prepare_model.sh"
+# Prefer the variant's own prepare_model.sh (it knows about calibration
+# args, timeouts, etc.). Fall back to the legacy direct-script invocation
+# for older RTN-style variants.
+if [ -f "${PREPARE_MODEL}" ]; then
+    QUANT_SCRIPT=""  # signal to use prepare_model.sh
+else
+    QUANT_SCRIPT="$(find "${REPO_ROOT}/${VARIANT_DIR}" -maxdepth 1 -name 'quantize_*.py' | sort | head -1)"
+fi
 if [ ! -f "${PREPARE_ENV}" ]; then
     echo "error: ${PREPARE_ENV} missing" >&2
     exit 2
@@ -134,17 +142,29 @@ if [ "${SKIP_QUANT}" -eq 1 ]; then
 elif [ "${FORCE_REQUANT}" -eq 0 ] && [ -d "${QUANT_OUT}" ] && [ -f "${QUANT_OUT}/config.json" ]; then
     echo "[1/3] quantize: CACHED at ${QUANT_OUT} (use --force-requant to rebuild)"
 else
-    echo "[1/3] quantize: running ${QUANT_SCRIPT}..."
     rm -rf "${QUANT_OUT}"
     mkdir -p "${QUANT_OUT}"
-    python3 "${QUANT_SCRIPT}" \
-        --input "${MODEL_PATH}" \
-        --output "${QUANT_OUT}" \
-        > "${QUANT_LOG}" 2>&1 || {
-        echo "[1/3] quantize FAILED. tail of log:" >&2
-        tail -30 "${QUANT_LOG}" >&2
-        exit 1
-    }
+    if [ -z "${QUANT_SCRIPT}" ]; then
+        echo "[1/3] quantize: running ${PREPARE_MODEL}..."
+        bash "${PREPARE_MODEL}" \
+            --input "${MODEL_PATH}" \
+            --output "${QUANT_OUT}" \
+            > "${QUANT_LOG}" 2>&1 || {
+            echo "[1/3] quantize FAILED. tail of log:" >&2
+            tail -50 "${QUANT_LOG}" >&2
+            exit 1
+        }
+    else
+        echo "[1/3] quantize: running ${QUANT_SCRIPT}..."
+        python3 "${QUANT_SCRIPT}" \
+            --input "${MODEL_PATH}" \
+            --output "${QUANT_OUT}" \
+            > "${QUANT_LOG}" 2>&1 || {
+            echo "[1/3] quantize FAILED. tail of log:" >&2
+            tail -30 "${QUANT_LOG}" >&2
+            exit 1
+        }
+    fi
     echo "  ✓ quantize done. config: $(jq -r '.bits, .group_size, .sym' "${QUANT_OUT}/quantize_config.json" 2>/dev/null | tr '\n' ' ')"
 fi
 
