@@ -61,6 +61,25 @@ from pathlib import Path
 from typing import Any
 
 
+def _stub_transformers_for_gptqmodel_7() -> None:
+    """gptqmodel 7.0 was designed against transformers 5.x; SALA pins 4.57.1.
+    Flip gptqmodel's own early-return sentinel so its causal_conv1d
+    hub-kernel compat patch never runs (it needs transformers 5.x APIs).
+    Also alias the renamed PreTrainedConfig. MUST run before importing gptqmodel.
+    """
+    import transformers
+    if not hasattr(transformers, "PreTrainedConfig"):
+        transformers.PreTrainedConfig = transformers.PretrainedConfig
+    try:
+        import transformers.integrations.hub_kernels as _hk
+        _hk._gptqmodel_local_causal_conv1d_kernel = True
+    except ImportError:
+        pass
+
+
+_stub_transformers_for_gptqmodel_7()
+
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------

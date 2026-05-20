@@ -63,6 +63,35 @@ from pathlib import Path
 from typing import Any
 
 
+def _stub_transformers_for_gptqmodel_7() -> None:
+    """gptqmodel 7.0 was designed against transformers 5.x.
+
+    SALA requires transformers 4.57.1 (5.x deprecates the custom-model APIs
+    SALA's modeling code relies on). gptqmodel 7.0's module-level imports
+    fail without these compat shims:
+      - `transformers.PreTrainedConfig` (renamed from `PretrainedConfig` in 5.x).
+      - `gptqmodel.__init__` runs
+        `_patch_transformers_causal_conv1d_hub_kernel_compat()` which expects
+        `transformers.integrations.hub_kernels.lazy_load_kernel` and
+        `_KERNEL_MODULE_MAPPING` — both new in transformers 5.x. We flip
+        the function's own early-return sentinel
+        (`_gptqmodel_local_causal_conv1d_kernel`) so the body never runs.
+
+    MUST run before any `import gptqmodel`.
+    """
+    import transformers
+    if not hasattr(transformers, "PreTrainedConfig"):
+        transformers.PreTrainedConfig = transformers.PretrainedConfig
+    try:
+        import transformers.integrations.hub_kernels as _hk
+        _hk._gptqmodel_local_causal_conv1d_kernel = True
+    except ImportError:
+        pass
+
+
+_stub_transformers_for_gptqmodel_7()
+
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
