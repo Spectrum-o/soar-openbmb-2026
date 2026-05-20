@@ -1,63 +1,174 @@
-# SOAR Submission Log
+# SOAR W4A16 Submission Log & Lessons Learned
 
-Tracks every tarball produced for the OpenBMB SOAR 2026 platform.
+> Living document. Every platform submission, what failed, the root cause, and
+> the fix that was made. **Read this BEFORE building a new submission** so we
+> don't re-hit a known constraint.
 
-> **Convention**: tarballs live at repo root, source folders are `submission_*/` (the `sglang/` subdir inside each is gitignored — regeneratable). Failed/superseded tarballs are kept locally for debugging but NOT committed.
+---
 
-## Status legend
-- 🟢 passed both correctness gate (>= 80) and produced a final_score
-- 🟡 passed correctness but suboptimal score
-- 🔴 failed (startup error or correctness < 80 or 5h timeout)
-- ⏳ submitted, waiting for result
+## Scoreboard
+
+| Metric | Value | Notes |
+|---|---|---|
+| **Baseline (BF16, no extra args)** | **19.13** | Number to beat |
+| **Best score so far (with quant)** | — | None of our quant attempts has cleared correctness gate |
+| **W4A16 attempts** | 17+ | See chronological log below |
+| **Slots consumed today (2026-05-20)** | 1 (v17 ran end-to-end with acc=0) | Quick-fail crashes (<60s) do NOT consume slots |
+| **Slots remaining today** | ? | Check platform dashboard |
+
+---
+
+## Hard constraints (verified by failure)
+
+These are platform/library facts you cannot work around without major surgery.
+Each is linked to the submission that proved it.
+
+### Quantization config
+
+| Constraint | Source of truth | Verified by |
+|---|---|---|
+| Marlin (`--quantization gptq_marlin`) only supports `(4, True)` → `uint4b8` | `gptq.py:223` `TYPE_MAP` | 2026-05-19 RTN with `sym=False` rejected at startup |
+| For uint4b8: `scale = max(abs(w)) / (2^(bits-1) - 1)` = `/ 7`, NOT `/ 8` | dequant = `(q_unsigned - 8) * scale`, so max = `7 * scale` | 2026-05-19 RTN with `/ half` gave acc_ori = 42.51 → 0 final_score |
+| RTN at 4 bits is fundamentally too lossy for SALA — need Hessian (GPTQ) | local roundtrip test (`scripts/test_quant_roundtrip.py`) | RTN `/7` fix only raised acc to 42.18 (~no improvement) |
+
+### Model / inference path
+
+| Constraint | Why | Verified by |
+|---|---|---|
+| FP8 KV cache (`--kv-cache-dtype fp8_*`) is INCOMPATIBLE with MiniCPM sparse backend | `minicpm_flashinfer` uses FlashAttention internally; FA only supports fp16/bf16 | 2026-05-15 gptqmodel_marlin_fp8kv failures |
+| `--disable-cuda-graph` is for debugging only; baseline runs WITH CUDA graph | Baseline 19.13 has CUDA graph enabled | 2026-05-15 plain GPTQ + `--disable-cuda-graph` hit 5h timeout |
+| SALA's HF modeling code hard-asserts `_attn_implementation == "flash_attention_2"` | `modeling_minicpm_sala.py:1328` MiniCPMInfLLMv2Attention.__init__ | 2026-05-19 21:16 gptqmodel v3 AssertionError |
+| `transformers >= 5.0` does a HARD import check of `flash_attn` package at PreTrainedModel.__init__ | `modeling_utils.py:1714` `_flash_attn_import_error` | 2026-05-19 21:16 gptqmodel v3 ImportError |
+| GitHub release downloads can hang on the platform's network — bundle wheels in the tarball | SOAR cloud network can't reach github.com reliably | 2026-05-19 21:48 gptqmodel v4 PREPARING stuck on download |
+| `apply_torchao_config_to_model` does eager import of torchao APIs that were removed in 0.16.0 | `torchao_utils.py:46` imports `float8_dynamic_activation_float8_weight` etc. before checking if config is empty | 2026-05-20 12:13 v15 ImportError |
+| Removing `auto_map.AutoConfig` is required for SGLang's `MiniCPMHybridConfig` to win the `isinstance` check | `model_runner.py:1494` `minicpm_hybrid_config` property + `hybrid_linear_attn_backend.py:1456` assertion | 2026-05-20 inferred from source trace |
+| `has_sparse_attention=True` must be explicitly in `config.json` | Original SALA config.json does NOT have this field; `minicpm_backend.py:213` does `getattr(hf_config, "has_sparse_attention", False)` | Inferred; safer to set explicitly |
+
+### GPTQModel-specific
+
+| Constraint | Why | Verified by |
+|---|---|---|
+| `MODEL_MAP["minicpm_sala"] = ...` is NOT enough to register | `gptqmodel/models/auto.py:325` `SUPPORTED_MODELS = list(MODEL_MAP.keys())` is built ONCE at import time | 2026-05-20 v10/v11/v12 `auto_detect_module_tree` ate o_gate from layer 0 |
+| Must ALSO mutate `gptqmodel.models.auto.SUPPORTED_MODELS` after registration | (same as above) | v13+ |
+| SALA's `MiniCPMSALADecoderLayer` is the correct `layer_type` value | All 32 layers (both minicpm4 and lightning-attn types) use this class | Verified via HF modeling source fetch |
+| GPTQModel `BaseQModel` is the base class name (NOT `BaseGPTQModel`) | `gptqmodel/models/base.py` | 2026-05-20 11:42 v13 ImportError typo |
+| GPTQModel 7.0 passes unrecognized **kwargs to model `__init__` via auto_factory.from_config | `auto.py:505` → `loader.py:623` → `from_config(**kwargs)` → model `__init__(**kwargs)` | 2026-05-19 20:30 v1 `max_memory` TypeError |
+| Therefore NEVER pass non-model kwargs (`max_memory`, `attn_implementation`) directly to GPTQModel.load — monkey-patch upstream instead | (same as above) | v2-v17 |
+
+### SGLang gptq_marlin loader
+
+| Constraint | Why | Verified by |
+|---|---|---|
+| SGLang quantizes EVERY `nn.Linear` by default; modules left unquantized by GPTQModel will mismatch | safetensors has `.weight`, model expects `.qweight` → KeyError | 2026-05-20 12:13 v14 `KeyError: model.layers.0.self_attn.o_gate.weight` |
+| Use `dynamic: {"-:.*<mod>$": True}` in quantize_config.json to skip modules at SGLang load time | `utils.py:248` `get_dynamic_override` returns False → `UnquantizedLinearMethod` | v15+ |
+
+### Calibration (the open question)
+
+| Observation | Implication |
+|---|---|
+| `perf_public_set.jsonl` has 150 rows, median question is ~30K tokens, p90 ~117K | Truncating to first 4K tokens loses the actual question (mostly haystack filler) |
+| RTN with scaled-wrong (`acc_ori=42`) and GPTQ with full-attn quant (`acc_ori=0`) | GPTQ with bad calibration can be WORSE than naive RTN |
+
+---
+
+## Chronological submission log
+
+Status legend:
+- 🟢 passed correctness ≥ 80 + produced final_score > 0
+- 🟡 passed correctness but low score
+- 🔴 ran 5h pipeline, score=0 (slot **consumed**)
+- ⛔ early crash before pipeline ran (slot **NOT** consumed)
+- ⏰ 5h timeout (slot **consumed**)
 - 📦 built but not yet submitted
 
-## Submissions
+| Date | Time | Tarball | Status | Wall | acc_ori | Notes / root cause |
+|---|---|---|---|---|---|---|
+| 2026-05-14 | — | `soar_w4a16_submission_20260514.tar.gz` | 🔴 | — | — | Earliest W4A16 attempt; superseded |
+| 2026-05-15 | — | `soar_stable_gptq_rtn_submission_20260515.tar.gz` | ⏰ | 5h | — | Plain GPTQ + `--disable-cuda-graph` + RTN `sym=False`; ran into 5h timeout |
+| 2026-05-15 | — | `soar_gptqmodel_marlin_fp8kv_submission_20260515.tar.gz` | 🔴 | — | — | GPTQModel + FP8 KV — FlashAttention rejects FP8 dtype |
+| 2026-05-15 | — | `soar_gptqmodel_marlin_fp8kv_submission_20260515_v2.tar.gz` | 🔴 | — | — | Retry of above — same FP8 KV incompatibility |
+| 2026-05-19 | — | `soar_official_rtn_w4a16_g128_marlin_cfg_submission_20260519.tar.gz` | ⛔ | <1m | — | RTN script wrote `sym=False`, Marlin rejected at config parse |
+| 2026-05-19 | 08:54-10:51 | `soar_rtn_sym_w4a16_g128_marlin_submission_20260519.tar.gz` (rtn_sym v1) | 🔴 | 2h | 42.51 | sym=True fix worked but scale formula was `/ half` (=8) instead of `/ (half-1)` (=7); clamped +ve outliers ~12.5% |
+| 2026-05-19 | 12:50-14:48 | `..._20260519_scalefix.tar.gz` (rtn_sym v1.1) | 🔴 | 2h | 42.18 | `/ (half-1)` scale-formula fix did NOT help. Confirms RTN itself is too lossy for SALA |
+| 2026-05-19 | 20:30 | `soar_gptqmodel_calib_w4a16_submission_20260519.tar.gz` (gptq v1) | ⛔ | 14s | — | `TypeError: ...__init__() got an unexpected keyword argument 'max_memory'`. GPTQModel passed default `cpu_max_mem` through to SALA constructor |
+| 2026-05-19 | 20:46 | `..._v2.tar.gz` (gptq v2) | ⛔ | 17s | — | `AssertionError: Only flash_attention_2 is supported for sparse attention` (modeling_minicpm_sala.py:1328) |
+| 2026-05-19 | 21:16 | `..._v3.tar.gz` (gptq v3) | ⛔ | 17s | — | monkey-patched `_attn_implementation`, but transformers 5.x does eager `import flash_attn` at PreTrainedModel.__init__. flash_attn package missing |
+| 2026-05-19 | 21:48 | `..._v4.tar.gz` (gptq v4) | ⛔ stuck | ~10m+ | — | prepare_env tried to `uv pip install` flash_attn wheel from GitHub; network too slow / unreachable from platform; eventually timed out the PREPARING phase |
+| 2026-05-20 | 00:30 | `..._v5.tar.gz` | (not submitted as v5 directly) | — | — | Bundled the 242 MB flash-attn 2.8.3 cu128torch2.9 cp310 wheel into the tarball |
+| 2026-05-20 | (various) | gptq v6-v12 | ⛔ | <5m | — | `ValueError: layer module item self_attn.o_gate not found in model`. GPTQModel fell back to `BaseQModel + auto_detect_module_tree` because `SUPPORTED_MODELS` (snapshotted at import time) didn't include "minicpm_sala". Auto-detector picked up o_gate from layer 0 ("minicpm4") and crashed on layer 1 ("lightning-attn") which doesn't have it |
+| 2026-05-20 | 11:42 | `..._v13.tar.gz` | ⛔ | ~5m | — | `SUPPORTED_MODELS` mutation added; got past register but `ImportError: cannot import name 'BaseGPTQModel'` — typo; should be `BaseQModel` |
+| 2026-05-20 | 11:53 | `..._v14.tar.gz` | ⛔ | ~19m | — | **Quantization FINISHED for the first time** (19 min). SGLang loaded weights OK. Then crashed: `KeyError: model.layers.0.self_attn.o_gate.weight`. GPTQModel correctly didn't quantize o_gate (not in our module_tree); safetensors has `.weight`. But SGLang's gptq_marlin auto-quantizes every Linear → expects `.qweight` |
+| 2026-05-20 | 12:35 | `..._v15.tar.gz` | ⛔ | ~16m | — | Added `dynamic: {"-:.*o_gate$": True, ...}` to quantize_config.json. **Weight load succeeded** (6.53 GB, matches W4A16 expected). Crashed at `apply_torchao_config_to_model` because torchao ≥ 0.16 removed `float8_dynamic_activation_float8_weight` (and SGLang's torchao_utils.py imports it eagerly before the `if torchao_config == "": return` early-return) |
+| 2026-05-20 | ~12:50 | `..._v16.tar.gz` | (intermediate, superseded by v17) | — | — | torchao early-return patch applied |
+| 2026-05-20 | 13:01-14:25 | `..._v17.tar.gz` | 🔴 acc | 5h | 0.0 | **FULL PIPELINE COMPLETED** end-to-end for first time. Added: input-config preservation + explicit `has_sparse_attention=True` + removed `auto_map.AutoConfig`. SGLang launched, served 256 prompts, all three bench tiers ran. **But model output was completely broken (acc=0.0).** Most likely cause: GPTQ calibration truncated 30K-token questions to first 4K tokens → calibrator saw mostly haystack filler, not real question structure → bad Hessian signal → corrupted weights. Bench timings: S1=625s, S8=997s, Smax=2290s. Slot consumed |
+| 2026-05-20 | 15:12 | `soar_bf16_chunk32k_safetynet_submission_20260520_v2.tar.gz` | ⛔ | 13s | — | BF16 safetynet bundled SGLang source; crashed early with transformers model_type list dump (truncated error). Hypothesis: our bundled SGLang version has some incompatibility with base env's libraries that baseline (which uses base env's SGLang) doesn't have |
+| 2026-05-20 | TBD | `soar_bf16_chunk32k_safetynet_submission_20260520_v3.tar.gz` | 📦 | — | — | **v3 = 2 KB safetynet without bundled SGLang.** Uses base env's SGLang (same as baseline 19.13). Only diff from baseline: `--chunked-prefill-size 32768 --max-prefill-tokens 32768 --enable-mixed-chunk` flags. Should produce final_score 22-26 |
 
-| Date | Tarball | Source folder | Status | final_score | Notes |
-|---|---|---|---|---|---|
-| 2026-05-14 | `soar_w4a16_submission_20260514.tar.gz` | (not in repo) | 🔴 | — | Earliest W4A16 attempt; superseded |
-| 2026-05-15 | `soar_stable_gptq_rtn_submission_20260515.tar.gz` | (not in repo) | 🔴 timeout | — | Plain GPTQ + `--disable-cuda-graph`; ran into 5h timeout. RTN script wrote `sym=False`. |
-| 2026-05-15 | `soar_gptqmodel_marlin_fp8kv_submission_20260515.tar.gz` | (not in repo) | 🔴 | — | GPTQModel route + FP8 KV. FP8 KV path incompatible with MiniCPM sparse backend (FlashAttention only supports fp16/bf16). |
-| 2026-05-15 | `soar_gptqmodel_marlin_fp8kv_submission_20260515_v2.tar.gz` | `submission_soar_w4a16/` | 🔴 | — | Retry of above; same FP8 KV incompatibility. |
-| 2026-05-19 | `soar_official_rtn_w4a16_g128_marlin_cfg_submission_20260519.tar.gz` | (not in repo) | 🔴 startup | — | RTN + Marlin. Failed: `Unsupported quantization config: bits=4, sym=False`. RTN script wrote asymmetric config; Marlin requires `sym=True`. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_g128_marlin_submission_20260519.tar.gz` | `submission_rtn_sym_w4a16/` (pre-fix) | 🔴 acc | 0.0 | **v1 of symmetric RTN.** Started OK (sym=True fix worked), ran 5h, but `acc_ori=42.51` vs ~82 baseline → correctness gate failed → `final_score=0`. Root cause: scale formula bug (`/ half` instead of `/ (half - 1)`) clamped +ve outliers by 12.5%. Bench durations recorded: S1=599.97s, S8=969.73s, Smax=2259.68s. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v2_chunk32k_submission_20260519.tar.gz` | `submission_rtn_sym_v2_chunk32k/` (pre-fix) | 🔴 superseded | — | Same scale bug as v1 — would also fail correctness. Replaced by `_scalefix` build. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v3_mixedchunk_submission_20260519.tar.gz` | `submission_rtn_sym_v3_mixedchunk/` (pre-fix) | 🔴 superseded | — | Same scale bug as v1 — would also fail correctness. Replaced by `_scalefix` build. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v4_aggressive_submission_20260519.tar.gz` | `submission_rtn_sym_v4_aggressive/` (pre-fix) | 🔴 superseded | — | Same scale bug as v1 — would also fail correctness. Replaced by `_scalefix` build. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_g128_marlin_submission_20260519_scalefix.tar.gz` | `submission_rtn_sym_w4a16/` | 📦 | — | **v1.1.** Fix for the scale formula bug (`scales = w_absmax / (half - 1)`). Submit this NEXT — disambiguates "scale bug" vs "RTN itself too lossy". |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v2_chunk32k_submission_20260519_scalefix.tar.gz` | `submission_rtn_sym_v2_chunk32k/` | 📦 | — | v2 with scale fix. Submit after v1.1 confirms correctness gate clears. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v3_mixedchunk_submission_20260519_scalefix.tar.gz` | `submission_rtn_sym_v3_mixedchunk/` | 📦 | — | v3 with scale fix. |
-| 2026-05-19 | `soar_rtn_sym_w4a16_marlin_v4_aggressive_submission_20260519_scalefix.tar.gz` | `submission_rtn_sym_v4_aggressive/` | 📦 | — | v4 with scale fix. |
+---
 
-## Reference
+## Open questions / next experiments
 
-- **Baseline (no quant, BF16, no extra flags)**: `final_score = 19.13` — this is the number to beat.
-- **SOAR scoring tiers**: S1 (concurrency=1), S8 (=8), Smax (∞), via `bench_serving.sh`. Same submission is scored at all three; "single-batch" and "multi-batch" prize categories are derived from these tiers.
-- **Correctness gate**: `eval_model.py` against `perf_public_set.jsonl`, must score ≥ 80 baseline.
-- **Hard constraints learned**:
-  - FP8 KV cache (`--kv-cache-dtype fp8_*`) does NOT work with the MiniCPM sparse backend.
-  - `sym=True` is required by `--quantization gptq_marlin` (Marlin kernel uses `uint4b8`).
-  - `--disable-cuda-graph` is for diagnosing startup errors only — baseline runs WITH CUDA graph.
-  - **For 4-bit symmetric quant with uint4b8: `scale = max(abs(w)) / (2^(bits-1) - 1)` = `/ 7`, NOT `/ 8`.** Using `/ 8` clamps the top positive bin and was the 2026-05-19 acc=42.51 bug.
+### Why did v17 produce acc=0?
 
-## How to submit a queued (📦) tarball next
+The pipeline ran successfully. Output was garbage. Hypotheses ranked:
 
-Steps when current ⏳ result comes back:
+1. **🔴 HIGHEST: calibration truncation killed Hessian signal**
+   - perf_public_set questions are 30K-token median, we truncate to 4K from the START
+   - Mostly haystack filler is seen, not actual question structure
+   - GPTQ Hessian fit to garbage → weights pushed in wrong direction
+   - **Fix to try**: truncate from END (keep the final tokens including the actual question)
 
-1. Update its row's Status / final_score in this table.
-2. If 🟢, pick the next 📦 in the v2 → v3 → v4 order and upload.
-3. If 🔴, examine the failure mode:
-   - Startup error → check log, fix script, build new variant.
-   - Correctness < 80 → RTN may be too lossy; consider switching to GPTQModel (proper Hessian-based GPTQ).
-   - Score worse than v1 → flag may not help SALA workload; skip remaining variants in this branch.
+2. **🟡 MEDIUM: removing `auto_map.AutoConfig` broke something subtle**
+   - Forced SGLang's `MiniCPMHybridConfig` instead of SALA's custom config class
+   - SGLang's hybrid config has same fields but maybe handles defaults differently
+   - **Fix to try**: restore `auto_map.AutoConfig`, accept that `minicpm_hybrid_config` returns None, see if the SimpleGLA assertion is actually hit (maybe baseline works with it None?)
 
-## Build a tarball from a source folder
+3. **🟡 MEDIUM: `dynamic` exclusion of `o_gate`/`z_proj`/norms broke gating math**
+   - These modules stayed BF16 while q/k/v/o became W4A16
+   - Gate output * attention output: scale mismatch could produce NaN-ish results
+   - **Fix to try**: quantize EVERYTHING (set `layer_modules_strict = False` on the GPTQ class so it skips per-layer missing modules instead of failing — see `module_looper.py:1628`)
 
-```bash
-variant="v2_chunk32k"   # or v3_mixedchunk / v4_aggressive
-src="submission_rtn_sym_${variant}"
-tarball="soar_rtn_sym_w4a16_marlin_${variant}_submission_$(date +%Y%m%d).tar.gz"
-(cd "${src}" && tar czf "../${tarball}" .)
+4. **🟢 LOW: fp16 vs bf16 patch accumulating error**
+   - SALA trained in bf16, we run in fp16 + sed-patched sparse backend
+   - RTN was also fp16 and got acc=42, not 0 → unlikely main cause
+
+### Current direction (2026-05-20 ~15:00 onward)
+
+User updated `submission_gptqmodel_calib_w4a16/quantize_gptqmodel_w4a16.py` to do **MLP-only quantization** (no attention quantization). Reasoning per docstring update:
+> "full q/k/v/o W4A16 successfully served but produced acc=0 on the platform, so this route is intentionally MLP-only"
+
+This sidesteps the gating-mismatch hypothesis and tests whether attention quantization specifically is the problem. Expected outcomes:
+- ✅ acc clears 80 → attention quantization was the issue; can iteratively add it back per-layer-type
+- ❌ acc still 0 → calibration is the real problem; refactor to truncate-from-END
+
+---
+
+## How to use this document
+
+1. **Before building a new tarball**: scan "Hard constraints" + "Open questions"
+2. **When a submission fails**: add a new row to the chronological log with status, wall time, acc_ori, root cause
+3. **When you learn a new constraint**: add it to "Hard constraints" with a link to the failure that proved it
+
+The Codex hand-off lives in `/home/zyn/.claude/projects/.../memory/` for me; this document is the human-readable source of truth.
+
+---
+
+## Inventory of tarballs at repo root
+
+Quick `ls *.tar.gz` cheat sheet (May 2026):
+
 ```
-
-The `sglang/` subdir inside each `submission_*/` is regenerated by copying `python/` (see `cp -r submission_rtn_sym_w4a16 submission_rtn_sym_<new>` for new variants).
+soar_w4a16_submission_20260514.tar.gz                           # 5/14 earliest
+soar_stable_gptq_rtn_submission_20260515.tar.gz                 # 5/15 plain GPTQ, timeout
+soar_gptqmodel_marlin_fp8kv_submission_20260515.tar.gz          # 5/15 FP8 KV broken
+soar_gptqmodel_marlin_fp8kv_submission_20260515_v2.tar.gz       # 5/15 same
+soar_rtn_sym_w4a16_g128_marlin_submission_20260519.tar.gz       # 5/19 RTN v1, acc=42.51
+soar_rtn_sym_w4a16_*_v{2,3,4}*_20260519.tar.gz                  # 5/19 RTN variants, same bug
+soar_rtn_sym_w4a16_*_20260519_scalefix.tar.gz                   # 5/19 RTN scalefix, acc=42.18
+soar_gptqmodel_calib_w4a16_submission_20260519.tar.gz           # 5/19 evening gptq v1, max_memory bug
+soar_gptqmodel_calib_w4a16_submission_20260519_v{2..5}.tar.gz   # 5/19-5/20 various crashes
+soar_gptqmodel_calib_w4a16_submission_20260520_v{6..17}.tar.gz  # 5/20 the o_gate / torchao saga
+soar_bf16_chunk32k_safetynet_submission_20260519.tar.gz         # 5/19 safetynet original
+soar_bf16_chunk32k_safetynet_submission_20260520_v2.tar.gz      # 5/20 safetynet w/ sglang (crashed)
+soar_bf16_chunk32k_safetynet_submission_20260520_v3.tar.gz      # 5/20 safetynet WITHOUT sglang (📦 next)
+```
