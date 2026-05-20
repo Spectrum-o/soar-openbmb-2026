@@ -120,9 +120,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-calib-len",
         type=int,
-        default=4096,
-        help="Max tokens per calibration prompt. Higher = better for "
-             "long-context preservation, but more memory + time.",
+        default=8192,
+        help="Max tokens per calibration prompt. With "
+             "truncation_side='left' (see tokenize_calibration) the kept "
+             "window is the TAIL of each prompt — i.e. the question/answer "
+             "structure that the model actually has to predict. 8192 covers "
+             "that tail comfortably; raise further if VRAM permits.",
     )
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument(
@@ -558,11 +561,54 @@ def tokenize_calibration(
     texts: list[str],
     max_len: int,
 ) -> list[dict[str, Any]]:
-    """Tokenize each prompt into the plain dict format GPTQModel 7.x expects."""
+    """Tokenize each prompt into the plain dict format GPTQModel 7.x expects.
+
+    Two non-obvious behaviors vs naive HF tokenization:
+      1. `tokenizer.truncation_side = "left"` so the TAIL of long prompts
+         is kept. perf_public_set rows have ~30K-token medians with the
+         actual question structure (needle, MCQ choices, instruction, ...)
+         at the END. The HF default `truncation_side="right"` would keep
+         only the first 4-8K tokens of pure haystack filler, so GPTQ's
+         Hessian gets fit to filler activations — exactly the failure mode
+         that drove v17/v18 to acc=0 in earlier runs.
+      2. Apply the chat template if the tokenizer defines one. SALA is
+         instruction-tuned, so serving wraps inputs as `<用户>...<AI>`;
+         calibrating on bare `question` strings makes the Hessian see a
+         different boundary-token distribution than what the deployed
+         model consumes.
+    """
+    original_side = getattr(tokenizer, "truncation_side", "right")
+    tokenizer.truncation_side = "left"
+
+    use_chat_template = (
+        hasattr(tokenizer, "apply_chat_template")
+        and getattr(tokenizer, "chat_template", None)
+    )
+    if use_chat_template:
+        print("[calib] applying chat template to calibration prompts", flush=True)
+    else:
+        print("[calib] tokenizer has no chat_template; using raw prompts",
+              flush=True)
+
     examples: list[dict[str, Any]] = []
     for text in texts:
+        if use_chat_template:
+            try:
+                rendered = tokenizer.apply_chat_template(
+                    [{"role": "user", "content": text}],
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            except Exception as exc:
+                print(f"[calib] chat template render failed ({exc}); "
+                      "falling back to raw text",
+                      flush=True)
+                rendered = text
+        else:
+            rendered = text
+
         encoded = tokenizer(
-            text,
+            rendered,
             truncation=True,
             max_length=max_len,
             padding=False,
@@ -582,6 +628,8 @@ def tokenize_calibration(
                 "attention_mask": attention_mask.to("cpu").long(),
             }
         )
+
+    tokenizer.truncation_side = original_side
     return examples
 
 

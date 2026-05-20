@@ -53,10 +53,12 @@ fi
 # cycles the public rows to reach this default without falling back to synthetic
 # prompts.
 NUM_CALIB="${NUM_CALIB:-256}"
-# max_calib_len 4096: balances coverage with quantization time. Most rows are
-# much longer than 4K tokens (median ~30K, p90 ~117K) — we sample the prefix
-# for activation distribution.
-MAX_CALIB_LEN="${MAX_CALIB_LEN:-4096}"
+# max_calib_len 8192: tokenize_calibration uses truncation_side="left",
+# so the kept window is the TAIL of each prompt — the question/answer
+# structure that v17's right-truncation cut off (median ~30K, p90 ~117K
+# tokens, with the actual task at the end of the row). ~2x the Hessian
+# compute per sample vs 4096.
+MAX_CALIB_LEN="${MAX_CALIB_LEN:-8192}"
 
 CALIB_ARGS=()
 if [ -n "${CALIB_JSONL}" ]; then
