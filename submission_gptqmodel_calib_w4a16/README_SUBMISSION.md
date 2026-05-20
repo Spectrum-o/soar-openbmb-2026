@@ -6,15 +6,17 @@ This is the **third** W4A16 attempt, learning from the previous two failures:
 |---|---|---|---|
 | v1 (RTN, /half bug) | Naive RTN, `scale = abs_max / 8` | acc=42.51, score=0 | Wrong scale formula |
 | v1.1 (RTN, /(half-1)) | Naive RTN, `scale = abs_max / 7` | acc=42.18, score=0 | RTN math fine, but RTN itself too lossy on outlier-heavy weights |
+| v2 (GPTQModel, BatchEncoding bug) | GPTQModel + bundled calibration | prepare_model failed | GPTQModel 7.x rejected HuggingFace `BatchEncoding`; fixed by emitting plain dict tensors |
+| v3 (GPTQModel, optional module bug) | GPTQModel + custom SALA module tree | prepare_model failed | GPTQModel required `self_attn.o_gate` on every layer; fixed by removing optional SALA modules from the common tree |
 | **this submission** | GPTQModel + SOAR-distribution calibration | TBD | — |
 
 ## Why this should clear correctness gate (≥ 80 acc_ori)
 
 1. **GPTQ (Hessian-based) instead of RTN.** RTN per-group `abs_max` lets a few outliers dominate group scales, coarsening every other weight in the group. GPTQ uses second-order Hessian info to distribute quantization error wisely — typical accuracy improvement: 5-15 points over RTN on LLMs. The winners' notebook (周冠军笔记 04, 智算一队) explicitly states "GPTQ + Marlin" beats RTN, and that "calibration set composition iterated several rounds" was critical.
 
-2. **Calibration data drawn from `perf_public_set.jsonl`** rather than 4 hardcoded templates. The previous GPTQModel attempt used synthetic prompts; this one defaults to actual SOAR distribution data (256 samples by default, max_calib_len=4096). The winners explicitly identified this as the key lever.
+2. **Calibration data drawn from `perf_public_set.jsonl`** rather than 4 hardcoded templates. The previous GPTQModel attempt used synthetic prompts; this one defaults to actual SOAR distribution data bundled in the submission (256 samples by default; the 150 public rows are cycled deterministically, max_calib_len=4096). The winners explicitly identified this as the key lever.
 
-3. **Custom MiniCPM-SALA registration in GPTQModel.** SALA's `model_type = "minicpm_sala"` is not in the GPTQModel registry (verified against the main branch's `models/__init__.py`). This submission registers `MiniCPMSALAGPTQ` (subclass of `MiniCPMGPTQ`) with a module_tree that includes the Lightning Attention modules (`z_proj`, `q_norm`, `k_norm`, `o_norm`) marked as "do not quantize". Without this, GPTQModel would either fail to find the model class or quantize gating projections (high-risk for accuracy).
+3. **Custom MiniCPM-SALA registration in GPTQModel.** SALA's `model_type = "minicpm_sala"` is not in the GPTQModel registry (verified against the main branch's `models/__init__.py`). This submission registers `MiniCPMSALAGPTQ` (subclass of `MiniCPMGPTQ`) with a common module tree that only includes projections present across all decoder layers: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, and `down_proj`. Optional SALA gates/norms are left unquantized by omission, because GPTQModel 7.x requires every listed module to exist on every layer.
 
 4. **Hard constraints respected** (learned from prior failures):
    - `--quantization gptq_marlin` (Marlin kernel only supports `(bits=4, sym=True)` → `uint4b8`)
@@ -26,9 +28,11 @@ This is the **third** W4A16 attempt, learning from the previous two failures:
 
 | File | Purpose |
 |---|---|
-| `prepare_env.sh` | Install sglang + `gptqmodel>=7.0,<8.0` + transformers + accelerate; fp16-patch sparse backend; export `SGLANG_SERVER_ARGS`. |
-| `prepare_model.sh` | Pass `--input/--output` to the quantizer; auto-include `--calib-jsonl /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl` if present. |
+| `prepare_env.sh` | Install sglang + `gptqmodel>=7.0,<8.0` + transformers + accelerate; skip PyPI if already installed; install bundled `flash_attn` wheel; fp16-patch sparse backend; export `SGLANG_SERVER_ARGS`. |
+| `prepare_model.sh` | Pass `--input/--output` to the quantizer; auto-use bundled `perf_public_set.jsonl` unless `CALIB_JSONL` overrides it. |
 | `quantize_gptqmodel_w4a16.py` | The actual quantizer. Registers `minicpm_sala`, loads model, runs GPTQ, writes Marlin-ready config. |
+| `perf_public_set.jsonl` | Bundled SOAR-distribution calibration data, so platform runs do not fall back to synthetic calibration. |
+| `flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl` | Bundled prebuilt wheel for SOAR Python 3.10 + torch 2.9 + CUDA 12.8; avoids slow GitHub download/source build on the platform. |
 | `sglang/python/` | Current SGLang source. |
 
 ## Tunable env vars for prepare_model.sh
@@ -71,8 +75,8 @@ Iterate locally until acc_ori ≥ 80, then upload to the platform.
 
 ## Estimated platform timeline
 
-- prepare_env: 3-5 min (install GPTQModel + compile kernels)
-- prepare_model (quantization): 15-30 min (256 samples × 4096 tokens × 32 layers)
+- prepare_env: seconds to a few minutes if dependencies are already present; otherwise installs GPTQModel from a China PyPI mirror and installs bundled flash-attn locally
+- prepare_model (quantization): typically 45-75 min on the platform; hard-capped at 90 min
 - SGLang warmup: 1-2 min
 - bench_serving (S1 + S8 + Smax): ~80 min
 - eval_model.py: ~10 min
