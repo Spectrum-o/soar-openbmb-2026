@@ -1,0 +1,13 @@
+2026-05-21 01:19:41,663 - SGLANG_INFERENCE - INFO - mid truncation: max_out_len=65536, max_seq_len=262144, max_prompt_len=128000
+2026-05-21 01:19:50,825 - SGLANG_INFERENCE - INFO - SGLang sampling kwargs: {'temperature': 0.0, 'max_tokens': 65536, 'stop': ['<|im_end|>', '</s>']}
+Auto-detected model name: /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+API Base: http://127.0.0.1:31111
+Model Name: /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+Model Path: /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+Data Path: /root/autodl-tmp/zyn/soar/sglang/submission_gptqmodel_calib_w4a16/perf_public_set.jsonl
+Saving results to outputs/20260521_011939
+Testing with 150 samples.
+Initializing model client...
+Generating responses...
+  Sending 150 requests to SGLang API (concurrency=32)...
+Generating:   0%|          | 0/150 [00:00<?, ?it/s]Generating:   1%|          | 1/150 [00:23<58:55, 23.73s/it]Generating:   1%|▏         | 2/150 [00:28<31:23, 12.72s/it]Generating:   2%|▏         | 3/150 [00:38<28:04, 11.46s/it]Generating:   3%|▎         | 4/150 [00:46<23:53,  9.82s/it]Generating:   3%|▎         | 5/150 [00:54<22:23,  9.26s/it]Generating:   4%|▍         | 6/150 [01:01<20:46,  8.65s/it]Generating:   5%|▌         | 8/150 [01:15<18:16,  7.72s/it]Generating:   6%|▌         | 9/150 [01:19<16:04,  6.84s/it]Generating:   7%|▋         | 11/150 [01:39<18:56,  8.18s/it]Generating:   8%|▊         | 12/150 [01:53<22:03,  9.59s/it]Generating:   9%|▊         | 13/150 [02:01<21:03,  9.22s/it]Generating:   9%|▉         | 14/150 [02:11<20:49,  9.19s/it]Generating:  10%|█         | 15/150 [02:21<21:12,  9.42s/it]Generating:  11%|█         | 16/150 [02:33<23:14, 10.41s/it]
