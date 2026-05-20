@@ -127,6 +127,33 @@ def parse_args() -> argparse.Namespace:
              "structure that the model actually has to predict. 8192 covers "
              "that tail comfortably; raise further if VRAM permits.",
     )
+    parser.add_argument(
+        "--calib-window-mode",
+        default="tail",
+        choices=["tail", "multi-adaptive"],
+        help="How to slice prompts into calibration samples. "
+             "'tail' (default): keep the last --max-calib-len tokens of "
+             "each prompt via tokenizer truncation — matches v21/v22 "
+             "behavior. 'multi-adaptive': split each prompt into 1-3 "
+             "non-overlapping --max-calib-len windows depending on its "
+             "full token length (short prompts as-is; medium tail-only; "
+             "long prompts tail+mid; super-long add one random mid "
+             "window). Multi-adaptive can roughly 2-3x the calibration "
+             "sample count — keep --num-calib <= 512 to stay under the "
+             "90-min prepare_model timeout.",
+    )
+    parser.add_argument(
+        "--no-chat-template",
+        action="store_true",
+        help="Skip apply_chat_template() during calibration tokenization. "
+             "Use this for ablation: SOAR perf_public_set evaluation "
+             "feeds raw `question` strings to the model, but the default "
+             "calibration wraps in `<用户>...<AI>`. v21 (chat template ON "
+             "+ left-trunc + 8K) got acc=49 across 150 samples — well "
+             "below v18-era acc=63 on 30 samples with chat template OFF "
+             "+ right-trunc + 4K. This flag enables A/B isolating the "
+             "chat-template variable.",
+    )
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument(
         "--seed",
@@ -556,10 +583,49 @@ def load_model(
     return GPTQModel.load(input_dir, quant_config, **kwargs)
 
 
+def _slice_windows_for_prompt(
+    n_tokens: int,
+    max_len: int,
+    rng: random.Random,
+) -> list[tuple[int, int]]:
+    """Return (start, end) windows for one prompt under multi-adaptive policy.
+
+    Input-aware split of a prompt of length ``n_tokens`` into 1-3
+    non-overlapping ``max_len``-sized windows:
+
+        n <= L:              [(0, n)]                       short: all
+        L  <  n <= 4L:       [(n-L, n)]                     medium: tail only
+        4L <  n <= 12.5L:    tail + centered mid             long
+        n  >  12.5L:         tail + mid + 1 random non-overlap window
+
+    where L = max_len. The HEAD window is deliberately NEVER taken: the
+    first 8K of a 30K perf_public_set row is pure haystack filler whose
+    activations would mis-direct GPTQ's per-channel scale selection.
+    """
+    L = max_len
+    if n_tokens <= L:
+        return [(0, n_tokens)]
+    if n_tokens <= 4 * L:
+        return [(n_tokens - L, n_tokens)]
+    windows = [(n_tokens - L, n_tokens)]
+    mid_start = (n_tokens - L) // 2
+    windows.append((mid_start, mid_start + L))
+    if n_tokens > int(12.5 * L):
+        lo = L
+        hi = n_tokens - 2 * L
+        if hi > lo:
+            start = rng.randint(lo, hi - 1)
+            windows.append((start, start + L))
+    return windows
+
+
 def tokenize_calibration(
     tokenizer,
     texts: list[str],
     max_len: int,
+    window_mode: str = "tail",
+    seed: int = 42,
+    disable_chat_template: bool = False,
 ) -> list[dict[str, Any]]:
     """Tokenize each prompt into the plain dict format GPTQModel 7.x expects.
 
@@ -576,57 +642,130 @@ def tokenize_calibration(
          calibrating on bare `question` strings makes the Hessian see a
          different boundary-token distribution than what the deployed
          model consumes.
+
+    ``window_mode``:
+      - ``"tail"`` (default): one window per prompt — the last ``max_len``
+        tokens, via tokenizer truncation. Byte-equivalent to the
+        pre-2026-05-21 behavior; v21/v22 quant artifacts were produced
+        with this.
+      - ``"multi-adaptive"``: 1-3 non-overlapping ``max_len``-sized windows
+        per prompt, sized by ``_slice_windows_for_prompt``. Tail is always
+        kept; mid is added on long prompts. Returned windows are shuffled
+        with ``seed`` to keep GPTQ batches diverse. Inflates total sample
+        count for long prompts — keep ``--num-calib`` <= 512 to stay under
+        the 90-min prepare_model timeout.
     """
+    if window_mode not in ("tail", "multi-adaptive"):
+        raise ValueError(
+            f"--calib-window-mode must be 'tail' or 'multi-adaptive', "
+            f"got {window_mode!r}"
+        )
+
     original_side = getattr(tokenizer, "truncation_side", "right")
     tokenizer.truncation_side = "left"
 
-    use_chat_template = (
-        hasattr(tokenizer, "apply_chat_template")
-        and getattr(tokenizer, "chat_template", None)
-    )
-    if use_chat_template:
-        print("[calib] applying chat template to calibration prompts", flush=True)
+    if disable_chat_template:
+        use_chat_template = False
+        print("[calib] chat template DISABLED via --no-chat-template", flush=True)
     else:
-        print("[calib] tokenizer has no chat_template; using raw prompts",
-              flush=True)
+        use_chat_template = (
+            hasattr(tokenizer, "apply_chat_template")
+            and getattr(tokenizer, "chat_template", None)
+        )
+        if use_chat_template:
+            print("[calib] applying chat template to calibration prompts", flush=True)
+        else:
+            print("[calib] tokenizer has no chat_template; using raw prompts",
+                  flush=True)
+
+    def _render(text: str) -> str:
+        if not use_chat_template:
+            return text
+        try:
+            return tokenizer.apply_chat_template(
+                [{"role": "user", "content": text}],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except Exception as exc:
+            print(f"[calib] chat template render failed ({exc}); "
+                  "falling back to raw text",
+                  flush=True)
+            return text
 
     examples: list[dict[str, Any]] = []
-    for text in texts:
-        if use_chat_template:
-            try:
-                rendered = tokenizer.apply_chat_template(
-                    [{"role": "user", "content": text}],
-                    tokenize=False,
-                    add_generation_prompt=True,
-                )
-            except Exception as exc:
-                print(f"[calib] chat template render failed ({exc}); "
-                      "falling back to raw text",
-                      flush=True)
-                rendered = text
-        else:
-            rendered = text
 
-        encoded = tokenizer(
-            rendered,
-            truncation=True,
-            max_length=max_len,
-            padding=False,
-            add_special_tokens=True,
-            return_tensors="pt",
-        )
-        input_ids = encoded.get("input_ids")
-        if input_ids is None or input_ids.numel() == 0:
-            continue
-        attention_mask = encoded.get("attention_mask")
-        if attention_mask is None:
-            import torch  # type: ignore
-            attention_mask = torch.ones_like(input_ids)
-        examples.append(
-            {
-                "input_ids": input_ids.to("cpu").long(),
-                "attention_mask": attention_mask.to("cpu").long(),
-            }
+    if window_mode == "tail":
+        # ORIGINAL PATH — preserves byte-for-byte behavior of v21/v22 quant.
+        for text in texts:
+            rendered = _render(text)
+            encoded = tokenizer(
+                rendered,
+                truncation=True,
+                max_length=max_len,
+                padding=False,
+                add_special_tokens=True,
+                return_tensors="pt",
+            )
+            input_ids = encoded.get("input_ids")
+            if input_ids is None or input_ids.numel() == 0:
+                continue
+            attention_mask = encoded.get("attention_mask")
+            if attention_mask is None:
+                import torch  # type: ignore
+                attention_mask = torch.ones_like(input_ids)
+            examples.append(
+                {
+                    "input_ids": input_ids.to("cpu").long(),
+                    "attention_mask": attention_mask.to("cpu").long(),
+                }
+            )
+    else:
+        # multi-adaptive: tokenize without truncation, slice into windows.
+        import torch  # type: ignore
+        rng = random.Random(seed)
+        buckets = {
+            "short(<=L)": 0,
+            "tail-only(<=4L)": 0,
+            "tail+mid(<=12.5L)": 0,
+            "tail+mid+rand(>12.5L)": 0,
+        }
+        for text in texts:
+            rendered = _render(text)
+            encoded = tokenizer(
+                rendered,
+                truncation=False,
+                padding=False,
+                add_special_tokens=True,
+                return_tensors="pt",
+            )
+            input_ids = encoded.get("input_ids")
+            if input_ids is None or input_ids.numel() == 0:
+                continue
+            n = int(input_ids.shape[-1])
+            slices = _slice_windows_for_prompt(n, max_len, rng)
+            for s, e in slices:
+                w = input_ids[:, s:e].contiguous()
+                am = torch.ones_like(w)
+                examples.append(
+                    {
+                        "input_ids": w.to("cpu").long(),
+                        "attention_mask": am.to("cpu").long(),
+                    }
+                )
+            if n <= max_len:
+                buckets["short(<=L)"] += 1
+            elif n <= 4 * max_len:
+                buckets["tail-only(<=4L)"] += 1
+            elif n <= int(12.5 * max_len):
+                buckets["tail+mid(<=12.5L)"] += 1
+            else:
+                buckets["tail+mid+rand(>12.5L)"] += 1
+        rng.shuffle(examples)
+        print(
+            f"[calib] multi-adaptive: {len(texts)} prompts -> "
+            f"{len(examples)} windows (L={max_len}); per-bucket: {buckets}",
+            flush=True,
         )
 
     tokenizer.truncation_side = original_side
@@ -917,6 +1056,8 @@ def dry_run(args: argparse.Namespace, prompts: list[str]) -> int:
     print(f"  --group-size       {args.group_size}")
     print(f"  --num-calib        {args.num_calib} (loaded {len(prompts)})")
     print(f"  --max-calib-len    {args.max_calib_len}")
+    print(f"  --calib-window-mode {args.calib_window_mode}")
+    print(f"  --no-chat-template  {args.no_chat_template}")
     print(f"  --calib-jsonl      {args.calib_jsonl or '(synthetic)'}")
     print(f"  --gpu-max-mem      {args.gpu_max_mem or '(GPTQModel default)'}")
     print(f"  --cpu-max-mem      {args.cpu_max_mem}")
@@ -928,6 +1069,25 @@ def dry_run(args: argparse.Namespace, prompts: list[str]) -> int:
         if len(snippet) > 200:
             snippet = snippet[:200] + "..."
         print(f"  [{i}] {snippet}")
+    if args.calib_window_mode == "multi-adaptive":
+        print()
+        print(f"Window slicing simulation (multi-adaptive, "
+              f"L={args.max_calib_len}):")
+        sim_rng = random.Random(args.seed)
+        test_ns = (
+            args.max_calib_len // 2,
+            args.max_calib_len,
+            2 * args.max_calib_len,
+            4 * args.max_calib_len,
+            8 * args.max_calib_len,
+            13 * args.max_calib_len,
+            20 * args.max_calib_len,
+        )
+        for n in test_ns:
+            windows = _slice_windows_for_prompt(n, args.max_calib_len, sim_rng)
+            ratio = f"{n / args.max_calib_len:.1f}L"
+            spans = ", ".join(f"[{s:>6}:{e:>6}]" for s, e in windows)
+            print(f"  N={n:7d} ({ratio:>5}) -> {len(windows)} window(s): {spans}")
     print()
     print("OK. Re-run without --dry-run on a GPU node to actually quantize.")
     return 0
@@ -977,7 +1137,12 @@ def main() -> int:
             args.input, trust_remote_code=True
         )
 
-    calibration = tokenize_calibration(tokenizer, prompts, args.max_calib_len)
+    calibration = tokenize_calibration(
+        tokenizer, prompts, args.max_calib_len,
+        window_mode=args.calib_window_mode,
+        seed=args.seed,
+        disable_chat_template=args.no_chat_template,
+    )
     if not calibration:
         raise RuntimeError(
             "no calibration examples were produced — check that --calib-jsonl "

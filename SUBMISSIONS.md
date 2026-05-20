@@ -106,6 +106,11 @@ Status legend:
 | 2026-05-20 | 15:25-15:37 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v18.tar.gz` | ⛔ | ~12m | — | MLP-only GPTQ got through preparation, then SGLang startup failed: `AttributeError: can't set attribute 'has_sparse_attention'`. Root cause: output `config.json` serialized a read-only derived property from `MiniCPMHybridConfig` |
 | 2026-05-20 | 15:42 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v19.tar.gz` | 📦 | — | — | Fixes v18 by removing derived read-only config keys from quantized config and adding defensive `kwargs.pop(...)` in bundled `MiniCPMHybridConfig`; still MLP-only GPTQ |
 | 2026-05-20 | 15:50 | `soar_bf16_baseline_match_submission_20260520_v4.tar.gz` | 📦 | — | — | Baseline-match safetynet tarball built. Purpose: verify that identity BF16 + official default args still reproduces baseline before testing extra flags |
+| 2026-05-20 | 16:30 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v20.tar.gz` | ⚠️ STALE | — | — | Built BEFORE qzeros root-cause fix (22:08) and calibration fix (21:50). **Do NOT submit.** Superseded by v21 |
+| 2026-05-20 | 22:08 | (no tarball — root-cause commit) | — | — | — | **ROOT CAUSE FOUND** for v6-v17 acc=0: gptqmodel 7.0.0 + sym=True writes `qzeros=7` per slot but Marlin dequant expects `qzeros=8`. Every weight gets `+1*scale` bias → garbage output. Fix in `fix_qzeros_for_marlin()` (commit `324ea90d2`) post-processes safetensors `0x77777777` → `0x88888888`. Idempotent. |
+| 2026-05-20 | 22:59 | (local_eval, no tarball) | — | ~13m | 63.33 (30/150) | v18 quant + qzeros in-place patch. First non-zero GPTQ result. 30-of-150 sample subset on `perf_public_set.jsonl`. Confirms qzeros fix was the right answer; remaining gap to 80-gate must come from calibration / module-set choices |
+| 2026-05-20 | 23:36 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v21.tar.gz` | 📦 | — | TBD (eval in flight) | MLP-only GPTQ with BOTH fixes baked into the quantizer: (1) `fix_qzeros_for_marlin()` auto-applied after `model.save()`; (2) calibration uses `tokenizer.truncation_side="left"` + `apply_chat_template` + `--max-calib-len 8192` to keep TAIL of long perf_public_set rows. Local eval on full 150 samples in progress; submit only if acc_ori ≥ 80 |
+| 2026-05-20 | 23:50 | `soar_gptqmodel_v17_minconfig_full_attn_submission_20260520_v22.tar.gz` | 📦 | — | TBD | **Full-attention** GPTQ (q/k/v/o_proj + MLP gate/up/down) with both fixes baked in (same qzeros + calib changes as v21). Built from `submission_gptq_v17_minconfig/` which intentionally keeps v17's module set so we can A/B against v21's MLP-only choice after qzeros root cause is fixed. **Use this if v21 lands in 70-80** — full attention might close the residual gap; or as parallel-track submission if a second slot opens. Symlinks dereferenced at pack time (whl + sglang/) |
 
 ---
 
@@ -175,4 +180,7 @@ soar_bf16_chunk32k_safetynet_submission_20260520_v3.tar.gz      # 5/20 safetynet
 soar_bf16_baseline_match_submission_20260520_v4.tar.gz          # 5/20 identity BF16 + official default args
 soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v18.tar.gz # 5/20 MLP-only GPTQ, startup failed on read-only config property
 soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v19.tar.gz # 5/20 MLP-only GPTQ, fixes v18 config serialization bug
+soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v20.tar.gz # 5/20 16:30 STALE — built before qzeros fix; do NOT submit
+soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v21.tar.gz # 5/20 23:36 MLP-only GPTQ + qzeros fix + calib fix; acc TBD
+soar_gptqmodel_v17_minconfig_full_attn_submission_20260520_v22.tar.gz # 5/20 23:50 FULL-ATTN GPTQ + qzeros fix + calib fix; use if v21 hits 70-80
 ```

@@ -59,6 +59,18 @@ NUM_CALIB="${NUM_CALIB:-256}"
 # Hessian time per sample vs 4096.
 MAX_CALIB_LEN="${MAX_CALIB_LEN:-8192}"
 
+# Calibration window mode: see quantize_gptqmodel_w4a16.py --calib-window-mode.
+#   tail            -> single tail window per prompt (default; v21/v22 behavior)
+#   multi-adaptive  -> 1-3 windows per prompt based on full token length
+CALIB_WINDOW_MODE="${CALIB_WINDOW_MODE:-tail}"
+
+# Chat template ablation switch. Set DISABLE_CHAT_TEMPLATE=1 to skip
+# apply_chat_template() during calibration tokenization. perf_public_set
+# eval feeds RAW `question` strings, but default calibration wraps in
+# `<用户>...<AI>`. v21 (chat tpl ON + left-trunc + 8K) got acc=49 on 150
+# samples; this flag enables isolating the chat-template variable.
+DISABLE_CHAT_TEMPLATE="${DISABLE_CHAT_TEMPLATE:-0}"
+
 CALIB_ARGS=()
 if [ -n "${CALIB_JSONL}" ]; then
     CALIB_ARGS+=(--calib-jsonl "${CALIB_JSONL}")
@@ -66,7 +78,11 @@ if [ -n "${CALIB_JSONL}" ]; then
 else
     echo "[prepare_model] WARNING: no calibration file found — synthetic fallback will likely fail correctness gate" >&2
 fi
-CALIB_ARGS+=(--num-calib "${NUM_CALIB}" --max-calib-len "${MAX_CALIB_LEN}")
+CALIB_ARGS+=(--num-calib "${NUM_CALIB}" --max-calib-len "${MAX_CALIB_LEN}" --calib-window-mode "${CALIB_WINDOW_MODE}")
+if [ "${DISABLE_CHAT_TEMPLATE}" = "1" ]; then
+    CALIB_ARGS+=(--no-chat-template)
+    echo "[prepare_model] chat template DISABLED (DISABLE_CHAT_TEMPLATE=1)"
+fi
 
 # Safety: hard cap the quantize wall time so we fail cleanly INSIDE the
 # 5h platform budget if anything hangs.

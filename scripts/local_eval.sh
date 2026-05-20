@@ -271,9 +271,12 @@ if [ "${EVAL_EXIT}" -ne 0 ]; then
 fi
 
 # Parse acc_ori / overall_accuracy from log. Different eval_model.py versions
-# print these in slightly different shapes; grab whatever number we can find.
-ACC_ORI=$(grep -oE 'ori_accuracy[^0-9-]*[0-9]+\.[0-9]+' "${EVAL_LOG}" | tail -1 | grep -oE '[0-9]+\.[0-9]+' || echo "?")
-ACC_OVERALL=$(grep -oE 'overall_accuracy[^0-9-]*[0-9]+\.[0-9]+' "${EVAL_LOG}" | tail -1 | grep -oE '[0-9]+\.[0-9]+' || echo "?")
+# print these in slightly different shapes:
+#   - older: "ori_accuracy: 42.51" / "overall_accuracy: 21.25"
+#   - current SOAR toolkit: "Average Score: 63.33%" (single number)
+# Match whichever shows up; allow integer-only ("Average Score: 63%").
+ACC_ORI=$(grep -oE '(ori_accuracy|Average Score)[^0-9-]*[0-9]+(\.[0-9]+)?' "${EVAL_LOG}" | tail -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 || echo "?")
+ACC_OVERALL=$(grep -oE '(overall_accuracy|Average Score)[^0-9-]*[0-9]+(\.[0-9]+)?' "${EVAL_LOG}" | tail -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 || echo "?")
 END_TS=$(date +%s)
 DURATION=$((END_TS - START_TS))
 
