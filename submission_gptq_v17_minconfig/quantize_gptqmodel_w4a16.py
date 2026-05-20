@@ -737,6 +737,43 @@ def save_model(model, output_dir: str) -> None:
         )
 
 
+def fix_qzeros_for_marlin(output_dir: Path) -> None:
+    """Rewrite GPTQModel's qzeros 0x77777777 (=7 per slot) -> 0x88888888 (=8).
+    gptqmodel 7.0.0 + sym=True writes qzero=7 per 4-bit slot; SGLang Marlin
+    dequant `(q - qzero) * scale` then adds a per-weight `+1*scale` bias
+    that accumulates to acc=0. Patch every shard's qzeros in place.
+    """
+    import torch
+    from safetensors.torch import load_file, save_file
+
+    BAD = 0x77777777
+    GOOD_SIGNED = -2004318072  # int32 form of 0x88888888
+
+    total_fixed = 0
+    for shard in sorted(output_dir.glob("model-*.safetensors")):
+        state = load_file(str(shard))
+        n_fixed = 0
+        for key, tensor in list(state.items()):
+            if not key.endswith(".qzeros") or tensor.dtype != torch.int32:
+                continue
+            unique = tensor.flatten().unique().tolist()
+            if unique == [BAD]:
+                state[key] = torch.full_like(tensor, GOOD_SIGNED)
+                n_fixed += 1
+            elif unique == [GOOD_SIGNED]:
+                pass
+            else:
+                print(f"[qzeros-fix] WARN: {key} unique={unique[:5]}; leaving alone",
+                      flush=True)
+        if n_fixed:
+            save_file(state, str(shard))
+            print(f"[qzeros-fix] rewrote {n_fixed} qzeros tensors in {shard.name}",
+                  flush=True)
+            total_fixed += n_fixed
+    print(f"[qzeros-fix] total {total_fixed} qzeros 0x77777777 -> 0x88888888",
+          flush=True)
+
+
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
@@ -851,6 +888,7 @@ def main() -> int:
 
     copy_runtime_assets(Path(args.input), output_dir)
     write_sglang_compatible_quant_config(output_dir, Path(args.input), args.bits, args.group_size)
+    fix_qzeros_for_marlin(output_dir)
     print("[quantize] done.", flush=True)
     return 0
 
