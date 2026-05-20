@@ -51,3 +51,33 @@
   info = core._register_object_by_index(type_index, cls)
 [2026-05-21 01:06:43] Load weight begin. avail mem=94.42 GB
 Loading safetensors checkpoint shards:   0% Completed | 0/3 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards:  33% Completed | 1/3 [00:50<01:41, 50.87s/it]
+Loading safetensors checkpoint shards:  67% Completed | 2/3 [01:19<00:37, 37.99s/it]
+Loading safetensors checkpoint shards: 100% Completed | 3/3 [01:21<00:00, 21.45s/it]
+Loading safetensors checkpoint shards: 100% Completed | 3/3 [01:21<00:00, 27.21s/it]
+
+[2026-05-21 01:08:05] Load weight end. type=MiniCPMSALAForCausalLM, dtype=torch.float16, avail mem=85.31 GB, mem usage=9.12 GB.
+[2026-05-21 01:08:05] Using KV cache dtype: torch.float16
+[2026-05-21 01:08:05] [MiniCPMHybridReqToTokenPool] Init: size=32, max_context_len=524292, kernel_size=32, kernel_stride=16
+[2026-05-21 01:08:05] Mamba Cache is allocated. max_mamba_cache_size: 32, conv_state size: 0.00GB, ssm_state size: 1.55GB 
+[2026-05-21 01:08:05] KV Cache is allocated. #tokens: 9288767, K size: 35.43 GB, V size: 35.43 GB
+[2026-05-21 01:08:05] Memory pool end. avail mem=12.68 GB
+[2026-05-21 01:08:05] Capture cuda graph begin. This can take up to several minutes. avail mem=11.92 GB
+[2026-05-21 01:08:05] Capture cuda graph bs [1, 2, 4, 8, 12, 16, 24, 32]
+  0%|          | 0/8 [00:00<?, ?it/s]Capturing batches (bs=32 avail_mem=11.21 GB):   0%|          | 0/8 [00:00<?, ?it/s]Capturing batches (bs=32 avail_mem=11.21 GB):  12%|█▎        | 1/8 [00:00<00:05,  1.29it/s]Capturing batches (bs=24 avail_mem=11.03 GB):  12%|█▎        | 1/8 [00:00<00:05,  1.29it/s]Capturing batches (bs=16 avail_mem=11.01 GB):  12%|█▎        | 1/8 [00:00<00:05,  1.29it/s]Capturing batches (bs=16 avail_mem=11.01 GB):  38%|███▊      | 3/8 [00:00<00:01,  3.68it/s]Capturing batches (bs=12 avail_mem=11.01 GB):  38%|███▊      | 3/8 [00:00<00:01,  3.68it/s]Capturing batches (bs=8 avail_mem=10.98 GB):  38%|███▊      | 3/8 [00:01<00:01,  3.68it/s] Capturing batches (bs=8 avail_mem=10.98 GB):  62%|██████▎   | 5/8 [00:01<00:00,  5.96it/s]Capturing batches (bs=4 avail_mem=10.98 GB):  62%|██████▎   | 5/8 [00:01<00:00,  5.96it/s]Capturing batches (bs=2 avail_mem=10.96 GB):  62%|██████▎   | 5/8 [00:01<00:00,  5.96it/s]Capturing batches (bs=2 avail_mem=10.96 GB):  88%|████████▊ | 7/8 [00:01<00:00,  7.87it/s]Capturing batches (bs=1 avail_mem=10.95 GB):  88%|████████▊ | 7/8 [00:01<00:00,  7.87it/s]Capturing batches (bs=1 avail_mem=10.95 GB): 100%|██████████| 8/8 [00:01<00:00,  5.98it/s]
+[2026-05-21 01:08:07] Capture cuda graph end. Time elapsed: 1.89 s. mem usage=0.99 GB. avail mem=10.93 GB.
+[2026-05-21 01:08:07] max_total_num_tokens=9288767, chunked_prefill_size=8192, max_prefill_tokens=16384, max_running_requests=32, context_len=524288, available_gpu_mem=10.93 GB
+[2026-05-21 01:08:07] INFO:     Started server process [30303]
+[2026-05-21 01:08:07] INFO:     Waiting for application startup.
+[2026-05-21 01:08:07] Using default chat sampling params from model generation config: {'repetition_penalty': 1.0, 'temperature': 1.0, 'top_k': 50, 'top_p': 1.0}
+[2026-05-21 01:08:07] Using default chat sampling params from model generation config: {'repetition_penalty': 1.0, 'temperature': 1.0, 'top_k': 50, 'top_p': 1.0}
+[2026-05-21 01:08:07] The server is fired up and ready to roll!
+[2026-05-21 01:08:07] INFO:     Application startup complete.
+[2026-05-21 01:08:07] INFO:     Uvicorn running on http://127.0.0.1:31111 (Press CTRL+C to quit)
+[2026-05-21 01:08:09] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 0, full token usage: 0.00, mamba usage: 0.00, #running-req: 0, #queue-req: 0, 
+[2026-05-21 01:08:10] INFO:     127.0.0.1:45206 - "GET /health HTTP/1.1" 200 OK
+/root/autodl-tmp/zyn/soar/sglang/sglang_minicpm_sala_env/lib/python3.12/site-packages/fastapi/routing.py:120: FastAPIDeprecationWarning: ORJSONResponse is deprecated, FastAPI now serializes data directly to JSON bytes via Pydantic when a return type or response model is set, which is faster and doesn't need a custom response class. Read more in the FastAPI docs: https://fastapi.tiangolo.com/advanced/custom-response/#orjson-or-response-model and https://fastapi.tiangolo.com/tutorial/response-model/
+  response = await f(request)
+[2026-05-21 01:08:11] INFO:     127.0.0.1:45208 - "GET /v1/models HTTP/1.1" 200 OK
+[2026-05-21 01:08:11] SIGTERM received. signum=None frame=None. Draining requests and shutting down...
+[2026-05-21 01:08:14] Gracefully exiting... Remaining number of requests 0. Remaining requests remaining_rids=[].
