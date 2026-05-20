@@ -1,0 +1,9 @@
+{
+  "task_id": "test_task",
+  "record_id": "test_record",
+  "user_id": "test_user",
+  "ori_accuracy": 63.33,
+  "overall_accuracy": 79.17,
+  "duration": 794.4939188957214,
+  "total_tokens": 434771
+}

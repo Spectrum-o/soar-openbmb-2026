@@ -1,0 +1,10 @@
+Model: /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+Data: /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl
+Original Accuracy: 63.33%
+Normalized Accuracy: 79.17%
+Num Samples: 30
+Total Duration: 794.49 s
+Total Output Tokens: 434771
+Average Input Tokens: 270.9
+Average Output Tokens: 14492.4
+TPS: 547.23

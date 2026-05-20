@@ -1,0 +1,22 @@
+Auto-detected model name: /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+API Base: http://127.0.0.1:31111
+Model Name: /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+Model Path: /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+Data Path: /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl
+Saving results to outputs/20260520_233734
+Traceback (most recent call last):
+  File "/root/autodl-fs/zyn/soar_toolkit/eval_model.py", line 442, in <module>
+    main()
+  File "/root/autodl-fs/zyn/soar_toolkit/eval_model.py", line 312, in main
+    dataset.append(json.loads(line))
+                   ^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/json/decoder.py", line 338, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/json/decoder.py", line 354, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Unterminated string starting at: line 1 column 27 (char 26)

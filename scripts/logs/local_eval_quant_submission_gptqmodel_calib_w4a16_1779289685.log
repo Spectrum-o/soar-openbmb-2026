@@ -1,0 +1,16 @@
+[prepare_model] using calibration from: /root/autodl-tmp/zyn/soar/sglang/submission_gptqmodel_calib_w4a16/perf_public_set.jsonl
+[prepare_model] quantize timeout: 90 min
+Traceback (most recent call last):
+  File "/root/autodl-tmp/zyn/soar/sglang/submission_gptqmodel_calib_w4a16/quantize_gptqmodel_w4a16.py", line 92, in <module>
+    _stub_transformers_for_gptqmodel_7()
+  File "/root/autodl-tmp/zyn/soar/sglang/submission_gptqmodel_calib_w4a16/quantize_gptqmodel_w4a16.py", line 82, in _stub_transformers_for_gptqmodel_7
+    import transformers
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/__init__.py", line 27, in <module>
+    from . import dependency_versions_check
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/dependency_versions_check.py", line 16, in <module>
+    from .utils.versions import require_version, require_version_core
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/utils/__init__.py", line 19, in <module>
+    from huggingface_hub import get_full_repo_name  # for backward compatibility
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'huggingface_hub'
+[prepare_model] quantize exited 1
