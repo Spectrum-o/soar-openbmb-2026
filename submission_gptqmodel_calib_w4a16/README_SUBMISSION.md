@@ -1,6 +1,6 @@
 # SOAR W4A16 Submission — GPTQModel with SOAR-distribution calibration
 
-This is the **third** W4A16 attempt, learning from the previous two failures:
+This is the latest W4A16 attempt, learning from the previous failures:
 
 | Attempt | Approach | Result | Diagnosis |
 |---|---|---|---|
@@ -8,21 +8,25 @@ This is the **third** W4A16 attempt, learning from the previous two failures:
 | v1.1 (RTN, /(half-1)) | Naive RTN, `scale = abs_max / 7` | acc=42.18, score=0 | RTN math fine, but RTN itself too lossy on outlier-heavy weights |
 | v2 (GPTQModel, BatchEncoding bug) | GPTQModel + bundled calibration | prepare_model failed | GPTQModel 7.x rejected HuggingFace `BatchEncoding`; fixed by emitting plain dict tensors |
 | v3 (GPTQModel, optional module bug) | GPTQModel + custom SALA module tree | prepare_model failed | GPTQModel required `self_attn.o_gate` on every layer; fixed by removing optional SALA modules from the common tree |
-| **this submission** | GPTQModel + SOAR-distribution calibration | TBD | — |
+| v4 (GPTQModel, inherited template bug) | Subclassed `MiniCPMGPTQ` | prepare_model failed | Inherited `layer_modules` still contained `self_attn.o_gate`; fixed by subclassing `BaseGPTQModel` and registering `auto.MODEL_MAP` |
+| v5 (full-attention GPTQ) | Quantized q/k/v/o + MLP | acc=0, score=0 | Served successfully but model semantics collapsed; likely attention/Lightning projections too sensitive or incompatible with fused SGLang loader |
+| v6 (MLP-only, serialized derived config) | GPTQModel MLP-only + SOAR-distribution calibration | SGLang startup failed | `has_sparse_attention` was written into config.json even though SGLang exposes it as a read-only derived property |
+| **this submission** | GPTQModel MLP-only + SOAR-distribution calibration | TBD | Keep attention/Lightning BF16; quantize only `mlp.gate_proj/up_proj/down_proj`; do not serialize derived config properties |
 
-## Why this should clear correctness gate (≥ 80 acc_ori)
+## Why this route is safer for correctness
 
-1. **GPTQ (Hessian-based) instead of RTN.** RTN per-group `abs_max` lets a few outliers dominate group scales, coarsening every other weight in the group. GPTQ uses second-order Hessian info to distribute quantization error wisely — typical accuracy improvement: 5-15 points over RTN on LLMs. The winners' notebook (周冠军笔记 04, 智算一队) explicitly states "GPTQ + Marlin" beats RTN, and that "calibration set composition iterated several rounds" was critical.
+1. **GPTQ (Hessian-based) instead of RTN.** RTN per-group `abs_max` lets a few outliers dominate group scales, coarsening every other weight in the group. GPTQ uses second-order Hessian info to reduce the impact of quantization error compared with a one-shot round-to-nearest pass.
 
-2. **Calibration data drawn from `perf_public_set.jsonl`** rather than 4 hardcoded templates. The previous GPTQModel attempt used synthetic prompts; this one defaults to actual SOAR distribution data bundled in the submission (256 samples by default; the 150 public rows are cycled deterministically, max_calib_len=4096). The winners explicitly identified this as the key lever.
+2. **Calibration data drawn from `perf_public_set.jsonl`** rather than 4 hardcoded templates. The previous GPTQModel attempt used synthetic prompts; this one defaults to actual SOAR distribution data bundled in the submission (256 samples by default; the 150 public rows are cycled deterministically, max_calib_len=4096).
 
-3. **Custom MiniCPM-SALA registration in GPTQModel.** SALA's `model_type = "minicpm_sala"` is not in the GPTQModel registry (verified against the main branch's `models/__init__.py`). This submission registers `MiniCPMSALAGPTQ` (subclass of `MiniCPMGPTQ`) with a common module tree that only includes projections present across all decoder layers: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, and `down_proj`. Optional SALA gates/norms are left unquantized by omission, because GPTQModel 7.x requires every listed module to exist on every layer.
+3. **Custom MiniCPM-SALA registration in GPTQModel.** SALA's `model_type = "minicpm_sala"` is not in the GPTQModel registry. This submission registers `MiniCPMSALAGPTQ` (subclass of `BaseGPTQModel`, not `MiniCPMGPTQ`) in both known `MODEL_MAP` locations with an MLP-only module list: `gate_proj`, `up_proj`, and `down_proj`. Attention/Lightning projections stay BF16 because the full-attention GPTQ route served successfully but scored 0.
 
 4. **Hard constraints respected** (learned from prior failures):
    - `--quantization gptq_marlin` (Marlin kernel only supports `(bits=4, sym=True)` → `uint4b8`)
    - `sym=True`, `desc_act=False`, `group_size=128`
    - NO `--kv-cache-dtype fp8_*` (verified incompatible with MiniCPM sparse backend)
    - NO `--disable-cuda-graph` (baseline runs with CUDA graph)
+   - `quantization_config.dynamic` skips all `self_attn.*` modules so SGLang loads attention weights as BF16 while serving quantized MLP layers through Marlin.
 
 ## Contents
 

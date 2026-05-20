@@ -48,9 +48,11 @@ else
     CALIB_JSONL=""
 fi
 
-# 150 rows in perf_public_set.jsonl (30 each across mcq / niah / qa / fwe / cwe).
-# Use all of them by default; no random sampling needed at this size.
-NUM_CALIB="${NUM_CALIB:-150}"
+# perf_public_set.jsonl has 150 rows (30 each across mcq / niah / qa / fwe / cwe).
+# GPTQModel 7.x warns below 256 examples, so the quantizer deterministically
+# cycles the public rows to reach this default without falling back to synthetic
+# prompts.
+NUM_CALIB="${NUM_CALIB:-256}"
 # max_calib_len 4096: balances coverage with quantization time. Most rows are
 # much longer than 4K tokens (median ~30K, p90 ~117K) — we sample the prefix
 # for activation distribution.
@@ -91,12 +93,14 @@ EXTRA_ARGS+=(--no-offload-disk)
 
 echo "[prepare_model] quantize timeout: ${QUANT_TIMEOUT_MIN} min"
 
+set +e
 timeout "${QUANT_TIMEOUT_MIN}m" python3 "${SCRIPT_DIR}/quantize_gptqmodel_w4a16.py" \
     --input "${INPUT_DIR}" \
     --output "${OUTPUT_DIR}" \
     "${CALIB_ARGS[@]}" \
     "${EXTRA_ARGS[@]}"
 quant_exit=$?
+set -e
 
 if [ "${quant_exit}" -eq 124 ]; then
     echo "[prepare_model] FATAL: quantization exceeded ${QUANT_TIMEOUT_MIN} min wall time; aborting cleanly" >&2
