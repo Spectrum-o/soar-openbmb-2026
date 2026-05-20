@@ -12,8 +12,8 @@
 |---|---|---|
 | **Baseline (BF16, no extra args)** | **19.13** | Number to beat |
 | **Best score so far (with quant)** | — | None of our quant attempts has cleared correctness gate |
-| **W4A16 attempts** | 17+ | See chronological log below |
-| **Slots consumed today (2026-05-20)** | 1 (v17 ran end-to-end with acc=0) | Quick-fail crashes (<60s) do NOT consume slots |
+| **W4A16 attempts** | 19+ | See chronological log below |
+| **Slots consumed today (2026-05-20)** | 1 confirmed (v17 ran end-to-end with acc=0) | Early prepare/startup failures appear not to consume the full slot, but check platform dashboard for the authoritative count |
 | **Slots remaining today** | ? | Check platform dashboard |
 
 ---
@@ -42,7 +42,7 @@ Each is linked to the submission that proved it.
 | GitHub release downloads can hang on the platform's network — bundle wheels in the tarball | SOAR cloud network can't reach github.com reliably | 2026-05-19 21:48 gptqmodel v4 PREPARING stuck on download |
 | `apply_torchao_config_to_model` does eager import of torchao APIs that were removed in 0.16.0 | `torchao_utils.py:46` imports `float8_dynamic_activation_float8_weight` etc. before checking if config is empty | 2026-05-20 12:13 v15 ImportError |
 | Removing `auto_map.AutoConfig` is required for SGLang's `MiniCPMHybridConfig` to win the `isinstance` check | `model_runner.py:1494` `minicpm_hybrid_config` property + `hybrid_linear_attn_backend.py:1456` assertion | 2026-05-20 inferred from source trace |
-| `has_sparse_attention=True` must be explicitly in `config.json` | Original SALA config.json does NOT have this field; `minicpm_backend.py:213` does `getattr(hf_config, "has_sparse_attention", False)` | Inferred; safer to set explicitly |
+| Do **not** serialize derived config properties such as `has_sparse_attention` into `config.json` | SGLang's `MiniCPMHybridConfig` exposes them as read-only `@property` values derived from `sparse_config`/`mixer_types`; `AutoConfig.from_pretrained` crashes if config.json tries to assign them | 2026-05-20 15:25 v18 `AttributeError: can't set attribute 'has_sparse_attention'` |
 
 ### GPTQModel-specific
 
@@ -59,15 +59,15 @@ Each is linked to the submission that proved it.
 
 | Constraint | Why | Verified by |
 |---|---|---|
-| SGLang quantizes EVERY `nn.Linear` by default; modules left unquantized by GPTQModel will mismatch | safetensors has `.weight`, model expects `.qweight` → KeyError | 2026-05-20 12:13 v14 `KeyError: model.layers.0.self_attn.o_gate.weight` |
+| SGLang and GPTQModel must agree on which modules are quantized vs unquantized | If GPTQModel omits a module but SGLang initializes it with a different quantization method, state-dict names diverge and weight loading fails | 2026-05-20 12:13 v14 `KeyError: model.layers.0.self_attn.o_gate.weight` |
 | Use `dynamic: {"-:.*<mod>$": True}` in quantize_config.json to skip modules at SGLang load time | `utils.py:248` `get_dynamic_override` returns False → `UnquantizedLinearMethod` | v15+ |
 
 ### Calibration (the open question)
 
 | Observation | Implication |
 |---|---|
-| `perf_public_set.jsonl` has 150 rows, median question is ~30K tokens, p90 ~117K | Truncating to first 4K tokens loses the actual question (mostly haystack filler) |
-| RTN with scaled-wrong (`acc_ori=42`) and GPTQ with full-attn quant (`acc_ori=0`) | GPTQ with bad calibration can be WORSE than naive RTN |
+| `perf_public_set.jsonl` has 150 rows, many prompts are long | First-4K calibration may be weak for some tasks, but this is still a hypothesis, not the proven cause of v17's acc=0 |
+| RTN got `acc_ori≈42`, while full-attention GPTQ got `acc_ori=0` | The evidence points at structural sensitivity/loader compatibility of full attention quantization at least as strongly as calibration quality |
 
 ---
 
@@ -97,12 +97,15 @@ Status legend:
 | 2026-05-20 | 00:30 | `..._v5.tar.gz` | (not submitted as v5 directly) | — | — | Bundled the 242 MB flash-attn 2.8.3 cu128torch2.9 cp310 wheel into the tarball |
 | 2026-05-20 | (various) | gptq v6-v12 | ⛔ | <5m | — | `ValueError: layer module item self_attn.o_gate not found in model`. GPTQModel fell back to `BaseQModel + auto_detect_module_tree` because `SUPPORTED_MODELS` (snapshotted at import time) didn't include "minicpm_sala". Auto-detector picked up o_gate from layer 0 ("minicpm4") and crashed on layer 1 ("lightning-attn") which doesn't have it |
 | 2026-05-20 | 11:42 | `..._v13.tar.gz` | ⛔ | ~5m | — | `SUPPORTED_MODELS` mutation added; got past register but `ImportError: cannot import name 'BaseGPTQModel'` — typo; should be `BaseQModel` |
-| 2026-05-20 | 11:53 | `..._v14.tar.gz` | ⛔ | ~19m | — | **Quantization FINISHED for the first time** (19 min). SGLang loaded weights OK. Then crashed: `KeyError: model.layers.0.self_attn.o_gate.weight`. GPTQModel correctly didn't quantize o_gate (not in our module_tree); safetensors has `.weight`. But SGLang's gptq_marlin auto-quantizes every Linear → expects `.qweight` |
+| 2026-05-20 | 11:53 | `..._v14.tar.gz` | ⛔ | ~19m | — | **Quantization FINISHED for the first time** (19 min). SGLang reached weight loading, then crashed: `KeyError: model.layers.0.self_attn.o_gate.weight`. GPTQModel and SGLang disagreed on the quantized/unquantized module set; fixed by writing matching `dynamic` skip rules |
 | 2026-05-20 | 12:35 | `..._v15.tar.gz` | ⛔ | ~16m | — | Added `dynamic: {"-:.*o_gate$": True, ...}` to quantize_config.json. **Weight load succeeded** (6.53 GB, matches W4A16 expected). Crashed at `apply_torchao_config_to_model` because torchao ≥ 0.16 removed `float8_dynamic_activation_float8_weight` (and SGLang's torchao_utils.py imports it eagerly before the `if torchao_config == "": return` early-return) |
 | 2026-05-20 | ~12:50 | `..._v16.tar.gz` | (intermediate, superseded by v17) | — | — | torchao early-return patch applied |
-| 2026-05-20 | 13:01-14:25 | `..._v17.tar.gz` | 🔴 acc | 5h | 0.0 | **FULL PIPELINE COMPLETED** end-to-end for first time. Added: input-config preservation + explicit `has_sparse_attention=True` + removed `auto_map.AutoConfig`. SGLang launched, served 256 prompts, all three bench tiers ran. **But model output was completely broken (acc=0.0).** Most likely cause: GPTQ calibration truncated 30K-token questions to first 4K tokens → calibrator saw mostly haystack filler, not real question structure → bad Hessian signal → corrupted weights. Bench timings: S1=625s, S8=997s, Smax=2290s. Slot consumed |
+| 2026-05-20 | 13:01-14:25 | `..._v17.tar.gz` | 🔴 acc | 5h | 0.0 | **FULL PIPELINE COMPLETED** end-to-end for first time. Added: input-config preservation + explicit `has_sparse_attention=True` + removed `auto_map.AutoConfig`. SGLang launched, served 256 prompts, all three bench tiers ran. **But model output was completely broken (acc=0.0).** Most likely causes: full q/k/v/o attention quantization sensitivity or SGLang loader/layout incompatibility; calibration truncation remains an open hypothesis. Bench timings: S1=625s, S8=997s, Smax=2290s. Slot consumed |
 | 2026-05-20 | 15:12 | `soar_bf16_chunk32k_safetynet_submission_20260520_v2.tar.gz` | ⛔ | 13s | — | BF16 safetynet bundled SGLang source; crashed early with transformers model_type list dump (truncated error). Hypothesis: our bundled SGLang version has some incompatibility with base env's libraries that baseline (which uses base env's SGLang) doesn't have |
-| 2026-05-20 | TBD | `soar_bf16_chunk32k_safetynet_submission_20260520_v3.tar.gz` | 📦 | — | — | **v3 = 2 KB safetynet without bundled SGLang.** Uses base env's SGLang (same as baseline 19.13). Only diff from baseline: `--chunked-prefill-size 32768 --max-prefill-tokens 32768 --enable-mixed-chunk` flags. Should produce final_score 22-26 |
+| 2026-05-20 | TBD | `soar_bf16_chunk32k_safetynet_submission_20260520_v3.tar.gz` | 📦 | — | — | **v3 = 2 KB safetynet without bundled SGLang.** Uses base env's SGLang. Only diff from baseline: `--chunked-prefill-size 32768 --max-prefill-tokens 32768 --enable-mixed-chunk` flags. Expected result is unverified; do not assume score 22-26 without a platform/local run |
+| 2026-05-20 | 15:25-15:37 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v18.tar.gz` | ⛔ | ~12m | — | MLP-only GPTQ got through preparation, then SGLang startup failed: `AttributeError: can't set attribute 'has_sparse_attention'`. Root cause: output `config.json` serialized a read-only derived property from `MiniCPMHybridConfig` |
+| 2026-05-20 | 15:42 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v19.tar.gz` | 📦 | — | — | Fixes v18 by removing derived read-only config keys from quantized config and adding defensive `kwargs.pop(...)` in bundled `MiniCPMHybridConfig`; still MLP-only GPTQ |
+| 2026-05-20 | 15:50 | `soar_bf16_baseline_match_submission_20260520_v4.tar.gz` | 📦 | — | — | Baseline-match safetynet tarball built. Purpose: verify that identity BF16 + official default args still reproduces baseline before testing extra flags |
 
 ---
 
@@ -112,21 +115,19 @@ Status legend:
 
 The pipeline ran successfully. Output was garbage. Hypotheses ranked:
 
-1. **🔴 HIGHEST: calibration truncation killed Hessian signal**
-   - perf_public_set questions are 30K-token median, we truncate to 4K from the START
-   - Mostly haystack filler is seen, not actual question structure
-   - GPTQ Hessian fit to garbage → weights pushed in wrong direction
-   - **Fix to try**: truncate from END (keep the final tokens including the actual question)
+1. **🔴 HIGHEST: full attention/Lightning quantization is structurally unsafe**
+   - v17 quantized q/k/v/o + MLP and served successfully, but `acc_ori=0`
+   - RTN W4A16 still got ~42, so "any 4-bit quantization always gives zero" is false
+   - **Fix to try**: MLP-only GPTQ (v18/v19) before adding attention back per layer type
 
-2. **🟡 MEDIUM: removing `auto_map.AutoConfig` broke something subtle**
-   - Forced SGLang's `MiniCPMHybridConfig` instead of SALA's custom config class
-   - SGLang's hybrid config has same fields but maybe handles defaults differently
-   - **Fix to try**: restore `auto_map.AutoConfig`, accept that `minicpm_hybrid_config` returns None, see if the SimpleGLA assertion is actually hit (maybe baseline works with it None?)
+2. **🟡 MEDIUM: calibration truncation hurt GPTQ**
+   - perf_public_set prompts can be very long, and v17 used first-token truncation
+   - This may produce weak Hessian statistics, but it is not proven as the main cause until MLP-only is tested
+   - **Fix to try if MLP-only still fails correctness**: compare first-4K vs last-4K vs mixed span calibration
 
-3. **🟡 MEDIUM: `dynamic` exclusion of `o_gate`/`z_proj`/norms broke gating math**
-   - These modules stayed BF16 while q/k/v/o became W4A16
-   - Gate output * attention output: scale mismatch could produce NaN-ish results
-   - **Fix to try**: quantize EVERYTHING (set `layer_modules_strict = False` on the GPTQ class so it skips per-layer missing modules instead of failing — see `module_looper.py:1628`)
+3. **🟡 MEDIUM: removing `auto_map.AutoConfig` changed config semantics**
+   - Required for SGLang's `MiniCPMHybridConfig` path and SimpleGLA checks, so this is not an easy revert
+   - Could still affect defaults subtly; verify by comparing parsed config fields rather than toggling blindly
 
 4. **🟢 LOW: fp16 vs bf16 patch accumulating error**
    - SALA trained in bf16, we run in fp16 + sed-patched sparse backend
@@ -139,7 +140,7 @@ User updated `submission_gptqmodel_calib_w4a16/quantize_gptqmodel_w4a16.py` to d
 
 This sidesteps the gating-mismatch hypothesis and tests whether attention quantization specifically is the problem. Expected outcomes:
 - ✅ acc clears 80 → attention quantization was the issue; can iteratively add it back per-layer-type
-- ❌ acc still 0 → calibration is the real problem; refactor to truncate-from-END
+- ❌ acc still 0 → calibration or config/loader semantics remain suspect; next experiment should compare calibration windows and inspect sample outputs before another blind platform submission
 
 ---
 
@@ -170,5 +171,8 @@ soar_gptqmodel_calib_w4a16_submission_20260519_v{2..5}.tar.gz   # 5/19-5/20 vari
 soar_gptqmodel_calib_w4a16_submission_20260520_v{6..17}.tar.gz  # 5/20 the o_gate / torchao saga
 soar_bf16_chunk32k_safetynet_submission_20260519.tar.gz         # 5/19 safetynet original
 soar_bf16_chunk32k_safetynet_submission_20260520_v2.tar.gz      # 5/20 safetynet w/ sglang (crashed)
-soar_bf16_chunk32k_safetynet_submission_20260520_v3.tar.gz      # 5/20 safetynet WITHOUT sglang (📦 next)
+soar_bf16_chunk32k_safetynet_submission_20260520_v3.tar.gz      # 5/20 safetynet WITHOUT sglang (extra flags, unverified)
+soar_bf16_baseline_match_submission_20260520_v4.tar.gz          # 5/20 identity BF16 + official default args
+soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v18.tar.gz # 5/20 MLP-only GPTQ, startup failed on read-only config property
+soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v19.tar.gz # 5/20 MLP-only GPTQ, fixes v18 config serialization bug
 ```
