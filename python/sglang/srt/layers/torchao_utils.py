@@ -42,6 +42,16 @@ def apply_torchao_config_to_model(
         quantize the model, e.g. int4wo-128 means int4 weight only quantization with group_size
         128
     """
+    # NOTE(soar submission): early-return BEFORE the torchao imports below.
+    # torchao >= 0.16.0 removed the snake_case functions
+    # (`float8_dynamic_activation_float8_weight`, `int4_weight_only`, etc.) in
+    # favor of PascalCase Config classes, so the import would crash even when
+    # we're not actually using torchao. Since SGLang calls this function
+    # unconditionally from model_runner.initialize(), we have to short-circuit
+    # here before touching torchao.quantization at all.
+    if torchao_config == "" or torchao_config is None:
+        return model
+
     # Lazy import to suppress some warnings
     from torchao.quantization import (
         float8_dynamic_activation_float8_weight,

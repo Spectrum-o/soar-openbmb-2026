@@ -53,6 +53,20 @@ class MiniCPMHybridConfig(PretrainedConfig):
         sparse_use_nope=False,
         **kwargs,
     ):
+        # These values are derived @property attributes below. Some
+        # quantization tools may accidentally serialize them into config.json;
+        # drop them before PretrainedConfig tries to assign to read-only
+        # properties during AutoConfig.from_pretrained().
+        for key in (
+            "mamba2_cache_params",
+            "full_attention_layer_ids",
+            "has_sparse_attention",
+            "has_lightning_layers",
+            "sparse_layer_ids",
+            "lightning_layer_ids",
+        ):
+            kwargs.pop(key, None)
+
         super().__init__(
             pad_token_id=pad_token_id,
             bos_token_id=bos_token_id,
