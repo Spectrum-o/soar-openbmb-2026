@@ -1,7 +1,7 @@
 # SOAR 2026 W4A16 — STATE OF PLAY
 
 > **Single-source-of-truth doc.** Any future Claude session opens this
-> first. Last updated: 2026-05-22 ~02:50.
+> first. Last updated: 2026-05-22 ~03:10 (Stream A-E + extras complete).
 
 ## 30-second TL;DR
 
@@ -10,10 +10,15 @@ non-zero accuracy on the SOAR platform. The MiniCPM-SALA 9B baseline
 on the platform scores 19.13 (BF16). RTN W4A16 scores 42. Our
 GPTQModel-based W4A16 submissions (v17/v21/v22) all scored **0**.
 
-We identified two prime hypotheses, fixed both, and submitted v23
-~02:35 local on 2026-05-22. v23 platform result expected ~07:35 local.
-While waiting, we pre-prepped 6 contingency variants so the next
-iteration is paste-and-run.
+We identified two prime hypotheses (H1 qzeros, H4 tokenizer), fixed
+both, and submitted v23 ~02:35 local on 2026-05-22. v23 platform
+result expected ~07:35 local.
+
+While waiting, we pre-prepped 6 contingency variants (`v24_*`, `v25_*`)
+and an auto-iterate script so the morning iteration is one command.
+
+**Morning playbook**: `experiments/MORNING_PLAYBOOK.md` → 5 steps,
+center is `bash scripts/v24_auto.sh`.
 
 ## Submission history (canonical: see SUBMISSIONS.md)
 
@@ -60,6 +65,11 @@ iteration is paste-and-run.
 | `43dea6c29` | Revert fp16 sed patch on python/ — let prepare_env.sh do it on platform install | Server-side reverted perma-patch so platform sed actually fires |
 | **`bc49fdf29`** | **Stream A: 5 contingency variants for v24/v25** | v24_no_dtype_key, v24_pin_transformers, v24_bits8, v25_calib_multi_adaptive, v25_g64 |
 | **`572eb5fd9`** | **Stream D: decide_next_variant.py auto-iterates V24_PLAN.md** | One-line command that maps platform log → recommended next variant |
+| **`7311b510e`** | **Stream E: STATE_OF_PLAY.md mega-doc** | this file (initial version; later updated in-place) |
+| **`d077fef28`** | **Stream B-lite: AWQ feasibility assessment** | CONDITIONAL GO — wait for v23 outcome before building |
+| **`13ad9e064`** | **scripts/v24_auto.sh** | One-shot wrapper: log → decide → preflight → pack |
+| **`3089e65c9`** | **MORNING_PLAYBOOK.md + sanity_check.sh** | Single-page wake-up guide + 5-second infra verifier |
+| **`866222047`** | **tests: 14 cases for decide_next_variant + regex fix** | extracts acc from JSON / dot / "Average Score" forms; greedy regex bug fixed |
 
 (Watchdog `auto:` commits are excluded — they're snapshot artifacts, not feature commits.)
 
@@ -105,9 +115,11 @@ iteration is paste-and-run.
 | `scripts/overwrite_tokenizer_with_base.sh` | Apply H4 fix to existing artifact | n/a |
 | `scripts/reorder_eval_set.py` | Round-robin interleave perf_public_set.jsonl | n/a |
 | `scripts/v23_full_pipeline.sh` | One-shot wrapper: preflight → pack → submit prep | n/a |
-| `scripts/decide_next_variant.py` | v23 platform log → recommended v24 variant | n/a |
+| `scripts/decide_next_variant.py` | v23 platform log → recommended v24 variant | **14 tests** |
+| `scripts/v24_auto.sh` | **decide + preflight + pack in one command** | smoke-tested via dry-run |
+| `scripts/sanity_check.sh` | 5-sec infra health verifier (tests + preflights + CLI + bash -n) | self-validating |
 
-Total: **88 unit tests pass** (`python3 -m unittest discover tests`).
+Total: **102 unit tests pass** (`python3 -m unittest discover tests`).
 
 ## Documents inventory
 
@@ -118,6 +130,8 @@ Total: **88 unit tests pass** (`python3 -m unittest discover tests`).
 | `experiments/V23_PLATFORM_LOG_CHECKLIST.md` | Block-by-block grep guide for the v23 platform log |
 | `experiments/V23_VS_RTN_TARBALL_AUDIT.md` | File-level diff between RTN-pass and v22-fail tarballs |
 | `experiments/V24_PLAN.md` | Decision tree by v23 outcome; per-branch concrete commands |
+| `experiments/AWQ_FEASIBILITY_ASSESSMENT.md` | Stream B-lite output: CONDITIONAL GO on AWQ. Build only if v23 < 10. |
+| `experiments/MORNING_PLAYBOOK.md` | **Half-awake guide.** 5 steps when v23 result arrives. Start here. |
 | `experiments/PLAN.md` | Night-work runbook (partially stale; predates H4) |
 | `experiments/op_fusion_verify.patch` | Drop-in patch for `perf/op-fusion` GPU validation |
 | `experiments/STATE_OF_PLAY.md` | **(this file)** Single-source-of-truth for any new session |
@@ -130,24 +144,26 @@ Total: **88 unit tests pass** (`python3 -m unittest discover tests`).
 
 ## What to do when v23 platform result arrives
 
+**Easy path** (recommended): one command via the wrapper script:
+
 ```bash
 cd /root/soar/sglang
 git pull origin quant/w4a16
 
-# Save the platform log to NAS (survives instance swaps)
-# (the platform UI lets you copy/download the eval log; save as below)
+# Save the platform log to NAS first (survives instance swaps)
 cp /path/to/downloaded_log.txt /root/autodl-fs/zyn/logs/platform_v23.log
 
-# One-shot: get the recommendation
-python3 scripts/decide_next_variant.py \
-    --log /root/autodl-fs/zyn/logs/platform_v23.log
-
-# Paste the recommended pack_submission command. Submit.
-# Repeat for next variant when its result lands.
+# One-shot decision + pack
+bash scripts/v24_auto.sh
+# Use --dry-run first to preview, --yes to skip y/N confirm
 ```
 
-If `decide_next_variant.py` says MANUAL_FIX, walk
-`experiments/V23_PLATFORM_LOG_CHECKLIST.md` to find the specific bug.
+The wrapper reads the log, applies V24_PLAN.md's decision tree, prints
+the recommendation + rationale, asks y/N, then runs preflight + pack.
+Output: a ready-to-upload tarball + the path.
+
+**Detail path** (if v24_auto fails or you want to inspect): see
+`experiments/MORNING_PLAYBOOK.md` for the 5-step manual walkthrough.
 
 ## What to NOT do
 
@@ -162,8 +178,20 @@ If `decide_next_variant.py` says MANUAL_FIX, walk
 ## Branch state (as of this writing)
 
 - Current branch: `quant/w4a16`
-- Most recent feature commit: `572eb5fd9 Stream D: decide_next_variant.py auto-iterates V24_PLAN.md decision tree`
+- Most recent feature commit: `866222047 tests: 14 cases for decide_next_variant + regex fix`
 - Watchdog `auto:` commits running every 5 min on the server side
 - v23 tarball: submitted ~02:35 to SOAR platform
 - Server stops at 03:20 — local re-quant validation should be in progress
 - Platform result ETA: ~07:35
+
+## Quick verification before any work
+
+If anything in this doc feels stale, verify with:
+
+```bash
+bash scripts/sanity_check.sh
+# expect: 102 tests + 8 variant preflights + 5 CLI + 6 shell all green
+```
+
+If sanity_check fails, the doc is more reliable than the code state.
+Re-read the failing component's recent commits.
