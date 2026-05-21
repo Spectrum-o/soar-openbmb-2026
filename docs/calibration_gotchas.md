@@ -7,22 +7,39 @@ designing a new calibration recipe.
 
 1. **qzeros 0x88888888**, not 0x77777777. gptqmodel 7.0.0 + sym=True
    writes the wrong value; you MUST run `fix_qzeros_for_marlin()`.
-2. **`truncation_side="left"`** for long-context calibration on SOAR.
+2. **`copy_runtime_assets` MUST overwrite tokenizer files.** (Added
+   2026-05-22, H4.) GPTQModel.save() re-serializes tokenizer.json from
+   3.6M to 6.7M and synthesizes `chat_template.jinja` as a sidecar.
+   Transformers < 4.47 silently ignores the sidecar (PR #33957 landed
+   2024-12-05 in v4.47.0). The platform's older transformers therefore
+   reads an empty chat template, prompts arrive without `<|im_start|>`
+   markers, and the model emits garbage. RTN's pipeline always copies
+   tokenizer files unconditionally from the input dir — explains
+   RTN=42 vs v17/v21/v22=0 platform gap. Fix lives in
+   `submission_*/quantize_gptqmodel_w4a16.py::copy_runtime_assets`
+   (commit `57f9cef06`). Verify drift via
+   `tools/check_tokenizer_compat.py`.
+3. **`truncation_side="left"`** for long-context calibration on SOAR.
    The default `"right"` keeps haystack filler and discards the question.
-3. **Mind which task types your calibration set hits.** SOAR's tasks
+4. **Mind which task types your calibration set hits.** SOAR's tasks
    correlate strongly with length: short ≈ MCQ, long ≈ NIAH/QA/CWE.
    A "short prompts only" calib set is implicitly a "MCQ-only" calib set.
-4. **`fwe` is a free credit on perf_public_set.** It's an easy task
+5. **`fwe` is a free credit on perf_public_set.** It's an easy task
    (find the most frequent word). Don't let 100% on fwe mask the fact
    that NIAH/QA are 23-30%.
-5. **Repetition collapse is the dominant failure mode for current W4A16
+6. **Repetition collapse is the dominant failure mode for current W4A16
    quants on SOAR.** Sampling with temperature=0 + max_tokens=65536
    gives the model 30+ minutes to dig its own grave. Mitigations:
    `repetition_penalty > 1.0`, or a tighter `max_tokens` ceiling.
-6. **Local acc != platform acc.** The platform uses a hidden eval set
+7. **Local acc != platform acc.** The platform uses a hidden eval set
    that almost certainly has a harder task mix than perf_public_set.
    v21 local 49% → platform 0% is a 49-point gap, partially explained
-   by hidden distribution differences.
+   by hidden distribution differences AND the H4 tokenizer-drift bug.
+8. **Don't waste an Exp on chunked-prefill (Exp H, 2026-05-22).**
+   chunked-prefill 8192 vs 65536 changes local acc by ≤0.5pp on the
+   v21 artifact (48.78 vs 49.00). It's a perf knob, not an acc knob.
+   All four historical tarballs (RTN, v17, v21, v22) used 8192 → it
+   does NOT explain the platform=0 cliff.
 
 ---
 
@@ -198,6 +215,7 @@ counts matched lines explicitly. As of v21, sed matches 7+3 lines.
 | GPTQ + qzeros bug                                       | acc=0    | qzeros must be 0x88888888                           |
 | GPTQ + qzeros fix + chat-tpl ON + left-trunc + 8K (v21) | acc=49 / platform 0 | repetition collapse on long prompts |
 | FP8 KV cache                                            | crash    | incompatible with MiniCPM sparse backend           |
+| chunked-prefill 8192 (Exp H, 2026-05-22)                | local=48.78 (vs 49.00 baseline) | chunked-prefill is NOT the platform-0 differentiator; -0.22pp is noise. Test confirms 8192 is safe to ship in v23. |
 
 ## What might work (untested)
 
