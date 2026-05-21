@@ -60,29 +60,97 @@ def validate_variant(variant_dir: Path) -> list[str]:
 
     Mode is auto-detected:
         - If quantize_gptqmodel_w4a16.py exists → GPTQ mode (must have
-          qzeros fix + truncation_side="left")
+          qzeros fix + truncation_side="left" + hardened-fix markers +
+          H4 tokenizer-overwrite fix)
         - Else → BF16 / identity mode (only prepare_env/prepare_model required)
+
+    Per-check rationale + commit references:
+        - fix_qzeros_for_marlin presence: gptqmodel 7.0 qzeros=7 bug
+          (see SUBMISSIONS.md "Hard constraints / GPTQModel-specific")
+        - POST-CHECK marker: hardened fix (commit d8aaaf1e4) catches
+          silent-layout-drift on the platform; the old fix could no-op
+        - copy_runtime_assets guard removal: H4 (commit 57f9cef06)
+          ensures base BF16 tokenizer wins over GPTQModel re-serialized
+          version; required for transformers<4.45 platforms
+        - gptqmodel pin: H2 (commit d8aaaf1e4) prevents the loose
+          `>=7.0,<8.0` install gate from accepting a different .x
+        - DIAGNOSTIC blocks: commit d8aaaf1e4 surface what the platform
+          quantization actually does so failures are debuggable remotely
+        - chunked-prefill 8K isolation: 2026-05-22 v23 isolates the
+          quant pipeline fix from the +83% perf tweak so v23 platform=0
+          → fix attribution is unambiguous
     """
     problems: list[str] = []
 
     quant_script = variant_dir / "quantize_gptqmodel_w4a16.py"
     if quant_script.is_file():
-        # GPTQ path — validate both critical fixes
+        # ---- GPTQ path: validate all known critical fixes ----
         if not grep_file(quant_script, "fix_qzeros_for_marlin"):
             problems.append("quantize script: no fix_qzeros_for_marlin found (qzeros bug not patched)")
+        if not grep_file(quant_script, "POST-CHECK"):
+            problems.append("quantize script: fix_qzeros_for_marlin not hardened (no POST-CHECK marker); vulnerable to silent layout drift on platform — see commit d8aaaf1e4")
         if not grep_file(quant_script, 'truncation_side = "left"'):
             problems.append('quantize script: truncation_side="left" not set')
+        # H4 (commit 57f9cef06): the copy_runtime_assets fix removed the
+        # `if not target.exists()` guard and added a docstring canary
+        # `CRITICAL 2026-05-22: this function now OVERWRITES`. We check
+        # for the canary because the buggy literal string still appears
+        # in the docstring of the FIXED version (it's quoted as part of
+        # the explanation), so a naive grep for the guard string gives
+        # a false positive.
+        if not grep_file(quant_script, "CRITICAL 2026-05-22: this function now OVERWRITES"):
+            problems.append(
+                "quantize script: copy_runtime_assets fix canary missing — "
+                "tokenizer files in the artifact may be GPTQModel's re-serialized "
+                "(6.7MB tokenizer.json + sidecar chat_template.jinja). On platforms with "
+                "transformers<4.45 the chat_template will load empty -> garbage output. "
+                "Fix: remove the `if not target.exists()` guard so copy unconditionally "
+                "overwrites GPTQModel's writes with base BF16 originals, and add the "
+                "documented `CRITICAL 2026-05-22: this function now OVERWRITES` marker "
+                "in the docstring. See commit 57f9cef06 / H4 in "
+                "experiments/PLATFORM_DEBUG_HANDOFF.md."
+            )
     # else: BF16 path; no quantize script expected.
 
     prepare_env = variant_dir / "prepare_env.sh"
     if not prepare_env.is_file():
         problems.append("missing prepare_env.sh")
-    elif not grep_file(prepare_env, "SGLANG_SERVER_ARGS"):
-        problems.append("prepare_env.sh: SGLANG_SERVER_ARGS not exported")
+    else:
+        if not grep_file(prepare_env, "SGLANG_SERVER_ARGS"):
+            problems.append("prepare_env.sh: SGLANG_SERVER_ARGS not exported")
+        # H2: gptqmodel pin (only when quantize script also present)
+        if quant_script.is_file():
+            if not grep_file(prepare_env, "GPTQMODEL_PIN") and \
+               not grep_file(prepare_env, "gptqmodel==7.0.0"):
+                problems.append(
+                    "prepare_env.sh: gptqmodel not pinned to ==7.0.0 — platform may use a different 7.x .x release "
+                    "than AutoDL local. See commit d8aaaf1e4 / H2."
+                )
+        # Variable isolation: chunked-prefill 65536 confounds v23 acc
+        # attribution. Should stay at 8192 in submission tarballs until
+        # v23 confirms the quant pipeline fixes work.
+        if grep_file(prepare_env, "chunked-prefill-size 65536"):
+            problems.append(
+                "prepare_env.sh: chunked-prefill-size 65536 detected in SGLANG_SERVER_ARGS. "
+                "This was a 2026-05-21 cherry-pick and was reverted on 2026-05-22 because it "
+                "confounds v23 platform-acc attribution (v23 already differs from v22 in the "
+                "hardened qzeros + tokenizer fixes; adding chunked-prefill 65536 makes a "
+                "platform=0 result ambiguous between fix-failure and chunked-prefill poisoning). "
+                "Use 8192 here for v23/v24; bring 65536 back in v25+ once the quant fixes are "
+                "proven on platform. The 65536 config still lives in run_sala.sh for local bench."
+            )
 
     prepare_model = variant_dir / "prepare_model.sh"
     if not prepare_model.is_file():
         problems.append("missing prepare_model.sh")
+    elif quant_script.is_file():
+        # Diagnostic blocks (commit d8aaaf1e4): platform-side observability.
+        if not grep_file(prepare_model, "DIAGNOSTIC:"):
+            problems.append(
+                "prepare_model.sh: no DIAGNOSTIC: prints — platform log will not show "
+                "calib jsonl size / output dir layout / safetensors file count. Without "
+                "these, a platform=0 result is hard to attribute remotely. See commit d8aaaf1e4."
+            )
 
     # Optional but standard for GPTQ
     if quant_script.is_file() and not (variant_dir / "perf_public_set.jsonl").is_file():
