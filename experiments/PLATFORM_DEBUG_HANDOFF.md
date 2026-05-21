@@ -9,32 +9,40 @@
 
 ## Server-side sync cheat sheet — DO THIS FIRST
 
-AutoDL instances start **blank** every time (only `/root/autodl-fs/` persistent NAS survives). Pick the path that matches your situation.
+Layout on this user's AutoDL setup:
+
+| Path | Contents | Persistent across instance swaps? |
+|---|---|---|
+| `/root/soar/sglang/` | repo working tree (bootstrap default `$HOME/soar`) | NO — wiped on instance swap |
+| `/root/autodl-fs/zyn/bootstrap_gpu.sh` | bootstrap script | YES (NAS) |
+| `/root/autodl-fs/zyn/models/` | per-user quant artifacts (e.g. `submission_gptqmodel_calib_w4a16-quantized/`) | YES |
+| `/root/autodl-fs/zyn/logs/` | persistent logs (watchdog snapshots etc.) | YES |
+| `/root/autodl-fs/zyn/soar_deploy_key` | SSH deploy key for the repo | YES |
+| `/root/autodl-fs/models/` | shared MiniCPM-SALA base model (read-only NAS) | YES |
+
+So on a brand-new instance, only `/root/autodl-fs/` is there; `/root/soar/` has to be re-bootstrapped. On an already-bootstrapped instance, the repo already exists at `/root/soar/sglang/` and just needs `git pull`.
 
 ### Fresh AutoDL instance (no repo on disk yet)
 
-Use the bootstrap script. It clones via SSH deploy key + sets up the venv + compiles all the kernel deps. 30–60 min wall time.
+The bootstrap script's default `WORK_DIR=$HOME/soar` matches the user's layout, so do NOT override it. Override `BRANCH` (default is `minicpm_sala`, we want `quant/w4a16`) and `SSH_KEY_PATH` (default is `$HOME/soar_deploy_key` which doesn't exist on fresh instances).
+
+30–60 min wall time (compiles InfLLM-V2 + sparse_kernel + tilelang + flash-linear-attention + flash-attn from source).
 
 ```bash
-# Single-line invocation (env vars MUST be on the same line as the bash call
-# so they're inherited into the script).
-WORK_DIR=/root/autodl-tmp/zyn/soar \
 BRANCH=quant/w4a16 \
 SSH_KEY_PATH=/root/autodl-fs/zyn/soar_deploy_key \
 bash /root/autodl-fs/zyn/bootstrap_gpu.sh install 2>&1 \
   | tee /root/autodl-fs/zyn/logs/install_$(date +%Y%m%d_%H%M%S).log
 ```
 
-After bootstrap finishes, the repo is at `/root/autodl-tmp/zyn/soar/sglang/` on branch `quant/w4a16`, already up to date with the latest pushed commits (the script clones fresh from origin). **No `git pull` needed.**
+After this finishes, the repo is at `/root/soar/sglang/` on branch `quant/w4a16`, already up to date with origin (the script clones fresh). **No `git pull` needed.**
 
-`bootstrap_gpu.sh install` is venv-only — no model download, no server start. Idempotent: re-runs skip finished steps. Available actions: `all | install | model | serve | serve-bg | bench | ssh | autosync | autosync-stop | autosync-once`.
+`install` is venv-only — no model download, no server start. Idempotent: re-runs skip finished steps. Other actions: `all | model | serve | serve-bg | bench | ssh | autosync | autosync-stop | autosync-once`.
 
-### Instance you've already bootstrapped before (repo on disk)
-
-Just pull.
+### Instance that's already bootstrapped (repo at /root/soar/sglang/)
 
 ```bash
-cd /root/autodl-tmp/zyn/soar/sglang
+cd /root/soar/sglang
 git fetch origin
 git status                    # expect: clean, on quant/w4a16
 git branch --show-current     # expect: quant/w4a16
@@ -44,14 +52,14 @@ git pull origin quant/w4a16
 ### Verify the pull landed (either path)
 
 ```bash
-cd /root/autodl-tmp/zyn/soar/sglang
+cd /root/soar/sglang
 git log --oneline -5
 # Top-to-bottom should read:
+#   450174e4d docs: handoff covers fresh AutoDL bootstrap vs existing-repo pull
 #   509d341fd docs: server-side sync cheat sheet at top of handoff
 #   5a1480678 perf: cherry-pick chunked-prefill 65K + op-fusion verify patch
 #   7a53cd2ac tools: parse_quant_diagnostic for platform vs local log diff
 #   d8aaaf1e4 v21+v22 platform=0: harden fix_qzeros + pin gptqmodel + diagnostics
-#   5c028829c night work: 14 files of CPU-only infra + bug fix in multi-adaptive windowing
 
 # CPU-only self tests (no GPU needed; runs in ~1s)
 source sglang_minicpm_sala_env/bin/activate
@@ -62,10 +70,17 @@ python3 tools/parse_quant_diagnostic.py --help | head -5
 
 # Baseline-extract the latest known-good local quant log (the v21 run that
 # scored 49 locally). We'll compare future platform runs against this.
+# Output goes to /root/autodl-fs/zyn/logs/ (persistent NAS, survives
+# instance swaps).
 python3 tools/parse_quant_diagnostic.py \
     --input scripts/logs/local_eval_quant_submission_gptqmodel_calib_w4a16_1779289794.log \
     --output-md /root/autodl-fs/zyn/logs/baseline_local_quant.md
 head -20 /root/autodl-fs/zyn/logs/baseline_local_quant.md
+
+# Inspect the existing v21 quant artifact on persistent NAS (no GPU needed).
+# This is the artifact that locally scored 49.
+python3 tools/inspect_quant_artifact.py \
+    --artifact /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
 ```
 
 If `tests/test_parse_quant_diagnostic.py` fails, **stop** — the tool isn't going to be reliable for the platform-vs-local diff later. Debug before doing anything else.
