@@ -169,19 +169,64 @@ Two SOAR platform submissions today, **both returned `acc_ori=0, final_score=0`*
 - SOAR `eval_model.py` has **no hard `acc < 80 → 0` gate** (formula: `min(avg_score/80*100, 100)`). Local 49 should map to ~61 on platform. Platform giving 0 means the model is generating garbage on the private set, not failing a gate.
 - `perf_private_set.jsonl` and `perf_public_set.jsonl` share length distribution and task types (per OpenBMB/SOAR-Toolkit README) — distribution drift is a weak explanation
 
-### Best-fit root cause hypothesis (H1)
+### Best-fit root cause hypothesis (H1 + H4 — co-equal)
 
-`fix_qzeros_for_marlin()` **silently no-op'd on the platform** because the platform's gptqmodel version wrote the quantized model in a layout the function didn't recognize. Specifically suspected paths:
+Two independent failure modes, either of which alone could explain
+v17/v21/v22 platform=0, both fixed on 2026-05-21..22:
 
-1. **Single-file output**: glob `model-*.safetensors` missed `model.safetensors` (no shard suffix). 6.5GB W4A16 model fits in one shard if max_shard_size >= 10GB (HF transformers < 4.50 default).
-2. **dtype mismatch**: function required `tensor.dtype == torch.int32`; gptqmodel 7.0.x may write `uint32` → skipped entirely.
-3. **Non-uniform qzeros**: function required `unique == [0x77777777]` exactly; any other layout went to WARN-and-skip branch.
+**H1 — `fix_qzeros_for_marlin()` silently no-op'd on the platform.**
+The platform's gptqmodel version wrote the quantized model in a layout
+the old fix function didn't recognize (likely single-file
+`model.safetensors`, or different dtype, or non-uniform qzeros values).
+With qzeros not patched, every Marlin dequant adds a `+1*scale` bias →
+garbage output that nonetheless "served normally" (matches the
+byte-identical bench timings across v17/v21/v22). Fixed in commit
+`d8aaaf1e4`: hardened to catch any safetensors layout, accept uint32,
+per-element replacement, and HARD-EXIT on suspicious states.
 
-Local AutoDL quant logs (`scripts/logs/local_eval_quant_..._1779289794.log`) show the function patching 96 qzeros tensors across 3 shards on `1779289794`'s artifact (the one that locally evaled to 49). So fix works on AutoDL. Platform = unknown, no logs available.
+**H4 — GPTQModel re-serialized the tokenizer.** Discovered 2026-05-22 by
+server-side analysis. `GPTQModel.save()` calls HF
+`tokenizer.save_pretrained()`, which under newer tokenizers library
+splits the chat_template into BOTH inline `tokenizer_config.json` AND a
+separate `chat_template.jinja` sidecar file. `transformers >= 4.45`
+reads either source consistently; **transformers < 4.45 reads ONLY
+inline**. If the platform's transformers is older than 4.45 (consistent
+with the AutoDL local 49 → platform 0 gap, since AutoDL has
+transformers 4.57.1), `apply_chat_template()` returns an unstructured
+raw prompt with no `<|im_start|>user\n...<|im_end|>\n<|im_start|>assistant`
+markers. The model, never having seen prompts without those markers,
+emits garbage. Additionally, `tokenizer.json` grew from 3.6M to 6.7M
+post-re-serialization, with `added_tokens.json` appearing where it
+wasn't in the base model — vocab encoding likely also drifted.
+
+This explains the RTN-passes-at-42 vs every-GPTQModel-fails-at-0 gap
+perfectly: RTN's `quantize_gptq_rtn_sym.py:107` (`copy_metadata`)
+unconditionally `shutil.copy2()` overwrites tokenizer files from the
+input dir AFTER its numpy quant step — so RTN's artifact has the base
+model's tokenizer byte-for-byte. v17/v21/v22's
+`quantize_gptqmodel_w4a16.py:976` (`copy_runtime_assets`) had an
+`if not target.exists()` guard that silently kept GPTQModel's bloated
+re-serialization. Fixed in commit `57f9cef06`: removed the guard; order
+of writes documented in the function's docstring.
+
+**Two fixes, two independent variables.** Both could simultaneously
+contribute to platform=0 — the v23 platform log will tell us which (or
+both) actually moved the needle:
+
+- If hardened fix_qzeros raises `FATAL` on platform → H1 active, fix
+  it iteratively from the SUMMARY block's sample hex values
+- If qzeros passes OK but acc still 0 → H1 wasn't it; H4 was the only
+  fix needed (or there's an H5 we haven't seen)
+- If acc rises to >40 → at least one fix bit. The qzeros-fix SUMMARY
+  block log tells whether qzeros was actually patched (then H1+H4
+  combined) or already OK (then H4 alone was the fix)
+- If acc rises to <40 → partial fix. Look at the per-task breakdown
+  (`tools/analyze_predictions.py`) and the qzeros SUMMARY to see what
+  improved vs what didn't
 
 ### Secondary hypothesis (H2)
 
-`prepare_env.sh` install gate was loose: `gptqmodel>=7.0,<8.0`, and the install was **skipped** if any 7.x was already on the platform's base env. Platform may have had pre-installed `gptqmodel` at a different .x point release than AutoDL's `7.0.0`.
+`prepare_env.sh` install gate was loose: `gptqmodel>=7.0,<8.0`, and the install was **skipped** if any 7.x was already on the platform's base env. Platform may have had pre-installed `gptqmodel` at a different .x point release than AutoDL's `7.0.0`. Fixed in `d8aaaf1e4`: pinned to `gptqmodel==7.0.0` exactly.
 
 ### Tertiary hypothesis (H3) — python ABI mismatch
 
@@ -356,6 +401,8 @@ The diff report ends with a "Verdict heuristic" section that names the most like
 | `tools/inspect_quant_artifact.py` | qzeros + scales sanity check (CPU, no model load) |
 | `tools/repetition_analyzer.py` | Per-prediction loop detection (built last night) |
 | `tools/parse_quant_diagnostic.py` | **NEW (2026-05-21)**: parse the new DIAGNOSTIC + qzeros-fix SUMMARY blocks from a quant log. Use `--compare` to diff platform log vs local log; the heuristic verdict at the end of the diff report points to the most likely divergence. Backward-compatible with legacy `[qzeros-fix]` format. Has 22 unit tests in `tests/test_parse_quant_diagnostic.py`. |
+| `tools/check_tokenizer_compat.py` | **NEW (2026-05-22)**: CPU-only diff between base BF16 tokenizer dir and a quant artifact. Detects the H4 failure mechanism (chat_template inline vs sidecar disagreement, bloated tokenizer.json, vocab size drift). Exits non-zero if drift detected. |
+| `scripts/overwrite_tokenizer_with_base.sh` | **NEW (2026-05-22)**: applies the H4 fix to an EXISTING quant artifact without re-quantizing. Backups go to `_tokenizer_gptqmodel_backup/`. Supports `--dry-run` and `--restore`. |
 | `experiments/op_fusion_verify.patch` | **NEW (2026-05-21)**: drop-in patch on top of `perf/op-fusion` that adds runtime norm+add correctness check, gated by `MINICPM_FUSION_VERIFY=1`. Validated `git apply --check` clean. Apply when ready to GPU-validate the op-fusion branch. |
 | `tools/quant_config_validator.py` | Tarball pre-flight (qzeros / sed / SGLANG_SERVER_ARGS) |
 | `tools/pack_submission.py` | Auto-pack v23/v24/etc |
@@ -371,9 +418,55 @@ User memory at `/home/zyn/.claude/projects/-home-zyn-program-2026-Spring-mlsys-c
 ## TL;DR
 
 1. **v21+v22 both = 0 on platform** despite v21 local = 49. RTN = 40. So it's neither module-set nor "all 4-bit quant is broken".
-2. **Best fit**: `fix_qzeros_for_marlin()` silently no-op'd on the platform because the platform's gptqmodel wrote a layout the function didn't expect (likely single-file `model.safetensors` + glob mismatch, or different dtype).
-3. **Pre-processed**: hardened the fix to (a) catch any safetensors layout, (b) HARD EXIT on suspicious states, (c) print diagnostic info; pinned `gptqmodel==7.0.0`; added shell-level diagnostic prints before/after quantize.
-4. **Next step**: re-quant locally to confirm no regression → pack v23 → submit one slot → read the new diagnostic output → that tells us exactly what to fix next.
+2. **Two best-fit hypotheses, both addressed**:
+   - **H1**: `fix_qzeros_for_marlin()` silently no-op'd on platform (gptqmodel version drift). Fix: hardened in `d8aaaf1e4`.
+   - **H4**: GPTQModel re-serialized tokenizer; platform's `transformers<4.45` reads only inline chat_template → empty → garbage. RTN copies tokenizer unconditionally (works). Fix: `copy_runtime_assets` overwrite in `57f9cef06`.
+3. **Pre-processed**: hardened qzeros fix; pinned `gptqmodel==7.0.0`; shell-level diagnostic prints before/after quantize; tokenizer overwrite in quantize script + standalone tools to verify and apply on existing artifacts.
+4. **v23 packaging checklist** (use this before submitting):
+
+   ```bash
+   cd /root/soar/sglang
+   
+   # (a) Confirm the source has all 4 fixes
+   grep -n "fix_qzeros_for_marlin\|copy_runtime_assets\|gptqmodel==7.0.0\|chunked-prefill-size 8192" \
+       submission_gptqmodel_calib_w4a16/quantize_gptqmodel_w4a16.py \
+       submission_gptqmodel_calib_w4a16/prepare_env.sh | head -10
+   # Expect: 4 keyword hits across these files
+   
+   # (b) Manual quick-test on EXISTING v21 artifact (no re-quant; ~5 min):
+   #     Apply tokenizer overwrite, check compat, re-eval locally.
+   bash scripts/overwrite_tokenizer_with_base.sh \
+       --artifact /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized \
+       --base /root/autodl-fs/models/OpenBMB/MiniCPM-SALA
+   python3 tools/check_tokenizer_compat.py \
+       --base /root/autodl-fs/models/OpenBMB/MiniCPM-SALA \
+       --artifact /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+   # Expect: "no drift detected" exit code 0
+   
+   # (c) Or full re-quant via the hardened script (~25 min on GPU):
+   bash scripts/local_eval.sh \
+       --variant submission_gptqmodel_calib_w4a16 \
+       --force-requant \
+       --eval-data submission_gptqmodel_calib_w4a16/perf_public_set.jsonl \
+       --num-samples 150
+   # Read the [qzeros-fix] SUMMARY block in the quant log; should show
+   #   96/96 patched, POST-CHECK 0x88888888, OK.
+   # Local acc should be ~49 or higher (no regression from H4 fix).
+   
+   # (d) Pack v23
+   python3 tools/pack_submission.py \
+       --variant submission_gptqmodel_calib_w4a16 \
+       --suffix _v23 \
+       --output-dir .
+   python3 tools/quant_config_validator.py \
+       --tarball ./soar_gptqmodel_calib_w4a16_mlp_only_submission_*_v23.tar.gz
+   
+   # (e) Submit v23. Read the next platform log via:
+   python3 tools/parse_quant_diagnostic.py \
+       --input /path/to/platform_v23.log \
+       --compare scripts/logs/local_eval_quant_submission_gptqmodel_calib_w4a16_1779289794.log \
+       --output-md /root/autodl-fs/zyn/logs/diff_platform_v23_vs_local.md
+   ```
 
 ---
 
