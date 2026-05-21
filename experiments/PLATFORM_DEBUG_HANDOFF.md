@@ -185,29 +185,34 @@ byte-identical bench timings across v17/v21/v22). Fixed in commit
 per-element replacement, and HARD-EXIT on suspicious states.
 
 **H4 — GPTQModel re-serialized the tokenizer.** Discovered 2026-05-22 by
-server-side analysis. `GPTQModel.save()` calls HF
+server-side analysis; **mechanism verified 2026-05-22 against transformers
+v4.46.0 vs v4.47.0 source**. `GPTQModel.save()` calls HF
 `tokenizer.save_pretrained()`, which under newer tokenizers library
 splits the chat_template into BOTH inline `tokenizer_config.json` AND a
-separate `chat_template.jinja` sidecar file. `transformers >= 4.45`
-reads either source consistently; **transformers < 4.45 reads ONLY
-inline**. If the platform's transformers is older than 4.45 (consistent
-with the AutoDL local 49 → platform 0 gap, since AutoDL has
-transformers 4.57.1), `apply_chat_template()` returns an unstructured
-raw prompt with no `<|im_start|>user\n...<|im_end|>\n<|im_start|>assistant`
-markers. The model, never having seen prompts without those markers,
-emits garbage. Additionally, `tokenizer.json` grew from 3.6M to 6.7M
-post-re-serialization, with `added_tokens.json` appearing where it
-wasn't in the base model — vocab encoding likely also drifted.
+separate `chat_template.jinja` sidecar file. Sidecar support was added
+in **transformers v4.47.0** (PR #33957, 2024-12-05) via
+`CHAT_TEMPLATE_FILE = "chat_template.jinja"` at `tokenization_utils_base.py:108`,
+with precedence: **sidecar wins over inline** when both exist. Older
+transformers (`< 4.47`) silently ignores the sidecar — doesn't even
+attempt to read it. The symptom direction (AutoDL 4.57.1 = 49 vs
+platform = 0) implies GPTQModel wrote a **correct sidecar + broken-or-
+different inline**: AutoDL reads the sidecar and works; platform (suspected
+`< 4.47`) reads the inline and fails. `tokenizer.json` also grew from
+3.6M to 6.7M post-re-serialization, with `added_tokens.json` appearing
+where it wasn't in the base model — vocab encoding may also have
+drifted.
 
 This explains the RTN-passes-at-42 vs every-GPTQModel-fails-at-0 gap
 perfectly: RTN's `quantize_gptq_rtn_sym.py:107` (`copy_metadata`)
 unconditionally `shutil.copy2()` overwrites tokenizer files from the
 input dir AFTER its numpy quant step — so RTN's artifact has the base
-model's tokenizer byte-for-byte. v17/v21/v22's
+model's tokenizer byte-for-byte (no sidecar, only inline). v17/v21/v22's
 `quantize_gptqmodel_w4a16.py:976` (`copy_runtime_assets`) had an
 `if not target.exists()` guard that silently kept GPTQModel's bloated
 re-serialization. Fixed in commit `57f9cef06`: removed the guard; order
-of writes documented in the function's docstring.
+of writes documented in the function's docstring. Overwriting from base
+removes the sidecar entirely, so both AutoDL and platform read the
+same inline regardless of transformers version.
 
 **Two fixes, two independent variables.** Both could simultaneously
 contribute to platform=0 — the v23 platform log will tell us which (or
