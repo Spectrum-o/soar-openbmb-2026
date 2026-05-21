@@ -1,0 +1,1 @@
+../submission_gptqmodel_calib_w4a16/prepare_model.sh

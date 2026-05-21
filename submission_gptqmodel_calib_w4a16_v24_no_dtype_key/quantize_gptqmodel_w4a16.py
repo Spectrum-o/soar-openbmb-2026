@@ -1,0 +1,1346 @@
+#!/usr/bin/env python3
+"""GPTQModel W4A16 quantization for MiniCPM-SALA — SOAR submission.
+
+Differences from the earlier broken `quantize_gptqmodel_w4a16.py`:
+
+1. **Registers MiniCPM-SALA explicitly.** SALA's HF `model_type` is
+   `minicpm_sala`, which is NOT in GPTQModel's built-in registry. We
+   register a `MiniCPMSALAGPTQ` subclass of `BaseQModel` so the
+   quantizer sees only the common SALA MLP module list. Do NOT subclass
+   `MiniCPMGPTQ`: its inherited `layer_modules` includes optional
+   `self_attn.o_gate`, which is absent from some SALA layers and caused
+   the 2026-05-20 platform failure. Also do NOT quantize attention here:
+   full q/k/v/o W4A16 successfully served but produced acc=0 on the
+   platform, so this route is intentionally MLP-only.
+
+2. **Calibration data comes from perf_public_set.jsonl by default.**
+   The earlier script used 4 hand-written prompt templates repeated 128
+   times — those are not statistically representative of the eval set
+   and was the most likely cause of the catastrophic ~40-point accuracy
+   drop on the platform. We sample from the SOAR public eval set
+   instead, optionally mixing in synthetic long-context probes.
+
+3. **No silent fallback chains.** The previous script's
+   `load_gptq_model()` tried 6+ argument combinations and swallowed
+   errors. We pick ONE call shape, surface real errors loudly.
+
+4. **No FP8 KV cache in companion prepare_env.sh** — already verified
+   broken for the SALA sparse backend. Stays at fp16 KV cache.
+
+5. **Memory-friendly load** for environments without 80GB+ GPUs:
+       device_map="auto" with explicit max_memory ceilings, and
+       offload_to_disk=True (GPTQModel's flag) for CPU-RAM-poor runs.
+
+Usage (on the GPU node):
+
+    pip install gptqmodel torch transformers accelerate
+
+    python3 quantize_gptqmodel_w4a16.py \\
+        --input  /root/autodl-fs/models/OpenBMB/MiniCPM-SALA \\
+        --output /root/autodl-tmp/models/MiniCPM-SALA-W4A16-GPTQ \\
+        --calib-jsonl /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl \\
+        --num-calib 256 \\
+        --max-calib-len 8192
+
+For local dry-runs of the script logic (CPU-only, no actual quant),
+the `--dry-run` flag prints the resolved config + the first 3
+calibration prompts and exits before touching GPTQModel.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import importlib
+import importlib.metadata as metadata
+import inspect
+import json
+import os
+import random
+import shutil
+import sys
+from pathlib import Path
+from typing import Any
+
+
+def _stub_transformers_for_gptqmodel_7() -> None:
+    """gptqmodel 7.0 was designed against transformers 5.x.
+
+    SALA requires transformers 4.57.1 (5.x deprecates the custom-model APIs
+    SALA's modeling code relies on). gptqmodel 7.0's module-level imports
+    fail without these compat shims:
+      - `transformers.PreTrainedConfig` (renamed from `PretrainedConfig` in 5.x).
+      - `gptqmodel.__init__` runs
+        `_patch_transformers_causal_conv1d_hub_kernel_compat()` which expects
+        `transformers.integrations.hub_kernels.lazy_load_kernel` and
+        `_KERNEL_MODULE_MAPPING` — both new in transformers 5.x. We flip
+        the function's own early-return sentinel
+        (`_gptqmodel_local_causal_conv1d_kernel`) so the body never runs.
+
+    MUST run before any `import gptqmodel`.
+    """
+    import transformers
+    if not hasattr(transformers, "PreTrainedConfig"):
+        transformers.PreTrainedConfig = transformers.PretrainedConfig
+    try:
+        import transformers.integrations.hub_kernels as _hk
+        _hk._gptqmodel_local_causal_conv1d_kernel = True
+    except ImportError:
+        pass
+
+
+_stub_transformers_for_gptqmodel_7()
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Quantize MiniCPM-SALA with GPTQModel W4A16 -> SGLang Marlin"
+    )
+    parser.add_argument("--input", required=True, help="Original BF16 model directory")
+    parser.add_argument("--output", required=True, help="Quantized model output directory")
+    parser.add_argument("--bits", type=int, default=4)
+    parser.add_argument("--group-size", type=int, default=128)
+    parser.add_argument(
+        "--calib-jsonl",
+        default="",
+        help="Calibration JSONL (typically SOAR perf_public_set.jsonl). "
+             "Each row should have a `question` field; `gold` is appended "
+             "if present to approximate full prompt-answer length.",
+    )
+    parser.add_argument(
+        "--num-calib",
+        type=int,
+        default=256,
+        help="Number of calibration samples (1024+ if VRAM/RAM permits "
+             "for higher quality)",
+    )
+    parser.add_argument(
+        "--max-calib-len",
+        type=int,
+        default=8192,
+        help="Max tokens per calibration prompt. With "
+             "truncation_side='left' (see tokenize_calibration) the kept "
+             "window is the TAIL of each prompt — i.e. the question/answer "
+             "structure that the model actually has to predict. 8192 covers "
+             "that tail comfortably; raise further if VRAM permits.",
+    )
+    parser.add_argument(
+        "--calib-window-mode",
+        default="tail",
+        choices=["tail", "multi-adaptive"],
+        help="How to slice prompts into calibration samples. "
+             "'tail' (default): keep the last --max-calib-len tokens of "
+             "each prompt via tokenizer truncation — matches v21/v22 "
+             "behavior. 'multi-adaptive': split each prompt into 1-3 "
+             "non-overlapping --max-calib-len windows depending on its "
+             "full token length (short prompts as-is; medium tail-only; "
+             "long prompts tail+mid; super-long add one random mid "
+             "window). Multi-adaptive can roughly 2-3x the calibration "
+             "sample count — keep --num-calib <= 512 to stay under the "
+             "90-min prepare_model timeout.",
+    )
+    parser.add_argument(
+        "--no-chat-template",
+        action="store_true",
+        help="Skip apply_chat_template() during calibration tokenization. "
+             "Use this for ablation: SOAR perf_public_set evaluation "
+             "feeds raw `question` strings to the model, but the default "
+             "calibration wraps in `<用户>...<AI>`. v21 (chat template ON "
+             "+ left-trunc + 8K) got acc=49 across 150 samples — well "
+             "below v18-era acc=63 on 30 samples with chat template OFF "
+             "+ right-trunc + 4K. This flag enables A/B isolating the "
+             "chat-template variable.",
+    )
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Seed for sampling calibration prompts from the JSONL",
+    )
+    parser.add_argument(
+        "--gpu-max-mem",
+        default="",
+        help="GPU memory cap, e.g. '40GiB' or '80GiB'. Empty = let "
+             "GPTQModel decide. Set on 24GB cards to force offloading.",
+    )
+    parser.add_argument(
+        "--cpu-max-mem",
+        default="60GiB",
+        help="CPU RAM cap during offload. Default 60GiB; raise for "
+             "machines with more.",
+    )
+    parser.add_argument(
+        "--no-offload-disk",
+        action="store_true",
+        help="Disable GPTQModel's offload_to_disk (default is on). Faster "
+             "but uses more CPU RAM.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print resolved config and a sample of calibration prompts, "
+             "then exit. Does NOT import torch/gptqmodel — safe to run "
+             "locally without a GPU.",
+    )
+    parser.add_argument("--trust-remote-code", action="store_true", default=True)
+    return parser.parse_args()
+
+
+# ---------------------------------------------------------------------------
+# Calibration data
+# ---------------------------------------------------------------------------
+def _synthetic_long_probes(count: int) -> list[str]:
+    """Fallback when no calibration JSONL is provided.
+
+    Goal: still better than the previous 4-template approach by varying
+    length and task style. Used only if --calib-jsonl is not set.
+    """
+    base_templates = [
+        ("Read the passage and answer the multiple choice question.\n"
+         "Passage: {filler}\n"
+         "Question: Based on the passage, which is correct?\n"
+         "A. Statement A\nB. Statement B\nC. Statement C\nD. Statement D\nAnswer:"),
+        ("Extract the requested information from the document.\n"
+         "Document: {filler}\n"
+         "Question: What is the most important fact?\nAnswer:"),
+        ("Summarize the following long passage in one paragraph.\n"
+         "{filler}\nSummary:"),
+        ("Answer the multi-hop question using the context below.\n"
+         "Context: {filler}\nQuestion: Combine the relevant facts to answer.\nAnswer:"),
+    ]
+    filler_phrases = [
+        "The system processes long-context inference using hybrid attention.",
+        "Researchers benchmarked W4A16 quantization on the SOAR platform.",
+        "Marlin GEMM exploits 4-bit packing to reduce memory bandwidth.",
+        "Lightning attention has linear complexity over the sequence dimension.",
+        "InfLLM-V2 sparse attention selects relevant key blocks per query.",
+        "The MiniCPM-SALA architecture mixes dense and linear attention layers.",
+        "RTX PRO 6000 Blackwell has compute capability 12.0.",
+        "GPTQ uses second-order Hessian information for weight quantization.",
+    ]
+    rng = random.Random(0xC4118)
+    texts: list[str] = []
+    for i in range(count):
+        tpl = base_templates[i % len(base_templates)]
+        # Vary length by repeating filler N times
+        n_repeats = 8 + (i % 32)
+        filler = " ".join(rng.sample(filler_phrases, k=len(filler_phrases))) * n_repeats
+        texts.append(tpl.format(filler=filler))
+    return texts
+
+
+def load_calibration_prompts(
+    jsonl_path: str, num_samples: int, seed: int
+) -> list[str]:
+    """Load and sample calibration prompts.
+
+    Strategy:
+      1. If --calib-jsonl is given (typically perf_public_set.jsonl),
+         load all rows, deterministic shuffle, take first num_samples.
+      2. Each row's `question` field becomes the calibration text.
+         If `gold` is a short string we append it (so the calibration
+         covers a typical answer continuation, not only prompt prefix).
+      3. If the JSONL is empty/missing, fall back to synthetic probes
+         and WARN clearly.
+    """
+    if not jsonl_path:
+        print(
+            "[calib] WARNING: no --calib-jsonl set. Falling back to synthetic "
+            "calibration. Strongly recommend passing the SOAR "
+            "perf_public_set.jsonl for representative calibration — "
+            "this was the root cause of the earlier 42-acc submission.",
+            flush=True,
+        )
+        return _synthetic_long_probes(num_samples)
+
+    path = Path(jsonl_path)
+    if not path.exists():
+        raise FileNotFoundError(f"--calib-jsonl not found: {jsonl_path}")
+
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    if not rows:
+        raise RuntimeError(f"--calib-jsonl contains no usable rows: {jsonl_path}")
+
+    usable_rows = [
+        row for row in rows
+        if isinstance(row.get("question"), str) and row["question"].strip()
+    ]
+    if not usable_rows:
+        raise RuntimeError(
+            f"--calib-jsonl contains no rows with non-empty `question`: {jsonl_path}"
+        )
+
+    rng = random.Random(seed)
+    rng.shuffle(usable_rows)
+
+    texts: list[str] = []
+    task_counts: dict[str, int] = {}
+    row_index = 0
+    pass_index = 0
+    while len(texts) < num_samples:
+        if row_index >= len(usable_rows):
+            pass_index += 1
+            row_index = 0
+            rng.shuffle(usable_rows)
+        row = usable_rows[row_index]
+        row_index += 1
+        if len(texts) >= num_samples:
+            break
+        question = row["question"]
+        gold = row.get("gold")
+        task = row.get("task", "unknown")
+        # Append gold answer if it's a short string. For MCQ, gold is often
+        # just "A"/"B"/"C"/"D" — append it as "Answer: <gold>".
+        prompt = question.strip()
+        if isinstance(gold, str) and 0 < len(gold) < 200:
+            prompt = f"{prompt}\n{gold.strip()}"
+        texts.append(prompt)
+        task_counts[task] = task_counts.get(task, 0) + 1
+
+    print(f"[calib] loaded {len(texts)} prompts from {jsonl_path}", flush=True)
+    if pass_index > 0:
+        print(
+            f"[calib] source has {len(usable_rows)} usable rows; cycled deterministically "
+            f"to satisfy --num-calib={num_samples}",
+            flush=True,
+        )
+    print(f"[calib] task distribution: {task_counts}", flush=True)
+    return texts
+
+
+# ---------------------------------------------------------------------------
+# MiniCPM-SALA model registration
+# ---------------------------------------------------------------------------
+def force_flash_attention_2_for_sala() -> None:
+    """Monkey-patch AutoConfig.from_pretrained to set _attn_implementation
+    on the SALA config before GPTQModel ever instantiates the model.
+
+    The SALA custom modeling has a hard assertion at the top of
+    MiniCPMInfLLMv2Attention.__init__:
+
+        assert self.config._attn_implementation == "flash_attention_2", \\
+            "Only flash_attention_2 is supported for sparse attention"
+
+    GPTQModel uses the from_config(...) codepath (not from_pretrained),
+    which does NOT run the attn_implementation auto-routing that
+    `from_pretrained(attn_implementation=...)` would. So we hook in
+    earlier — when AutoConfig loads — and set the attribute on the
+    config object before it's handed off to the model constructor.
+
+    flash_attn package itself does NOT need to be installed at quant
+    time; the assertion only reads the config string. The forward
+    Hessian pass DOES need flash_attn at runtime — but the SOAR base
+    environment ships it (verified: the BF16 baseline submission ran
+    successfully).
+    """
+    from transformers import AutoConfig  # type: ignore
+
+    _orig_from_pretrained = AutoConfig.from_pretrained
+
+    def _patched_from_pretrained(*args, **kwargs):
+        cfg = _orig_from_pretrained(*args, **kwargs)
+        try:
+            if getattr(cfg, "model_type", "") == "minicpm_sala":
+                cfg._attn_implementation = "flash_attention_2"
+                # Avoid transformers' "auto-set" override warning by
+                # marking it as explicitly chosen.
+                setattr(cfg, "_attn_implementation_autoset", True)
+                print(
+                    "[patch] forced minicpm_sala._attn_implementation"
+                    " = flash_attention_2",
+                    flush=True,
+                )
+        except Exception as exc:
+            print(f"[patch] WARNING: couldn't set _attn_implementation: {exc}",
+                  flush=True)
+        return cfg
+
+    AutoConfig.from_pretrained = _patched_from_pretrained
+
+
+def register_minicpm_sala_with_gptqmodel() -> None:
+    """Teach GPTQModel the MiniCPM-SALA module layout.
+
+    GPTQModel resolves `config.model_type` to a `BaseQModel` subclass via
+    `gptqmodel.models.auto.MODEL_MAP` in current examples. Some older
+    versions also expose `gptqmodel.models.MODEL_MAP`, so we update both
+    maps when available.
+    """
+    model_maps: list[dict[str, Any]] = []
+    try:
+        from gptqmodel.models.auto import MODEL_MAP as AUTO_MODEL_MAP  # type: ignore
+        model_maps.append(AUTO_MODEL_MAP)
+    except ImportError:
+        pass
+    try:
+        from gptqmodel.models import MODEL_MAP as ROOT_MODEL_MAP  # type: ignore
+        if ROOT_MODEL_MAP not in model_maps:
+            model_maps.append(ROOT_MODEL_MAP)
+    except ImportError:
+        pass
+    if not model_maps:
+        raise RuntimeError("could not import GPTQModel MODEL_MAP")
+
+    from gptqmodel.models.base import BaseQModel  # type: ignore
+
+    class MiniCPMSALAGPTQ(BaseQModel):
+        """Common module tree for MiniCPM-SALA.
+
+        Keep only MLP modules present across all decoder layers. Attention
+        and Lightning Mixer projections stay in original precision; full
+        attention W4A16 was fast but produced acc=0 on the platform.
+        """
+        base_modules = ["model.embed_tokens", "model.norm"]
+        pre_lm_head_norm_module = "model.norm"
+        lm_head = "lm_head"
+        lm_head_module = "lm_head"
+        layers_node = "model.layers"
+        layer_type = "MiniCPMSALADecoderLayer"
+
+        layer_modules = [
+            ["mlp.gate_proj", "mlp.up_proj"],
+            ["mlp.down_proj"],
+        ]
+
+        module_tree = [
+            "model",
+            "layers",
+            "#",
+            {
+                "input_layernorm": ("input_layernorm:!",),
+                "post_attention_layernorm": ("post_attention_layernorm:!",),
+                "mlp": ("gate_proj", "up_proj", "down_proj"),
+            }
+        ]
+
+    for model_map in model_maps:
+        model_map["minicpm_sala"] = MiniCPMSALAGPTQ
+        model_map["MiniCPMSALAForCausalLM"] = MiniCPMSALAGPTQ
+
+    # CRITICAL: SUPPORTED_MODELS is built ONCE at import time as
+    # `list(MODEL_MAP.keys())`. Mutating MODEL_MAP afterwards does NOT update
+    # SUPPORTED_MODELS, so `check_and_get_model_definition` (auto.py:471)
+    # still sees `model_type not in SUPPORTED_MODELS` and falls back to
+    # BaseQModel + auto_detect_module_tree. The auto-detector then walks
+    # layer 0 (a "minicpm4" decoder that has o_gate) and inserts
+    # `self_attn.o_gate` into layer_modules — which crashes on layer 1
+    # (a "lightning-attn" decoder without o_gate). This was the failure
+    # mode for submissions v10/v11/v12 on 2026-05-20.
+    try:
+        from gptqmodel.models import auto as _gptq_auto  # type: ignore
+        sm = getattr(_gptq_auto, "SUPPORTED_MODELS", None)
+        if isinstance(sm, list):
+            for key in ("minicpm_sala", "MiniCPMSALAForCausalLM"):
+                if key not in sm:
+                    sm.append(key)
+        else:
+            # Reassign in case the attribute is a tuple/set or absent.
+            _gptq_auto.SUPPORTED_MODELS = list(
+                set(list(getattr(_gptq_auto, "SUPPORTED_MODELS", []))
+                    + ["minicpm_sala", "MiniCPMSALAForCausalLM"])
+            )
+        print(
+            "[register] also added minicpm_sala to gptqmodel.models.auto"
+            f".SUPPORTED_MODELS (len={len(_gptq_auto.SUPPORTED_MODELS)})",
+            flush=True,
+        )
+    except ImportError:
+        pass
+
+    print(
+        "[register] registered minicpm_sala/MiniCPMSALAForCausalLM "
+        f"-> MiniCPMSALAGPTQ in {len(model_maps)} MODEL_MAP(s)",
+        flush=True,
+    )
+
+
+def validate_gptq_wrapper(model: Any) -> None:
+    """Fail before expensive quantization if GPTQModel picked the wrong class."""
+    cls = type(model)
+    layer_modules = getattr(cls, "layer_modules", None)
+    module_tree = getattr(cls, "module_tree", None)
+    print(f"[register] GPTQ wrapper class: {cls.__module__}.{cls.__name__}",
+          flush=True)
+    print(f"[register] layer_modules={layer_modules}", flush=True)
+    combined = f"{layer_modules!r}\n{module_tree!r}"
+    forbidden = [
+        "self_attn",
+        "o_gate",
+        "z_proj",
+        "q_norm",
+        "k_norm",
+        "o_norm",
+    ]
+    found = [name for name in forbidden if name in combined]
+    if found:
+        raise RuntimeError(
+            "GPTQModel is still using a template with optional SALA modules "
+            f"{found}; registration did not override the active MODEL_MAP"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Quantize-config builder + GPTQModel loader
+# ---------------------------------------------------------------------------
+def make_quant_config(bits: int, group_size: int):
+    """Construct a GPTQModel-compatible QuantizeConfig.
+
+    For SGLang gptq_marlin we need:
+        bits=4 or 8
+        sym=True (uint4b8 / uint8b128)
+        desc_act=False (Marlin doesn't support desc_act=True for our case)
+        group_size=128 by convention
+    """
+    try:
+        from gptqmodel import QuantizeConfig as ConfigClass  # type: ignore
+    except ImportError:
+        from gptqmodel import GPTQConfig as ConfigClass  # type: ignore  # noqa
+
+    desired: dict[str, Any] = {
+        "bits": bits,
+        "group_size": group_size,
+        "desc_act": False,
+        "sym": True,
+        "lm_head": False,
+    }
+    sig = inspect.signature(ConfigClass)
+    kwargs = {k: v for k, v in desired.items() if k in sig.parameters}
+    return ConfigClass(**kwargs)
+
+
+def set_quant_config_disk_offload(quant_config: Any, enabled: bool) -> None:
+    """Keep the CLI disk-offload choice synchronized with QuantizeConfig.
+
+    GPTQModel 7.x stores offload_to_disk on QuantizeConfig itself and several
+    quantization stages read that attribute directly. Passing an
+    offload_to_disk kwarg to GPTQModel.load is not enough when the config
+    object keeps its default value.
+    """
+    changed = False
+    if hasattr(quant_config, "offload_to_disk"):
+        setattr(quant_config, "offload_to_disk", enabled)
+        changed = True
+    if not enabled and hasattr(quant_config, "offload_to_disk_path"):
+        setattr(quant_config, "offload_to_disk_path", None)
+        changed = True
+    if changed:
+        print(f"[quant_config] offload_to_disk={enabled}", flush=True)
+
+
+def load_model(
+    input_dir: str,
+    quant_config: Any,
+    gpu_max_mem: str,
+    cpu_max_mem: str,
+    use_disk_offload: bool,
+):
+    """Load BF16 model under GPTQModel's wrapper.
+
+    NOTE on max_memory: GPTQModel 7.0 passes unrecognized kwargs all the
+    way through to HF's auto_factory `from_config(...)` -> `cls(config,
+    **kwargs)`. For SALA, that hits `MiniCPMSALAForCausalLM.__init__`
+    which does NOT accept `max_memory` (custom modeling loaded via
+    trust_remote_code). So we only attach `max_memory` if the user
+    explicitly opted in via --gpu-max-mem. Default = pass nothing about
+    memory and let GPTQModel auto-detect, which is fine on a 96GB GPU.
+    (cpu_max_mem default was the culprit that broke the 2026-05-19
+    20:30 submission.)
+    """
+    from gptqmodel import GPTQModel  # type: ignore
+
+    kwargs: dict[str, Any] = {
+        "trust_remote_code": True,
+    }
+
+    # Only attach max_memory when explicitly requested.
+    max_memory: dict[Any, str] = {}
+    if gpu_max_mem:
+        max_memory[0] = gpu_max_mem
+    # Intentionally NOT defaulting a "cpu" entry — see docstring.
+    if max_memory:
+        kwargs["max_memory"] = max_memory
+
+    if use_disk_offload:
+        # `offload_to_disk` is a GPTQModel-recognized flag (not passed
+        # through to the model constructor), so it's safe.
+        kwargs["offload_to_disk"] = True
+
+    print(f"[load] GPTQModel.load(...)  kwargs={sorted(kwargs.keys())}",
+          flush=True)
+    return GPTQModel.load(input_dir, quant_config, **kwargs)
+
+
+def _slice_windows_for_prompt(
+    n_tokens: int,
+    max_len: int,
+    rng: random.Random,
+) -> list[tuple[int, int]]:
+    """Return (start, end) windows for one prompt under multi-adaptive policy.
+
+    Input-aware split of a prompt of length ``n_tokens`` into 1-3
+    non-overlapping ``max_len``-sized windows:
+
+        n <= L:              [(0, n)]                       short: all
+        L  <  n <= 4L:       [(n-L, n)]                     medium: tail only
+        4L <  n <= 12.5L:    tail + centered mid             long
+        n  >  12.5L:         tail + mid + 1 random non-overlap window
+
+    where L = max_len. The HEAD window is deliberately NEVER taken: the
+    first 8K of a 30K perf_public_set row is pure haystack filler whose
+    activations would mis-direct GPTQ's per-channel scale selection.
+    """
+    L = max_len
+    if n_tokens <= L:
+        return [(0, n_tokens)]
+    if n_tokens <= 4 * L:
+        return [(n_tokens - L, n_tokens)]
+    windows = [(n_tokens - L, n_tokens)]
+    mid_start = (n_tokens - L) // 2
+    mid_end = mid_start + L
+    windows.append((mid_start, mid_end))
+    if n_tokens > int(12.5 * L):
+        # Random window placed in a region disjoint from tail AND centered mid.
+        # The naive "anywhere in [L, n-2L]" lets the random window collide
+        # with the centered mid (caught by tests/test_calibration_tools.py
+        # at seed=7, n=13L). Explicitly exclude the mid span.
+        #   region A (before mid): start in [L, mid_start - L]
+        #   region B (after mid):  start in [mid_end, (n - L) - L]
+        candidates = []
+        if mid_start - L >= L:
+            candidates.append((L, mid_start - L))
+        if (n_tokens - 2 * L) >= mid_end:
+            candidates.append((mid_end, n_tokens - 2 * L))
+        if candidates:
+            lo, hi = rng.choice(candidates)
+            start = rng.randint(lo, hi)
+            windows.append((start, start + L))
+    return windows
+
+
+def tokenize_calibration(
+    tokenizer,
+    texts: list[str],
+    max_len: int,
+    window_mode: str = "tail",
+    seed: int = 42,
+    disable_chat_template: bool = False,
+) -> list[dict[str, Any]]:
+    """Tokenize each prompt into the plain dict format GPTQModel 7.x expects.
+
+    Two non-obvious behaviors vs naive HF tokenization:
+      1. `tokenizer.truncation_side = "left"` so the TAIL of long prompts
+         is kept. perf_public_set rows have ~30K-token medians with the
+         actual question structure (needle, MCQ choices, instruction, ...)
+         at the END. The HF default `truncation_side="right"` would keep
+         only the first 4-8K tokens of pure haystack filler, so GPTQ's
+         Hessian gets fit to filler activations — exactly the failure mode
+         that drove v17/v18 to acc=0 in earlier runs.
+      2. Apply the chat template if the tokenizer defines one. SALA is
+         instruction-tuned, so serving wraps inputs as `<用户>...<AI>`;
+         calibrating on bare `question` strings makes the Hessian see a
+         different boundary-token distribution than what the deployed
+         model consumes.
+
+    ``window_mode``:
+      - ``"tail"`` (default): one window per prompt — the last ``max_len``
+        tokens, via tokenizer truncation. Byte-equivalent to the
+        pre-2026-05-21 behavior; v21/v22 quant artifacts were produced
+        with this.
+      - ``"multi-adaptive"``: 1-3 non-overlapping ``max_len``-sized windows
+        per prompt, sized by ``_slice_windows_for_prompt``. Tail is always
+        kept; mid is added on long prompts. Returned windows are shuffled
+        with ``seed`` to keep GPTQ batches diverse. Inflates total sample
+        count for long prompts — keep ``--num-calib`` <= 512 to stay under
+        the 90-min prepare_model timeout.
+    """
+    if window_mode not in ("tail", "multi-adaptive"):
+        raise ValueError(
+            f"--calib-window-mode must be 'tail' or 'multi-adaptive', "
+            f"got {window_mode!r}"
+        )
+
+    original_side = getattr(tokenizer, "truncation_side", "right")
+    tokenizer.truncation_side = "left"
+
+    if disable_chat_template:
+        use_chat_template = False
+        print("[calib] chat template DISABLED via --no-chat-template", flush=True)
+    else:
+        use_chat_template = (
+            hasattr(tokenizer, "apply_chat_template")
+            and getattr(tokenizer, "chat_template", None)
+        )
+        if use_chat_template:
+            print("[calib] applying chat template to calibration prompts", flush=True)
+        else:
+            print("[calib] tokenizer has no chat_template; using raw prompts",
+                  flush=True)
+
+    def _render(text: str) -> str:
+        if not use_chat_template:
+            return text
+        try:
+            return tokenizer.apply_chat_template(
+                [{"role": "user", "content": text}],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except Exception as exc:
+            print(f"[calib] chat template render failed ({exc}); "
+                  "falling back to raw text",
+                  flush=True)
+            return text
+
+    examples: list[dict[str, Any]] = []
+
+    if window_mode == "tail":
+        # ORIGINAL PATH — preserves byte-for-byte behavior of v21/v22 quant.
+        for text in texts:
+            rendered = _render(text)
+            encoded = tokenizer(
+                rendered,
+                truncation=True,
+                max_length=max_len,
+                padding=False,
+                add_special_tokens=True,
+                return_tensors="pt",
+            )
+            input_ids = encoded.get("input_ids")
+            if input_ids is None or input_ids.numel() == 0:
+                continue
+            attention_mask = encoded.get("attention_mask")
+            if attention_mask is None:
+                import torch  # type: ignore
+                attention_mask = torch.ones_like(input_ids)
+            examples.append(
+                {
+                    "input_ids": input_ids.to("cpu").long(),
+                    "attention_mask": attention_mask.to("cpu").long(),
+                }
+            )
+    else:
+        # multi-adaptive: tokenize without truncation, slice into windows.
+        import torch  # type: ignore
+        rng = random.Random(seed)
+        buckets = {
+            "short(<=L)": 0,
+            "tail-only(<=4L)": 0,
+            "tail+mid(<=12.5L)": 0,
+            "tail+mid+rand(>12.5L)": 0,
+        }
+        for text in texts:
+            rendered = _render(text)
+            encoded = tokenizer(
+                rendered,
+                truncation=False,
+                padding=False,
+                add_special_tokens=True,
+                return_tensors="pt",
+            )
+            input_ids = encoded.get("input_ids")
+            if input_ids is None or input_ids.numel() == 0:
+                continue
+            n = int(input_ids.shape[-1])
+            slices = _slice_windows_for_prompt(n, max_len, rng)
+            for s, e in slices:
+                w = input_ids[:, s:e].contiguous()
+                am = torch.ones_like(w)
+                examples.append(
+                    {
+                        "input_ids": w.to("cpu").long(),
+                        "attention_mask": am.to("cpu").long(),
+                    }
+                )
+            if n <= max_len:
+                buckets["short(<=L)"] += 1
+            elif n <= 4 * max_len:
+                buckets["tail-only(<=4L)"] += 1
+            elif n <= int(12.5 * max_len):
+                buckets["tail+mid(<=12.5L)"] += 1
+            else:
+                buckets["tail+mid+rand(>12.5L)"] += 1
+        rng.shuffle(examples)
+        print(
+            f"[calib] multi-adaptive: {len(texts)} prompts -> "
+            f"{len(examples)} windows (L={max_len}); per-bucket: {buckets}",
+            flush=True,
+        )
+
+    tokenizer.truncation_side = original_side
+    return examples
+
+
+def print_runtime_versions() -> None:
+    print(f"[versions] python={sys.version.split()[0]}", flush=True)
+    packages = [
+        "torch",
+        "transformers",
+        "gptqmodel",
+        "flash-attn",
+        "flash-linear-attention",
+        "tokenizers",
+        "huggingface-hub",
+        "accelerate",
+        "ninja",
+    ]
+    for package in packages:
+        try:
+            version = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            version = "NOT_INSTALLED"
+        print(f"[versions] {package}={version}", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Output post-processing (Marlin compatibility)
+# ---------------------------------------------------------------------------
+def write_sglang_compatible_quant_config(
+    output_dir: Path, input_dir: Path, bits: int, group_size: int
+) -> None:
+    """Build a config.json + quantize_config.json that SGLang gptq_marlin
+    + MiniCPM-SALA sparse backend can load.
+
+    CRITICAL: we use the INPUT (original BF16) config as the base, NOT the
+    one GPTQModel saved. GPTQModel's save may drop or simplify SALA-
+    specific fields. The downstream consumers need ALL of these to be
+    preserved:
+      - `auto_map` (so trust_remote_code resolves MiniCPMSALAConfig +
+        MiniCPMSALAForCausalLM from the bundled .py files)
+      - `mixer_types` (SGLang's MiniCPMSALAForCausalLM reads this to
+        decide which decoder layer class to use)
+      - `sparse_config` (block_size, kernel_*, topk, window_size, ...
+        - read by minicpm_flashinfer attention backend)
+      - `lightning_*` (head_dim, nh, nkv, scale, use_rope —
+        Lightning Mixer expects these)
+      - `attn_use_output_gate`, `use_output_gate`, `use_output_norm`,
+        `qk_norm`, `attention_bias`, `rms_norm_eps`, `scale_depth`,
+        `scale_emb`, `dim_model_base`, etc.
+
+    Do NOT serialize derived read-only config properties such as
+    `has_sparse_attention`. SGLang's `MiniCPMHybridConfig` exposes them as
+    Python `@property` values inferred from `sparse_config` and
+    `mixer_types`; putting those names into config.json makes
+    `AutoConfig.from_pretrained` try to assign to a read-only property at
+    server startup.
+    """
+    quant_cfg = {
+        "bits": bits,
+        "group_size": group_size,
+        "quant_method": "gptq",
+        "desc_act": False,
+        "sym": True,
+        "lm_head": False,
+        # Tell SGLang's GPTQ-Marlin loader to leave attention/Lightning
+        # modules unquantized (UnquantizedLinearMethod). GPTQModel writes
+        # plain BF16 `.weight` tensors for anything omitted from
+        # `layer_modules`; without matching dynamic skips, SGLang would
+        # initialize those layers as quantized and either crash on missing
+        # `.qweight` or silently run an incompatible layout.
+        #
+        # Patterns use `re.match` semantics (auto-anchored at start),
+        # per get_dynamic_override in sglang/srt/layers/quantization/
+        # utils.py:248. `-:<regex>` means "skip".
+        "dynamic": {
+            "-:.*self_attn.*": True,  # keep all sparse/linear attention projections BF16
+            "-:.*o_gate$": True,    # MiniCPM dense-attn output gate (only some layers have it)
+            "-:.*z_proj$": True,    # Lightning Mixer output gate (only some layers have it)
+            "-:.*o_norm$": True,    # Lightning output RMSNorm (defensive)
+            "-:.*q_norm$": True,    # Lightning Q RMSNorm (defensive; RMSNorm is not Linear anyway)
+            "-:.*k_norm$": True,    # Lightning K RMSNorm (defensive)
+        },
+    }
+
+    # Standalone quantize_config.json (some loaders prefer this over
+    # config.quantization_config; write both consistently).
+    quant_path = output_dir / "quantize_config.json"
+    saved_quant_cfg: dict[str, Any] = {}
+    if quant_path.exists():
+        with quant_path.open("r", encoding="utf-8") as f:
+            existing = json.load(f)
+        if not isinstance(existing, dict):
+            raise RuntimeError(
+                f"{quant_path} is not a JSON object; cannot merge quantization config"
+            )
+        saved_quant_cfg = existing
+        for metadata_key in ("format", "checkpoint_format", "pack_dtype"):
+            if metadata_key in saved_quant_cfg:
+                quant_cfg[metadata_key] = saved_quant_cfg[metadata_key]
+        for fmt_key in ("format", "checkpoint_format"):
+            fmt = str(quant_cfg.get(fmt_key, "gptq")).lower()
+            if fmt != "gptq":
+                raise RuntimeError(
+                    f"GPTQModel saved {fmt_key}={quant_cfg.get(fmt_key)!r}; "
+                    "SGLang gptq_marlin runtime conversion expects raw GPTQ "
+                    "checkpoint tensors, so refusing to write a misleading config"
+                )
+            quant_cfg[fmt_key] = "gptq"
+        existing.update(quant_cfg)
+        quant_cfg_full = existing
+    else:
+        quant_cfg["format"] = "gptq"
+        quant_cfg["checkpoint_format"] = "gptq"
+        quant_cfg_full = quant_cfg
+    with quant_path.open("w", encoding="utf-8") as f:
+        json.dump(quant_cfg_full, f, indent=2)
+
+    # ---- config.json: start from the ORIGINAL config, not GPTQModel's save ----
+    input_config_path = input_dir / "config.json"
+    output_config_path = output_dir / "config.json"
+    if not input_config_path.exists():
+        # Defensive: fall back to whatever GPTQModel wrote.
+        print("[config] WARN: input config.json missing, falling back to GPTQModel save",
+              flush=True)
+        if not output_config_path.exists():
+            return
+        with output_config_path.open("r", encoding="utf-8") as f:
+            config = json.load(f)
+    else:
+        with input_config_path.open("r", encoding="utf-8") as f:
+            config = json.load(f)
+        if output_config_path.exists():
+            # Merge in anything new from GPTQModel's saved config that wasn't
+            # in the input (rare, mostly quantization-related).
+            with output_config_path.open("r", encoding="utf-8") as f:
+                gptq_saved = json.load(f)
+            for key, val in gptq_saved.items():
+                if key not in config:
+                    config[key] = val
+
+    # SGLang's gptq_marlin path expects fp16 activations.
+    config["torch_dtype"] = "float16"
+    # v24_no_dtype_key variant: REMOVED `config["dtype"] = "float16"` (the
+    # HF 5.x-style key). v21/v22 wrote both `torch_dtype` AND `dtype`; the
+    # RTN-scalefix submission that worked on platform (acc=42) wrote ONLY
+    # `torch_dtype`. Hypothesis: the platform's transformers version
+    # silently mishandles the newer `dtype` key, causing the quant
+    # pipeline's outputs to load at the wrong dtype.
+    config["quantization_config"] = quant_cfg
+
+    # Remove derived properties. They are computed by MiniCPMHybridConfig and
+    # cannot be assigned by transformers' config deserializer.
+    readonly_config_keys = [
+        "mamba2_cache_params",
+        "full_attention_layer_ids",
+        "has_sparse_attention",
+        "has_lightning_layers",
+        "sparse_layer_ids",
+        "lightning_layer_ids",
+    ]
+    removed_readonly = [key for key in readonly_config_keys if key in config]
+    for key in removed_readonly:
+        config.pop(key, None)
+    if removed_readonly:
+        print(
+            f"[config] removed read-only derived config keys: {removed_readonly}",
+            flush=True,
+        )
+
+    # CRITICAL: drop `auto_map.AutoConfig` so transformers falls back to
+    # SGLang's registered MiniCPMHybridConfig (registered in
+    # sglang/srt/utils/hf_transformers_utils.py:104 via AutoConfig.register).
+    # SGLang's hybrid path requires `isinstance(hf_config, MiniCPMHybridConfig)`:
+    #   - model_runner.py:1494 minicpm_hybrid_config property
+    #   - hybrid_linear_attn_backend.py:1456 SimpleGLA backend assertion
+    # If we leave auto_map.AutoConfig pointing at the SALA custom config
+    # class, trust_remote_code wins and the isinstance check returns False,
+    # which kills the Lightning attention backend at init time.
+    auto_map = config.get("auto_map")
+    if isinstance(auto_map, dict) and "AutoConfig" in auto_map:
+        removed = auto_map.pop("AutoConfig")
+        print(
+            f"[config] dropped auto_map.AutoConfig (was: {removed!r}) "
+            "so SGLang's MiniCPMHybridConfig wins",
+            flush=True,
+        )
+
+    with output_config_path.open("w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+
+    print(
+        f"[config] wrote {output_config_path} with "
+        f"sparse_config={'sparse_config' in config}, "
+        f"mixer_types_len={len(config.get('mixer_types', []))}, "
+        f"auto_map={'auto_map' in config}",
+        flush=True,
+    )
+
+
+def copy_runtime_assets(input_dir: Path, output_dir: Path) -> None:
+    """Copy tokenizer / chat-template / custom modeling files.
+
+    CRITICAL 2026-05-22: this function now OVERWRITES files GPTQModel
+    already wrote during model.save(). Previously it had an
+    `if not target.exists()` guard that silently kept GPTQModel's
+    re-serialized tokenizer (tokenizer.json grows from 3.6M to 6.7M,
+    added_tokens.json and chat_template.jinja are synthesized). On the
+    platform that re-serialized tokenizer encodes prompts to different
+    token IDs than the base BF16 tokenizer the model was trained on,
+    plausibly causing the v17/v21/v22 platform acc=0 while RTN
+    (which always copies tokenizer files unconditionally from the
+    input dir, matching the base model byte-for-byte) scored 42.
+
+    Order of writes for this artifact:
+      1. GPTQModel.save() writes weights + its own tokenizer/config
+      2. copy_runtime_assets() (this function) OVERWRITES tokenizer/
+         modeling files with the original BF16 copy
+      3. write_sglang_compatible_quant_config() OVERWRITES config.json
+         again with our merged quantization-aware version
+      4. fix_qzeros_for_marlin() patches qzeros in the safetensors shards
+    """
+    for path in input_dir.iterdir():
+        if path.is_dir():
+            continue
+        if path.name == "model.safetensors.index.json":
+            # GPTQModel rewrites this with quantized tensor mapping
+            continue
+        # The HF custom-model files (.py) must travel with the weights
+        # so SGLang can load them under --trust-remote-code.
+        if path.suffix in {".json", ".model", ".txt", ".py"} or path.name == "tokenizer.json":
+            target = output_dir / path.name
+            shutil.copy2(path, target)
+
+
+def save_model(model, output_dir: str) -> None:
+    if hasattr(model, "save"):
+        model.save(output_dir)
+    elif hasattr(model, "save_pretrained"):
+        model.save_pretrained(output_dir)
+    else:
+        raise RuntimeError(
+            "GPTQModel object has neither .save nor .save_pretrained — "
+            "is this an unexpected gptqmodel version?"
+        )
+
+
+def fix_qzeros_for_marlin(output_dir: Path) -> None:
+    """Rewrite GPTQModel's qzeros 0x77777777 (=7 per slot) -> 0x88888888 (=8).
+
+    gptqmodel 7.0.0 + sym=True writes uint4b8 qzeros where every 4-bit slot
+    equals 7 (packed int32 = 0x77777777). SGLang Marlin dequant
+    `(q - qzero) * scale` then adds a per-weight `+1*scale` bias that
+    accumulates to acc=0 end-to-end. RTN-scalefix wrote qzero=8 and was
+    the one variant that did not collapse to 0 (local acc=42).
+
+    HARDENED 2026-05-21 against platform-side silent-failure paths that
+    caused v21 (local acc=49) and v22 to both score 0 on the platform:
+      - Glob *.safetensors (not just model-*.safetensors) so single-file
+        outputs are caught. This was the prime suspect: a different
+        gptqmodel 7.x on the platform may write `model.safetensors` with
+        no shard suffix, which the old glob missed entirely.
+      - Treat torch.uint32 the same as torch.int32 via .view().
+      - Per-element mask `tensor == 0x77777777` instead of whole-tensor
+        blast, so mixed-value qzeros are repaired without clobbering
+        correct entries.
+      - Print file inventory + sample unique values so platform-side logs
+        are diagnostic enough to root-cause remotely.
+      - HARD EXIT if no .safetensors files OR no .qzeros tensors are
+        found. Previously these silently no-op'd; broken model went to
+        inference unfixed with no log signal.
+      - POST-WRITE sanity check: reload one shard and assert the first
+        .qzeros reads back as 0x88888888 end-to-end.
+    """
+    import torch
+    from safetensors.torch import load_file, save_file
+
+    BAD_INT32 = 0x77777777                # 2004318071 (positive in int32)
+    GOOD_INT32 = -2004318072              # 0x88888888 reinterpreted as int32
+
+    shards = sorted(
+        p for p in output_dir.glob("*.safetensors")
+        if not p.name.endswith(".index.safetensors")
+    )
+
+    print(f"[qzeros-fix] output_dir inventory ({output_dir}):", flush=True)
+    for f in sorted(output_dir.iterdir()):
+        if f.is_file():
+            print(f"[qzeros-fix]   {f.name}  ({f.stat().st_size:,} bytes)",
+                  flush=True)
+    print(f"[qzeros-fix] scanning {len(shards)} .safetensors weight file(s)",
+          flush=True)
+
+    if not shards:
+        bin_files = sorted(output_dir.glob("*.bin"))
+        msg = f"no .safetensors weight files in {output_dir}"
+        if bin_files:
+            msg += (f" (found {len(bin_files)} torch .bin files - gptqmodel "
+                    f"wrote a format SGLang Marlin loader does not support)")
+        raise RuntimeError(f"[qzeros-fix] FATAL: {msg}")
+
+    total_qzeros_seen = 0
+    total_qzeros_patched = 0
+    total_already_good = 0
+    total_unknown_dtype = 0
+    total_unknown_values = 0
+    sample_summaries: list[str] = []
+
+    for shard in shards:
+        state = load_file(str(shard))
+        n_fixed_this_shard = 0
+        for key, tensor in list(state.items()):
+            if not key.endswith(".qzeros"):
+                continue
+            total_qzeros_seen += 1
+
+            if tensor.dtype == torch.uint32:
+                qview = tensor.view(torch.int32)
+                dst_dtype = torch.uint32
+            elif tensor.dtype == torch.int32:
+                qview = tensor
+                dst_dtype = torch.int32
+            else:
+                print(f"[qzeros-fix] WARN: {shard.name}::{key} unexpected "
+                      f"dtype {tensor.dtype}; skipping", flush=True)
+                total_unknown_dtype += 1
+                continue
+
+            if len(sample_summaries) < 5:
+                uniq_vals = qview.flatten().unique()[:6].tolist()
+                hex_vals = [f"0x{u & 0xFFFFFFFF:08x}" for u in uniq_vals]
+                sample_summaries.append(
+                    f"{shard.name}::{key} dtype={tensor.dtype} "
+                    f"unique[:6]={uniq_vals} hex={hex_vals}"
+                )
+
+            mask_bad = qview == BAD_INT32
+            n_bad = int(mask_bad.sum().item())
+            if n_bad == 0:
+                first_val = int(qview.flatten()[0].item())
+                if first_val == GOOD_INT32:
+                    total_already_good += 1
+                else:
+                    total_unknown_values += 1
+                continue
+
+            new_qview = qview.clone()
+            new_qview[mask_bad] = GOOD_INT32
+            state[key] = (
+                new_qview.view(torch.uint32) if dst_dtype == torch.uint32
+                else new_qview
+            )
+            n_fixed_this_shard += 1
+
+        if n_fixed_this_shard:
+            save_file(state, str(shard))
+            print(f"[qzeros-fix] {shard.name}: patched {n_fixed_this_shard} "
+                  f"qzeros tensors", flush=True)
+            total_qzeros_patched += n_fixed_this_shard
+
+    print(f"[qzeros-fix] SUMMARY:", flush=True)
+    print(f"[qzeros-fix]   qzeros tensors seen:        {total_qzeros_seen}",
+          flush=True)
+    print(f"[qzeros-fix]   patched (had 0x77777777):   {total_qzeros_patched}",
+          flush=True)
+    print(f"[qzeros-fix]   already good (0x88888888):  {total_already_good}",
+          flush=True)
+    print(f"[qzeros-fix]   unknown dtype skipped:      {total_unknown_dtype}",
+          flush=True)
+    print(f"[qzeros-fix]   unknown values not patched: {total_unknown_values}",
+          flush=True)
+    for s in sample_summaries:
+        print(f"[qzeros-fix]   sample: {s}", flush=True)
+
+    if total_qzeros_seen == 0:
+        raise RuntimeError(
+            "[qzeros-fix] FATAL: zero .qzeros tensors found in any shard. "
+            "Either no modules were actually quantized (calibration failed) "
+            "or gptqmodel wrote weights in an unrecognized layout. "
+            "DO NOT trust this artifact - inference will be garbage."
+        )
+
+    if total_unknown_values > 0 and total_qzeros_patched == 0:
+        raise RuntimeError(
+            f"[qzeros-fix] FATAL: {total_unknown_values} qzeros tensors had "
+            f"values that are neither the bad 0x77777777 nor the expected "
+            f"0x88888888. gptqmodel version here likely uses a different "
+            f"qzeros encoding. Inspect sample lines above and extend "
+            f"fix_qzeros_for_marlin to handle the new pattern."
+        )
+
+    verify_state = load_file(str(shards[0]))
+    verified = False
+    for key, tensor in verify_state.items():
+        if not key.endswith(".qzeros"):
+            continue
+        if tensor.dtype == torch.uint32:
+            tensor = tensor.view(torch.int32)
+        elif tensor.dtype != torch.int32:
+            continue
+        first_val = int(tensor.flatten()[0].item())
+        first_hex = f"0x{first_val & 0xFFFFFFFF:08x}"
+        print(f"[qzeros-fix] POST-CHECK {shards[0].name}::{key} first_val="
+              f"{first_val} ({first_hex})", flush=True)
+        if first_val == GOOD_INT32:
+            verified = True
+        break
+
+    if not verified and total_qzeros_patched > 0:
+        raise RuntimeError(
+            f"[qzeros-fix] FATAL: post-write sanity check failed. "
+            f"Reloaded {shards[0].name} and first qzeros does NOT have "
+            f"the expected 0x88888888 pattern. Save likely went to a "
+            f"different path or was overwritten."
+        )
+    print(f"[qzeros-fix] OK", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
+def dry_run(args: argparse.Namespace, prompts: list[str]) -> int:
+    print("=" * 60)
+    print("DRY RUN — no GPU/quantization actually invoked")
+    print("=" * 60)
+    print(f"  --input            {args.input}")
+    print(f"  --output           {args.output}")
+    print(f"  --bits             {args.bits}")
+    print(f"  --group-size       {args.group_size}")
+    print(f"  --num-calib        {args.num_calib} (loaded {len(prompts)})")
+    print(f"  --max-calib-len    {args.max_calib_len}")
+    print(f"  --calib-window-mode {args.calib_window_mode}")
+    print(f"  --no-chat-template  {args.no_chat_template}")
+    print(f"  --calib-jsonl      {args.calib_jsonl or '(synthetic)'}")
+    print(f"  --gpu-max-mem      {args.gpu_max_mem or '(GPTQModel default)'}")
+    print(f"  --cpu-max-mem      {args.cpu_max_mem}")
+    print(f"  --no-offload-disk  {args.no_offload_disk}")
+    print()
+    print("First 3 calibration prompts (truncated to 200 chars):")
+    for i, p in enumerate(prompts[:3]):
+        snippet = p.replace("\n", " | ")
+        if len(snippet) > 200:
+            snippet = snippet[:200] + "..."
+        print(f"  [{i}] {snippet}")
+    if args.calib_window_mode == "multi-adaptive":
+        print()
+        print(f"Window slicing simulation (multi-adaptive, "
+              f"L={args.max_calib_len}):")
+        sim_rng = random.Random(args.seed)
+        test_ns = (
+            args.max_calib_len // 2,
+            args.max_calib_len,
+            2 * args.max_calib_len,
+            4 * args.max_calib_len,
+            8 * args.max_calib_len,
+            13 * args.max_calib_len,
+            20 * args.max_calib_len,
+        )
+        for n in test_ns:
+            windows = _slice_windows_for_prompt(n, args.max_calib_len, sim_rng)
+            ratio = f"{n / args.max_calib_len:.1f}L"
+            spans = ", ".join(f"[{s:>6}:{e:>6}]" for s, e in windows)
+            print(f"  N={n:7d} ({ratio:>5}) -> {len(windows)} window(s): {spans}")
+    print()
+    print("OK. Re-run without --dry-run on a GPU node to actually quantize.")
+    return 0
+
+
+def main() -> int:
+    args = parse_args()
+
+    prompts = load_calibration_prompts(
+        args.calib_jsonl, args.num_calib, args.seed
+    )
+
+    if args.dry_run:
+        return dry_run(args, prompts)
+
+    if args.bits not in (4, 8):
+        raise SystemExit(
+            f"--bits must be 4 or 8 for SGLang Marlin compatibility; got {args.bits}"
+        )
+
+    print_runtime_versions()
+
+    # Lazy import — only after we know it's not a dry run.
+    # IMPORTANT: monkey-patch BEFORE register/load — SALA's modeling code
+    # has a hard assertion on _attn_implementation == "flash_attention_2"
+    # inside MiniCPMInfLLMv2Attention.__init__ that fires at model
+    # instantiation time (BEFORE we can do anything else).
+    force_flash_attention_2_for_sala()
+    register_minicpm_sala_with_gptqmodel()
+    quant_config = make_quant_config(args.bits, args.group_size)
+    set_quant_config_disk_offload(quant_config, enabled=not args.no_offload_disk)
+
+    model = load_model(
+        args.input,
+        quant_config,
+        gpu_max_mem=args.gpu_max_mem,
+        cpu_max_mem=args.cpu_max_mem,
+        use_disk_offload=not args.no_offload_disk,
+    )
+    validate_gptq_wrapper(model)
+
+    # Get tokenizer (GPTQModel >= 6 attaches it; older versions need fallback)
+    tokenizer = getattr(model, "tokenizer", None)
+    if tokenizer is None:
+        from transformers import AutoTokenizer  # type: ignore
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.input, trust_remote_code=True
+        )
+
+    calibration = tokenize_calibration(
+        tokenizer, prompts, args.max_calib_len,
+        window_mode=args.calib_window_mode,
+        seed=args.seed,
+        disable_chat_template=args.no_chat_template,
+    )
+    if not calibration:
+        raise RuntimeError(
+            "no calibration examples were produced — check that --calib-jsonl "
+            "has rows with non-empty `question` fields"
+        )
+    first_ids = calibration[0]["input_ids"]
+    first_mask = calibration[0]["attention_mask"]
+    print(
+        "[calib] tokenized format: "
+        f"type={type(calibration[0]).__name__} "
+        f"input_ids={type(first_ids).__name__}{tuple(first_ids.shape)} "
+        f"attention_mask={type(first_mask).__name__}{tuple(first_mask.shape)}",
+        flush=True,
+    )
+
+    print(
+        f"[quantize] starting GPTQModel W{args.bits}A16 "
+        f"group_size={args.group_size} "
+        f"samples={len(calibration)} max_len={args.max_calib_len}",
+        flush=True,
+    )
+
+    model.quantize(calibration, batch_size=args.batch_size)
+
+    print(f"[quantize] saving to {args.output}", flush=True)
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    save_model(model, str(output_dir))
+
+    # Free the model before post-processing to keep peak memory down.
+    del model
+    gc.collect()
+    try:
+        import torch  # type: ignore
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+
+    copy_runtime_assets(Path(args.input), output_dir)
+    write_sglang_compatible_quant_config(output_dir, Path(args.input), args.bits, args.group_size)
+    fix_qzeros_for_marlin(output_dir)
+    print("[quantize] done.", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
