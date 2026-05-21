@@ -162,6 +162,54 @@ def validate_variant(variant_dir: Path) -> list[str]:
     if quant_script.is_file() and not (variant_dir / "perf_public_set.jsonl").is_file():
         problems.append("note: perf_public_set.jsonl not bundled (calibration will fall back to AutoDL or synthetic)")
 
+    # Critical for GPTQ: prepare_env.sh sed-patches `${SUBMISSION_DIR}/sglang/python/sglang/
+    # srt/layers/attention/minicpm_*.py` for fp16 dtype compatibility with Marlin. If the
+    # bundled sglang isn't there (or its python/ subdir is broken / missing), the
+    # sed-patches silently no-op AND `uv pip install --no-deps -e ${SUBMISSION_DIR}/sglang/
+    # python` is skipped, so the platform falls back to its pre-installed sglang which is
+    # NOT sed-patched -> server crashes with `RuntimeError: query and key must have the
+    # same dtype` on the first generation. v23 packed without bundled sglang on 2026-05-22
+    # exposed this; flagged here so it never repeats.
+    if quant_script.is_file():
+        bundled_sglang_python = variant_dir / "sglang" / "python"
+        if not bundled_sglang_python.is_dir():
+            problems.append(
+                "sglang/python/ missing inside the variant dir. Without this, prepare_env.sh "
+                "cannot install the bundled SGLang and cannot apply the fp16 sed-patch on the "
+                "sparse attention backend. Platform will crash at first generation with "
+                "`RuntimeError: query and key must have the same dtype`. Fix by either "
+                "(a) `ln -s ../../python " + str(variant_dir) + "/sglang/python` if main repo's "
+                "python/ has the kwargs.pop + torchao early-return patches, OR (b) `tar -xzOf "
+                "<a previous tarball that worked> ./sglang | tar -x -C " + str(variant_dir) + "`."
+            )
+        else:
+            # Bundled sglang exists. Spot-check it has the two defensive patches the
+            # v18 and v15 lessons require (see SUBMISSIONS.md Hard constraints).
+            bundled_minicpm_config = bundled_sglang_python / "sglang" / "srt" / "configs" / "minicpm.py"
+            bundled_torchao_utils = bundled_sglang_python / "sglang" / "srt" / "layers" / "torchao_utils.py"
+            if bundled_minicpm_config.is_file() and not grep_file(
+                bundled_minicpm_config, "has_sparse_attention"
+            ):
+                problems.append(
+                    "sglang/python/sglang/srt/configs/minicpm.py is bundled but missing the "
+                    "kwargs.pop defensive patch (no 'has_sparse_attention' reference found). "
+                    "v18 submission proved this patch is needed to keep AutoConfig.from_pretrained "
+                    "from crashing on derived @property keys. Without it, the platform server fails "
+                    "at startup with `AttributeError: can't set attribute`. Re-extract sglang/ from "
+                    "v22 tarball or apply the patch manually."
+                )
+            if bundled_torchao_utils.is_file() and not grep_file(
+                bundled_torchao_utils, 'torchao_config == "" or torchao_config is None'
+            ):
+                problems.append(
+                    "sglang/python/sglang/srt/layers/torchao_utils.py is bundled but missing the "
+                    "early-return patch (no 'torchao_config == \"\" or torchao_config is None' check). "
+                    "v15 submission proved this patch is needed because torchao >= 0.16 removed the "
+                    "snake_case quantization functions. Without it, the platform server fails at "
+                    "startup with `ImportError: cannot import name 'float8_dynamic_activation_float8_weight'`. "
+                    "Re-extract sglang/ from v22 tarball or apply the patch manually."
+                )
+
     return problems
 
 

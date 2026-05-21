@@ -61,8 +61,16 @@ echo "[prepare_model] DIAGNOSTIC: calib jsonl size"
 def _make_variant(parent: Path, *, quant_script: str | None = GOOD_QUANTIZE_SCRIPT,
                   prepare_env: str | None = GOOD_PREPARE_ENV,
                   prepare_model: str | None = GOOD_PREPARE_MODEL,
-                  with_calib: bool = True) -> Path:
-    """Build a synthetic variant dir. Pass None for any file to omit it."""
+                  with_calib: bool = True,
+                  with_bundled_sglang: bool = True) -> Path:
+    """Build a synthetic variant dir. Pass None for any file to omit it.
+
+    `with_bundled_sglang` controls whether to create a synthetic
+    sglang/python/sglang/srt/{configs,layers}/ subtree with both
+    defensive patches present (kwargs.pop in minicpm.py, early-return
+    in torchao_utils.py). Set to False to test the missing-bundle
+    failure branches.
+    """
     d = parent / "fake_variant"
     d.mkdir()
     if quant_script is not None:
@@ -73,6 +81,31 @@ def _make_variant(parent: Path, *, quant_script: str | None = GOOD_QUANTIZE_SCRI
         (d / "prepare_model.sh").write_text(prepare_model)
     if with_calib:
         (d / "perf_public_set.jsonl").write_text('{"task":"x"}\n')
+    if with_bundled_sglang and quant_script is not None:
+        # Create minimal bundled sglang with the two defensive patches' canaries.
+        bundled = d / "sglang" / "python" / "sglang" / "srt"
+        (bundled / "configs").mkdir(parents=True)
+        (bundled / "layers" / "attention").mkdir(parents=True)
+        (bundled / "configs" / "minicpm.py").write_text(
+            '"""minicpm.py stub with kwargs.pop patch canary"""\n'
+            'class Cfg:\n'
+            '    def __init__(self, **kwargs):\n'
+            '        for k in ("has_sparse_attention",):\n'
+            '            kwargs.pop(k, None)\n'
+        )
+        (bundled / "layers" / "torchao_utils.py").write_text(
+            '"""torchao_utils.py stub with early-return canary"""\n'
+            'def apply(torchao_config):\n'
+            '    if torchao_config == "" or torchao_config is None:\n'
+            '        return\n'
+        )
+        # Minimal attention stub files for sed-patch targets
+        (bundled / "layers" / "attention" / "minicpm_backend.py").write_text(
+            '# stub for sed-patch target\n'
+        )
+        (bundled / "layers" / "attention" / "minicpm_sparse_utils.py").write_text(
+            '# stub for sed-patch target\n'
+        )
     return d
 
 
@@ -296,6 +329,59 @@ class TestValidateVariantBF16Mode(unittest.TestCase):
             )
             problems = pack_submission.validate_variant(variant)
             self.assertTrue(_has_problem_containing(problems, "missing prepare_env.sh"))
+
+
+class TestValidateVariantBundledSglang(unittest.TestCase):
+    """Verify the bundled-sglang preflight checks (added 2026-05-22 after
+    v23 was packed without sglang/ and the platform crashed)."""
+
+    def test_missing_bundled_sglang_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            variant = _make_variant(Path(tmp), with_bundled_sglang=False)
+            problems = pack_submission.validate_variant(variant)
+            self.assertTrue(
+                _has_problem_containing(problems, "sglang/python/ missing"),
+                f"missing bundled sglang should be flagged; got: {problems}"
+            )
+
+    def test_missing_minicpm_kwargs_pop_patch_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            variant = _make_variant(Path(tmp), with_bundled_sglang=True)
+            # Corrupt the canary: rewrite minicpm.py without the patch
+            (variant / "sglang" / "python" / "sglang" / "srt" / "configs"
+             / "minicpm.py").write_text('# no patch here\n')
+            problems = pack_submission.validate_variant(variant)
+            self.assertTrue(
+                _has_problem_containing(problems, "kwargs.pop defensive patch"),
+                f"missing kwargs.pop should be flagged; got: {problems}"
+            )
+
+    def test_missing_torchao_early_return_patch_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            variant = _make_variant(Path(tmp), with_bundled_sglang=True)
+            (variant / "sglang" / "python" / "sglang" / "srt" / "layers"
+             / "torchao_utils.py").write_text('# no patch here\n')
+            problems = pack_submission.validate_variant(variant)
+            self.assertTrue(
+                _has_problem_containing(problems, "early-return patch"),
+                f"missing torchao early-return should be flagged; got: {problems}"
+            )
+
+    def test_bf16_variant_does_not_require_bundled_sglang(self):
+        # BF16 path has no quantize script -> sglang bundle check skipped
+        with tempfile.TemporaryDirectory() as tmp:
+            variant = _make_variant(
+                Path(tmp),
+                quant_script=None,
+                prepare_env='#!/usr/bin/env bash\nexport SGLANG_SERVER_ARGS="--dense-as-sparse"\n',
+                with_calib=False,
+                with_bundled_sglang=False,
+            )
+            problems = pack_submission.validate_variant(variant)
+            self.assertFalse(
+                _has_problem_containing(problems, "sglang/python/ missing"),
+                f"BF16 variant should not require bundled sglang; got: {problems}"
+            )
 
 
 class TestValidateVariantOnLiveSources(unittest.TestCase):
