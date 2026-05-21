@@ -974,7 +974,27 @@ def write_sglang_compatible_quant_config(
 
 
 def copy_runtime_assets(input_dir: Path, output_dir: Path) -> None:
-    """Copy tokenizer / chat-template / custom modeling files."""
+    """Copy tokenizer / chat-template / custom modeling files.
+
+    CRITICAL 2026-05-22: this function now OVERWRITES files GPTQModel
+    already wrote during model.save(). Previously it had an
+    `if not target.exists()` guard that silently kept GPTQModel's
+    re-serialized tokenizer (tokenizer.json grows from 3.6M to 6.7M,
+    added_tokens.json and chat_template.jinja are synthesized). On the
+    platform that re-serialized tokenizer encodes prompts to different
+    token IDs than the base BF16 tokenizer the model was trained on,
+    plausibly causing the v17/v21/v22 platform acc=0 while RTN
+    (which always copies tokenizer files unconditionally from the
+    input dir, matching the base model byte-for-byte) scored 42.
+
+    Order of writes for this artifact:
+      1. GPTQModel.save() writes weights + its own tokenizer/config
+      2. copy_runtime_assets() (this function) OVERWRITES tokenizer/
+         modeling files with the original BF16 copy
+      3. write_sglang_compatible_quant_config() OVERWRITES config.json
+         again with our merged quantization-aware version
+      4. fix_qzeros_for_marlin() patches qzeros in the safetensors shards
+    """
     for path in input_dir.iterdir():
         if path.is_dir():
             continue
@@ -985,8 +1005,7 @@ def copy_runtime_assets(input_dir: Path, output_dir: Path) -> None:
         # so SGLang can load them under --trust-remote-code.
         if path.suffix in {".json", ".model", ".txt", ".py"} or path.name == "tokenizer.json":
             target = output_dir / path.name
-            if not target.exists():
-                shutil.copy2(path, target)
+            shutil.copy2(path, target)
 
 
 def save_model(model, output_dir: str) -> None:
