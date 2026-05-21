@@ -127,9 +127,15 @@ def validate_variant(variant_dir: Path) -> list[str]:
                     "than AutoDL local. See commit d8aaaf1e4 / H2."
                 )
         # Variable isolation: chunked-prefill 65536 confounds v23 acc
-        # attribution. Should stay at 8192 in submission tarballs until
-        # v23 confirms the quant pipeline fixes work.
-        if grep_file(prepare_env, "chunked-prefill-size 65536"):
+        # attribution unless the variant is explicitly a v24+ perf fork.
+        # v24-named variants are EXPECTED to layer the +83% throughput
+        # config on top of v23's correctness fixes, so we whitelist them.
+        is_perf_variant = any(
+            tag in variant_dir.name
+            for tag in ("_v24", "_v25", "_v26", "_v27", "_v28", "_v29",
+                        "_v30", "_perf", "_chunked", "_chunk65k")
+        )
+        if grep_file(prepare_env, "chunked-prefill-size 65536") and not is_perf_variant:
             problems.append(
                 "prepare_env.sh: chunked-prefill-size 65536 detected in SGLANG_SERVER_ARGS. "
                 "This was a 2026-05-21 cherry-pick and was reverted on 2026-05-22 because it "

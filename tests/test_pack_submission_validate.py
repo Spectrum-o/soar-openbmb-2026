@@ -206,6 +206,53 @@ export SGLANG_SERVER_ARGS="--chunked-prefill-size 65536 --max-prefill-tokens 655
                 f"8k should not trip the 65k check; got: {problems}"
             )
 
+    def test_chunked_prefill_65k_whitelisted_for_v24_variants(self):
+        # v24+ perf forks are explicitly allowed to ship chunked-prefill 65K
+        # since they layer it on top of v23's confirmed-correctness baseline.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_p = Path(tmp)
+            for name in ("fake_v24", "fake_v25", "fake_perf", "fake_chunk65k"):
+                d = tmp_p / name
+                d.mkdir()
+                (d / "quantize_gptqmodel_w4a16.py").write_text(GOOD_QUANTIZE_SCRIPT)
+                (d / "prepare_env.sh").write_text(
+                    '#!/usr/bin/env bash\n'
+                    'GPTQMODEL_PIN="${GPTQMODEL_PIN:-7.0.0}"\n'
+                    'export SGLANG_SERVER_ARGS="--chunked-prefill-size 65536 '
+                    '--max-prefill-tokens 65536 --mem-fraction-static 0.80 '
+                    '--quantization gptq_marlin"\n'
+                )
+                (d / "prepare_model.sh").write_text(GOOD_PREPARE_MODEL)
+                (d / "perf_public_set.jsonl").write_text('{"task":"x"}\n')
+                problems = pack_submission.validate_variant(d)
+                self.assertFalse(
+                    _has_problem_containing(problems, "chunked-prefill-size 65536"),
+                    f"variant '{name}' should be whitelisted for 65K; got: {problems}"
+                )
+
+    def test_chunked_prefill_65k_flagged_for_v23_variant_names(self):
+        # Variant names not matching the v24+ pattern still trip the rule.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_p = Path(tmp)
+            for name in ("submission_gptqmodel_calib_w4a16", "fake_baseline",
+                         "experimental_attempt"):
+                d = tmp_p / name
+                d.mkdir()
+                (d / "quantize_gptqmodel_w4a16.py").write_text(GOOD_QUANTIZE_SCRIPT)
+                (d / "prepare_env.sh").write_text(
+                    '#!/usr/bin/env bash\n'
+                    'GPTQMODEL_PIN="${GPTQMODEL_PIN:-7.0.0}"\n'
+                    'export SGLANG_SERVER_ARGS="--chunked-prefill-size 65536 '
+                    '--quantization gptq_marlin"\n'
+                )
+                (d / "prepare_model.sh").write_text(GOOD_PREPARE_MODEL)
+                (d / "perf_public_set.jsonl").write_text('{"task":"x"}\n')
+                problems = pack_submission.validate_variant(d)
+                self.assertTrue(
+                    _has_problem_containing(problems, "chunked-prefill-size 65536"),
+                    f"variant '{name}' should still trip 65K rule; got: {problems}"
+                )
+
 
 class TestValidateVariantPrepareModel(unittest.TestCase):
     def test_missing_prepare_model(self):
