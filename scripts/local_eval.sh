@@ -115,6 +115,30 @@ fi
 SGLANG_SERVER_ARGS="$(grep -E '^export SGLANG_SERVER_ARGS=' "${PREPARE_ENV}" \
     | sed -E 's/^export SGLANG_SERVER_ARGS="//; s/"$//')"
 
+# --- Quant-variant fp16 sed patch on the venv's bundled SGLang ---
+# SALA's sparse attention helpers in minicpm_backend.py / minicpm_sparse_utils.py
+# hardcode torch.bfloat16. gptq_marlin emits fp16. Without this patch the
+# server crashes at first query with `RuntimeError: query and key must have
+# the same dtype`. prepare_env.sh runs this patch on the platform, but
+# local_eval.sh never sources prepare_env.sh, so we replicate the patch here
+# when the variant's launch args include `gptq_marlin`. The cleanup trap at
+# the bottom of this script reverts the patch on exit, so subsequent baseline
+# (BF16) runs against the same venv stay unaffected.
+SED_PATCH_FILES=()
+if echo "${SGLANG_SERVER_ARGS}" | grep -q "gptq_marlin"; then
+    BACKEND_DIR="${REPO_ROOT}/python/sglang/srt/layers/attention"
+    for pyfile in "${BACKEND_DIR}/minicpm_backend.py" \
+                  "${BACKEND_DIR}/minicpm_sparse_utils.py"; do
+        if [ -f "${pyfile}" ] && grep -qE 'torch\.bfloat16|"bfloat16"' "${pyfile}"; then
+            cp "${pyfile}" "${pyfile}.local_eval.bak"
+            sed -i 's/torch\.bfloat16/torch.float16/g' "${pyfile}"
+            sed -i 's/"bfloat16"/"float16"/g' "${pyfile}"
+            SED_PATCH_FILES+=("${pyfile}")
+            echo "[local_eval] sed-patched $(basename "${pyfile}") for fp16 quant run"
+        fi
+    done
+fi
+
 LOG_DIR="${REPO_ROOT}/scripts/logs"
 mkdir -p "${LOG_DIR}"
 STAMP="$(date +%s)"
@@ -214,6 +238,13 @@ cleanup() {
         done
         kill -KILL "${SERVER_PID}" 2>/dev/null || true
     fi
+    # Revert the fp16 sed patch so subsequent baseline (BF16) runs are not poisoned.
+    for pyfile in "${SED_PATCH_FILES[@]}"; do
+        if [ -f "${pyfile}.local_eval.bak" ]; then
+            mv "${pyfile}.local_eval.bak" "${pyfile}"
+            echo "  reverted fp16 sed patch on $(basename "${pyfile}")"
+        fi
+    done
 }
 trap cleanup EXIT INT TERM
 

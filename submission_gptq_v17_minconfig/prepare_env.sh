@@ -234,17 +234,15 @@ export GPTQMODEL_MARLIN_USE_FP32="${GPTQMODEL_MARLIN_USE_FP32:-1}"
 
 # SGLang server args. NOTE: NO --kv-cache-dtype fp8_* (verified incompatible
 # with MiniCPM sparse backend in earlier submissions).
-# Chunked-prefill tuning (cherry-picked 2026-05-21 from config/chunked-prefill-tuned):
-#   chunk=8192   -> 267.67 tok/s,  TTFT 34049ms  (old baseline)
-#   chunk=32768  -> 425.58 tok/s,  TTFT 13545ms  (+59% throughput / -60% TTFT)
-#   chunk=65536  -> 488.84 tok/s,  TTFT 12529ms  (+83% throughput / -63% TTFT)
-# RTX PRO 6000 Blackwell, 64 prompts x 4096-in x 512-out random-ids.
-# Two gotchas the source branch documented:
-#   1. sglang default --max-prefill-tokens=16384 silently caps actual prefill
-#      regardless of --chunked-prefill-size. Must set it to match.
-#   2. With large chunks, sglang's auto-calc of mem_fraction_static can go
-#      negative. Must explicitly set --mem-fraction-static (0.80 verified).
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 65536 --max-prefill-tokens 65536 --mem-fraction-static 0.80 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype float16"
+#
+# CHUNKED-PREFILL: kept at 8192 (the historical v17/v21/v22 value) for v24.
+# The +83% throughput config (chunked-prefill 65536 + max-prefill 65536 +
+# mem-fraction-static 0.80) measured on config/chunked-prefill-tuned is REAL
+# and is in `run_sala.sh` for local benchmarking, but was DELIBERATELY left
+# OUT of this tarball on 2026-05-22 to isolate variables: this differs from
+# v22 in EXACTLY ONE thing — the hardened fix_qzeros_for_marlin.
+# If v23/v24 passes, we add chunked-prefill 65K in subsequent tarballs.
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype float16"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"

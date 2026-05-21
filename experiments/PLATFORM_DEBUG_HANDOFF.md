@@ -7,6 +7,46 @@
 
 ---
 
+## ⚠️ Hypothesis discipline — read before forming theories
+
+A **misattribution was caught on 2026-05-22**: an earlier analysis claimed
+chunked-prefill-size was the differentiator between RTN (platform 42) and
+v17/v21/v22 (platform 0). This is **wrong**. Direct extraction of all four
+historical tarballs at the repo root shows:
+
+```
+soar_rtn_sym_..._scalefix.tar.gz                                  -> chunked-prefill 8192
+soar_gptqmodel_calib_w4a16_submission_20260520_v17.tar.gz         -> chunked-prefill 8192
+soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v21.tar.gz -> chunked-prefill 8192
+soar_gptqmodel_v17_minconfig_full_attn_submission_20260520_v22.tar.gz -> chunked-prefill 8192
+```
+
+Reproduce yourself:
+```bash
+cd /root/soar/sglang
+for t in soar_rtn_sym*scalefix.tar.gz \
+         soar_gptqmodel_calib*v17.tar.gz \
+         soar_gptqmodel_calib*v21.tar.gz \
+         soar_gptqmodel_v17_minconfig*v22.tar.gz; do
+    [ -f "$t" ] && echo "$t -> $(tar -xzOf "$t" ./prepare_env.sh 2>/dev/null | grep chunked-prefill-size | head -1)"
+done
+```
+
+The 65536 value visible in `submission_*/prepare_env.sh` on disk was the
+result of commit `5a1480678` (2026-05-21 cherry-pick) which targeted
+**v23/v24 tarballs that have not been packed yet**. As of 2026-05-22 that
+cherry-pick was REVERTED in both `submission_*/prepare_env.sh` (kept only
+in `run_sala.sh` for local bench) so v23 differs from v22 in exactly one
+thing: the hardened `fix_qzeros_for_marlin`. See commit history for the
+revert.
+
+The true cross-tarball differentiator is therefore **RTN's numpy quant
+pipeline vs GPTQModel `model.save()` pipeline**, not anything in
+SGLANG_SERVER_ARGS. This puts H1 (qzeros silent no-op) back as the
+prime suspect; do not redirect onto chunked-prefill.
+
+---
+
 ## Server-side sync cheat sheet — DO THIS FIRST
 
 Layout on this user's AutoDL setup:
