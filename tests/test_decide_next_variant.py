@@ -188,6 +188,79 @@ class TestExtractAccFromLog(unittest.TestCase):
         self.assertIsNone(_dnv.extract_acc_from_log(text))
 
 
+class TestDecisionTreeRobustness(unittest.TestCase):
+    """The platform UI may not include the full prepare_env stdout in
+    the downloadable log. Sometimes you only get the final state machine
+    lines + Score JSON. decide() should fail gracefully without crashing."""
+
+    MINIMAL_PLATFORM_LOG_SUCCESS = """\
+[2026-05-22 03:30:00] [PENDING]    task accepted
+[2026-05-22 03:30:01] [PREPARING]
+[2026-05-22 03:32:15] [INFERENCING]
+[2026-05-22 06:30:00] [SUCCESS]
+Score:
+{
+  "acc": 42.5,
+  "acc_ori": 42.5,
+  "final_score": 53.13,
+  "benchmark_duration": {"S1": 626, "S8": 998, "Smax": 2290}
+}
+"""
+
+    MINIMAL_PLATFORM_LOG_ZERO = """\
+[2026-05-22 03:30:00] [PENDING]
+[2026-05-22 03:30:01] [PREPARING]
+[2026-05-22 06:30:00] [SUCCESS]
+Score:
+{
+  "acc": 0.0,
+  "acc_ori": 0.0,
+  "final_score": 0.0
+}
+"""
+
+    def _decide_from_text(self, log_text: str, acc: float | None = None):
+        log = _make_log(log_text)
+        parsed = pqd.parse_log(log)
+        # If acc was not passed, extract from the text
+        if acc is None:
+            acc = _dnv.extract_acc_from_log(log_text)
+        return _dnv.decide(parsed, acc), parsed
+
+    def test_minimal_success_log_still_recommends_perf(self):
+        # Even without [versions] / [qzeros-fix] blocks, acc=42.5 >= 30
+        # should route to v24_perf.
+        (variant, _, _), parsed = self._decide_from_text(
+            self.MINIMAL_PLATFORM_LOG_SUCCESS
+        )
+        self.assertEqual(variant, "v24_perf")
+        # And the parsed log has no transformers version (graceful degrade)
+        self.assertNotIn("transformers", parsed.versions)
+
+    def test_minimal_zero_log_routes_to_some_variant_or_manual(self):
+        # No [qzeros-fix] section in this minimal log at all → qzeros_fix
+        # state is "unfinished" (not ended_ok, no fatal). Branch 4
+        # (pipeline crashed early) triggers → MANUAL_FIX.
+        (variant, _, _), parsed = self._decide_from_text(
+            self.MINIMAL_PLATFORM_LOG_ZERO
+        )
+        self.assertIn(variant, ("MANUAL_FIX", "v24_no_dtype_key", "v24_pin_transformers"),
+                      f"unexpected variant {variant} for minimal zero log")
+        # acc was extracted from the JSON
+        self.assertNotIn("transformers", parsed.versions)
+
+    def test_acc_extracted_from_platform_json_form(self):
+        # Sanity: the Score JSON form is parseable
+        log_text = self.MINIMAL_PLATFORM_LOG_SUCCESS
+        acc = _dnv.extract_acc_from_log(log_text)
+        self.assertEqual(acc, 42.5)
+
+    def test_empty_log_does_not_crash(self):
+        (variant, recommendation, _), _ = self._decide_from_text("")
+        self.assertIn(variant, ("MANUAL_FIX", "UNCLEAR"))
+        self.assertTrue(recommendation)  # non-empty message
+
+
 class TestVariantDirInventory(unittest.TestCase):
     """Ensure VARIANTS dict references variants that exist on disk."""
 
