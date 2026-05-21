@@ -116,16 +116,36 @@ Status legend:
 
 ## Open questions / next experiments
 
-### 🚨 2026-05-21 update: v22 (full-attn) ALSO platform=0 invalidates v17-era hypothesis ranking
+### 🚨 2026-05-22 update: H4 (tokenizer drift) joins H1 (qzeros) as co-equal prime hypotheses
 
-v21 (MLP-only) and v22 (full-attn) **both scored 0 on platform with literally identical bench timings to v17**. Plus RTN scored 40 on the same platform. So:
+Two independent failure modes uncovered in the 2026-05-21..22 debug session, EITHER OF WHICH ALONE could explain v17/v21/v22 platform=0:
 
-- ❌ "full attention quantization is structurally unsafe" — REFUTED. v21 stripped attention; still 0.
-- ❌ "calibration recipe is the issue" — WEAKLY REFUTED. v21+v22 used the new left-trunc+chat-tpl+8K calib, both 0. RTN (no calibration at all) = 40.
-- ❌ "hidden eval set is qualitatively different" — WEAKLY REFUTED per SOAR-Toolkit README + perf_private_set being "same length/task distribution".
-- ✅ NEW LEADING HYPOTHESIS: `fix_qzeros_for_marlin()` **silently no-op'd on the platform** because the platform's gptqmodel version wrote qzeros in a layout the function did not recognize. Locally (AutoDL) `gptqmodel==7.0.0` writes 3-shard `model-NNNNN-of-NNNNN.safetensors` with qzeros = `0x77777777`; the function correctly patches 96 tensors to `0x88888888` and local acc reaches 49. On the platform, the install gate `gptqmodel>=7.0,<8.0` was skipped if any 7.x was pre-installed in the base env, and that .x release may write single-file `model.safetensors` or different dtypes — silently bypassing the glob/dtype/value checks.
+**H1 — `fix_qzeros_for_marlin()` silently no-op'd on the platform**. Documented in the 2026-05-21 update below. Fix: hardened in commit `d8aaaf1e4` (glob `*.safetensors`, accept uint32, per-element replacement, HARD EXIT on suspicious states, POST-CHECK reload sanity).
 
-**Pre-processed response (committed 2026-05-21)**: hardened `fix_qzeros_for_marlin()` to glob `*.safetensors` (not just `model-*`), accept uint32, per-element replacement, print file inventory + sample values, and HARD EXIT on suspicious states. Pinned `gptqmodel==7.0.0`. Added DIAGNOSTIC prints in `prepare_model.sh` before/after quantize. See `experiments/PLATFORM_DEBUG_HANDOFF.md` for the next-action playbook.
+**H4 — `GPTQModel.save()` re-serializes tokenizer; older transformers reads only inline chat_template.** Discovered 2026-05-22 by server-side analysis:
+- GPTQModel's `model.save()` calls HF `tokenizer.save_pretrained()`, which under newer tokenizers library splits the chat_template into BOTH inline `tokenizer_config.json` AND a separate `chat_template.jinja` sidecar.
+- `transformers >= 4.45` reads either source consistently.
+- **`transformers < 4.45` reads ONLY the inline field**, silently ignoring the sidecar.
+- If the platform's transformers is older than 4.45 (consistent with the AutoDL-49 vs platform-0 gap, since AutoDL has transformers 4.57.1), `apply_chat_template()` returns a raw prompt without the `<|im_start|>user\n...<|im_end|>\n<|im_start|>assistant` structure → the model emits garbage.
+- The artifact's `tokenizer.json` also grows from 3.6M (base) to 6.7M (GPTQModel-rewritten), with `added_tokens.json` appearing where it wasn't in the base model → vocab encoding may also have drifted.
+
+This explains RTN-passes-at-42 vs every-GPTQModel-fails-at-0 perfectly: RTN's `quantize_gptq_rtn_sym.py:107` (`copy_metadata`) unconditionally `shutil.copy2()` overwrites tokenizer files from the input dir AFTER its numpy quant step → RTN's artifact has the base model's tokenizer byte-for-byte. v17/v21/v22's `quantize_gptqmodel_w4a16.py:976` (`copy_runtime_assets`) had an `if not target.exists()` guard that silently kept GPTQModel's bloated re-serialization. Fix: removed the guard in commit `57f9cef06`.
+
+### 2026-05-22 experiments
+
+| Exp | Hypothesis tested | Result | Verdict |
+|---|---|---|---|
+| **Exp H** | chunked-prefill-size 65536 vs 8192 affects acc | v21 artifact + 65K → 49.00; same artifact + 8K → 48.78 | -0.22pp inside noise → **chunked-prefill is NOT the platform=0 cause**. v23 ships with 8192 for variable isolation; the +83% throughput config in `run_sala.sh` is kept for local bench but withheld from submission tarballs until v23 confirms the quant pipeline fixes |
+| **Exp I** | tokenizer overwrite from base BF16 changes local acc | running 2026-05-22 (servervside) | Expected local ≈ 49 (AutoDL transformers 4.57.1 reads .jinja sidecar, so local behavior is similar regardless of which tokenizer is on disk). Real H4 test is the platform |
+
+### 2026-05-22 fixes landed on `quant/w4a16`
+
+| Commit | Fix | Hypothesis | Test sentinel |
+|---|---|---|---|
+| `d8aaaf1e4` | Hardened `fix_qzeros_for_marlin()` + `gptqmodel==7.0.0` pin + `prepare_model.sh` DIAGNOSTIC blocks | H1 + H2 | `tools/parse_quant_diagnostic.py` (22 tests) parses the SUMMARY block; `tools/pack_submission.py --check-only` rejects variants missing the POST-CHECK canary |
+| `57f9cef06` | `copy_runtime_assets` removes `if not target.exists()` guard; canary docstring `CRITICAL 2026-05-22` added | H4 | `tools/pack_submission.py --check-only` rejects variants missing the canary; `tools/check_tokenizer_compat.py` diffs base vs artifact; `scripts/overwrite_tokenizer_with_base.sh` applies the fix to an existing artifact without re-quant |
+| `a4cbcfdc6` | `scripts/local_eval.sh` runtime sed-patch + revert; `submission_*/prepare_env.sh` chunked-prefill reverted from 65536 to 8192 (variable isolation); PLATFORM_DEBUG_HANDOFF.md "Hypothesis discipline" warning | n/a (infra) | `tests/test_pack_submission_validate.py:test_chunked_prefill_65k_flagged` |
+| `ad3d08b5e` | `tools/pack_submission.py` preflight check from 2 → 7 canaries; 16 new tests | n/a (infra) | 65 total unit tests in `tests/` all pass |
 
 ### Why did v17 produce acc=0?
 
