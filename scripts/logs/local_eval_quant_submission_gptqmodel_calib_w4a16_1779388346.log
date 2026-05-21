@@ -10719,4 +10719,637 @@ Layer 18 Submodule finalize 0/3 Waiting for completions... | 0:00:00 / 0:00:00 [
 Layer 18 Submodule finalize 0/3 Waiting for completions... | 0:00:00 / 0:00:00 [Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:30 / 0:20:00 [20/32] 62.5%
 Layer 18 Finalize 1/3 gptq: model.layers.18.mlp.down_proj           | 0:00:13 / Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:31 / 0:20:01 [20/32] 62.5%
 Layer 18 Finalize 2/3 gptq: model.layers.18.mlp.up_proj             | 0:00:14 / Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:31 / 0:20:01 [20/32] 62.5%
-Layer 18 Finalize 3/3 gptq: model.layers.18.mlp.gate_proj           | 0:00:14 / Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:31 / 0:20:01 [20/32] 62.5%
+Layer 18 Finalize 3/3 gptq: model.layers.18.mlp.gate_proj           | 0:00:14 / Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:31 / 0:20:01 [20/32] 62.5%Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+[0 of 256] ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░| 0:00:00 / 0:00:00 [0/256] 0.0%Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Row 0/256 | 0:00:00 / Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 1/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 2/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 3/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 4/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 5/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 6/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 7/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 8/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 9/256 | 0Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 10/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:46 / 0:20:25 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 11/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 12/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 13/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 14/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 15/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 16/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 17/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 18/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 19/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 20/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 21/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 22/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:47 / 0:20:27 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 23/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 24/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 25/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 26/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 27/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 28/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 29/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 30/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 31/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 32/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 33/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 34/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:48 / 0:20:28 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 35/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 36/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 37/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 38/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 39/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 40/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 41/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 42/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 43/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 44/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 45/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 46/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:49 / 0:20:30 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 47/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 48/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 49/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 50/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 51/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 52/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 53/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 54/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 55/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 56/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 57/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 58/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:50 / 0:20:32 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 59/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 60/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 61/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 62/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 63/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 64/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 65/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 66/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 67/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 68/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 69/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 70/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:51 / 0:20:33 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 71/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 72/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 73/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 74/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 75/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 76/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 77/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 78/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 79/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 80/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 81/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 82/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:52 / 0:20:35 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 83/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 84/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 85/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 86/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 87/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 88/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 89/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 90/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 91/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 92/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 93/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 94/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:53 / 0:20:36 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 95/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 96/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 97/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 98/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 99/256 | Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 100/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 101/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 102/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 103/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 104/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 105/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:54 / 0:20:38 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 106/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 107/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 108/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 109/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 110/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 111/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 112/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 113/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 114/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 115/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 116/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 117/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:55 / 0:20:40 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 118/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 119/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 120/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 121/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 122/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 123/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 124/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 125/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 126/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 127/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 128/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 129/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:56 / 0:20:41 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 130/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 131/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 132/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 133/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 134/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 135/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 136/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 137/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 138/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 139/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 140/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 141/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:57 / 0:20:43 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 142/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 143/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 144/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 145/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 146/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 147/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 148/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 149/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 150/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 151/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 152/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 153/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:58 / 0:20:44 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 154/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 155/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 156/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 157/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 158/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 159/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 160/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 161/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 162/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 163/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 164/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 165/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:12:59 / 0:20:46 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 166/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 167/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 168/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 169/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 170/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 171/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 172/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 173/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 174/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 175/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 176/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 177/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:00 / 0:20:48 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 178/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 179/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 180/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 181/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 182/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 183/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 184/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 185/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 186/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 187/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 188/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 189/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:01 / 0:20:49 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 190/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 191/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 192/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 193/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 194/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 195/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 196/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 197/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 198/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 199/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 200/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 201/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:02 / 0:20:51 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 202/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 203/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 204/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 205/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 206/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 207/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 208/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 209/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 210/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 211/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 212/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 213/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 214/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 215/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 216/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 217/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 218/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 219/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 220/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 221/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 222/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 223/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 224/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 225/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 226/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 227/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 228/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 229/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 230/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 231/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 232/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 233/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 234/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 235/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 236/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 237/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 238/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 239/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 240/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 241/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 242/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 243/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 244/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 245/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 246/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 247/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 248/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 249/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 250/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 251/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 252/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 253/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 254/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 255/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%
+Forward: Layer=`model.layers.19`, subset=1/1, batches=256 Forward rows 256/256 |Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%Quantizing mlp.up_proj in layer   [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%Quantizing mlp.down_proj in layer [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:03 / 0:20:52 [20/32] 62.5%                                                                                INFO  | process | layer | module                    | feat: in, out | dtype: size   | loss         | samples | damp    | time  | fwd_time | (v)ram       | dynamic |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:06 / 0:20:57 [20/32] 62.5%                                                                                INFO  +---------+-------+---------------------------+---------------+---------------+--------------+---------+---------+-------+----------+--------------+---------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:06 / 0:20:57 [20/32] 62.5%                                                                                INFO  | gptq    | 19    | mlp.gate_proj             | 4096, 16384   | bf16: 132.0MB | [32m0.0000249386[0m | [38;5;76m1724919[0m | 0.05000 | 2.125 | 17.864   | cuda 35.45G  |         |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:06 / 0:20:57 [20/32] 62.5%                                                                                INFO  +---------+-------+---------------------------+---------------+---------------+--------------+---------+---------+-------+----------+--------------+---------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:06 / 0:20:57 [20/32] 62.5%                                                                                INFO  | gptq    | 19    | mlp.up_proj               | 4096, 16384   | bf16: 132.0MB | [32m0.0000254808[0m | [38;5;76m1724919[0m | 0.05000 | 2.135 | 17.864   | cuda 35.45G  |         |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:06 / 0:20:57 [20/32] 62.5%                                                                                INFO  +---------+-------+---------------------------+---------------+---------------+--------------+---------+---------+-------+----------+--------------+---------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:06 / 0:20:57 [20/32] 62.5%                                                                                INFO  | gptq    | 19    | mlp.down_proj             | 16384, 4096   | bf16: 132.1MB | [32m0.0000074830[0m | [38;5;76m1724919[0m | 0.05000 | 3.993 | 17.864   | cuda 35.45G  |         |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:07 / 0:20:59 [20/32] 62.5%                                                                                INFO  +---------+-------+---------------------------+---------------+---------------+--------------+---------+---------+-------+----------+--------------+---------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:07 / 0:20:59 [20/32] 62.5%Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:07 / 0:20:59 [20/32] 62.5%
+[0 of 256] ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░| 0:00:00 / 0:00:00 [0/256] 0.0%Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:07 / 0:20:59 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay RQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:07 / 0:20:59 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:07 / 0:20:59 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:07 / 0:20:59 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:08 / 0:21:00 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:09 / 0:21:02 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:10 / 0:21:04 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:11 / 0:21:05 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%
+Forward replay (layer=`model.layers.19`, batches=256, rows=256) Forward replay rQuantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:12 / 0:21:07 [20/32] 62.5%                                                                                INFO  | Submodule finalize | 57    | 14.612 | 7.062  | 402.539 | 27.0%  | model.layers.18.mlp.gate_proj                     |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  +--------------------+-------+--------+--------+---------+--------+---------------------------------------------------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  | Pre-quant forward  | 20    | 17.864 | 18.189 | 363.789 | 24.4%  | model.layers.19:subset1/1                         |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  +--------------------+-------+--------+--------+---------+--------+---------------------------------------------------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  | Forward hook       | 15360 | 0.001  | 0.020  | 306.047 | 20.5%  | model.layers.19.mlp.down_proj                     |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  +--------------------+-------+--------+--------+---------+--------+---------------------------------------------------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  | Process quant      | 60    | 3.996  | 2.715  | 162.906 | 10.9%  | model.layers.19.mlp.down_proj                     |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  +--------------------+-------+--------+--------+---------+--------+---------------------------------------------------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  | Finalize pack      | 57    | 0.875  | 1.694  | 96.569  | 6.5%   | model.layers.18.mlp.gate_proj [module.pack_block] |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  +--------------------+-------+--------+--------+---------+--------+---------------------------------------------------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  | Post-quant replay  | 20    | 4.703  | 4.602  | 92.036  | 6.2%   | model.layers.19:subset1/1                         |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  +--------------------+-------+--------+--------+---------+--------+---------------------------------------------------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  | Finalize create    | 57    | 0.565  | 1.030  | 58.722  | 3.9%   | model.layers.18.mlp.gate_proj                     |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  +--------------------+-------+--------+--------+---------+--------+---------------------------------------------------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  | Capture inputs     | 1     | 10.425 | 10.425 | 10.425  | 0.7%   | cache_inputs:MiniCPMSALADecoderLayer              |
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%                                                                                INFO  +--------------------+-------+--------+--------+---------+--------+---------------------------------------------------+
+Quantizing mlp.gate_proj in layer [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%
+[0 of 3] ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░| 0:00:00 / 0:00:00 [0/3] 0.0%Quantizing layer 19 of 31         [19 of 31] █▎| 0:13:13 / 0:21:08 [20/32] 62.5%
+Layer 19 Submodule finalize 0/3 Waiting for completions... | 0:00:00 / 0:00:00 [Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:13 / 0:20:08 [21/32] 65.6%
+Layer 19 Submodule finalize 0/3 Waiting for completions... | 0:00:00 / 0:00:00 [Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:15 / 0:20:11 [21/32] 65.6%
+Layer 19 Finalize 1/3 gptq: model.layers.19.mlp.down_proj           | 0:00:02 / Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:16 / 0:20:12 [21/32] 65.6%
+Layer 19 Finalize 2/3 gptq: model.layers.19.mlp.up_proj             | 0:00:02 / Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:16 / 0:20:12 [21/32] 65.6%
+Layer 19 Finalize 3/3 gptq: model.layers.19.mlp.gate_proj           | 0:00:03 / Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:16 / 0:20:12 [21/32] 65.6%Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:21 / 0:20:20 [21/32] 65.6%
+[0 of 256] ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░| 0:00:00 / 0:00:00 [0/256] 0.0%Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:21 / 0:20:20 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Row 0/256 | 0:00:00 / Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:21 / 0:20:20 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 1/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 2/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 3/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 4/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 5/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 6/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 7/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 8/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 9/256 | 0Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 10/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 11/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 12/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:22 / 0:20:22 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 13/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 14/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 15/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 16/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 17/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 18/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 19/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 20/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 21/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 22/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 23/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 24/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:23 / 0:20:23 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 25/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 26/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 27/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 28/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 29/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 30/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 31/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 32/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 33/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 34/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 35/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 36/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:24 / 0:20:25 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 37/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 38/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 39/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 40/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 41/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 42/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 43/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 44/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 45/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 46/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 47/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:25 / 0:20:26 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 48/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 49/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 50/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 51/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 52/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 53/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 54/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 55/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 56/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 57/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 58/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 59/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:26 / 0:20:28 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 60/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 61/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 62/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 63/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 64/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 65/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 66/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 67/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 68/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 69/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 70/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 71/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:27 / 0:20:29 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 72/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 73/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 74/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 75/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 76/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 77/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 78/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 79/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 80/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 81/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 82/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 83/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:28 / 0:20:31 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 84/256 | Quantizing layer 20 of 31         [20 of 31] █▎| 0:13:29 / 0:20:32 [21/32] 65.6%
+Forward: Layer=`model.layers.20`, subset=1/1, batches=256 Forward rows 85/256 | 
