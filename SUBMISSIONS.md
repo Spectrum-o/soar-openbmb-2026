@@ -122,12 +122,13 @@ Two independent failure modes uncovered in the 2026-05-21..22 debug session, EIT
 
 **H1 — `fix_qzeros_for_marlin()` silently no-op'd on the platform**. Documented in the 2026-05-21 update below. Fix: hardened in commit `d8aaaf1e4` (glob `*.safetensors`, accept uint32, per-element replacement, HARD EXIT on suspicious states, POST-CHECK reload sanity).
 
-**H4 — `GPTQModel.save()` re-serializes tokenizer; older transformers reads only inline chat_template.** Discovered 2026-05-22 by server-side analysis:
+**H4 — `GPTQModel.save()` re-serializes tokenizer; older transformers reads only inline chat_template.** Discovered 2026-05-22 by server-side analysis; mechanism verified against transformers v4.46.0 vs v4.47.0 source:
 - GPTQModel's `model.save()` calls HF `tokenizer.save_pretrained()`, which under newer tokenizers library splits the chat_template into BOTH inline `tokenizer_config.json` AND a separate `chat_template.jinja` sidecar.
-- `transformers >= 4.45` reads either source consistently.
-- **`transformers < 4.45` reads ONLY the inline field**, silently ignoring the sidecar.
-- If the platform's transformers is older than 4.45 (consistent with the AutoDL-49 vs platform-0 gap, since AutoDL has transformers 4.57.1), `apply_chat_template()` returns a raw prompt without the `<|im_start|>user\n...<|im_end|>\n<|im_start|>assistant` structure → the model emits garbage.
-- The artifact's `tokenizer.json` also grows from 3.6M (base) to 6.7M (GPTQModel-rewritten), with `added_tokens.json` appearing where it wasn't in the base model → vocab encoding may also have drifted.
+- The sidecar reader was added in **transformers v4.47.0** (PR #33957, "Separate chat templates into a single file", 2024-12-05). See `src/transformers/tokenization_utils_base.py:108` `CHAT_TEMPLATE_FILE = "chat_template.jinja"`.
+- On `>= 4.47`, the sidecar **wins over** the inline field.
+- On `< 4.47`, the sidecar is **silently ignored** (no error, just not read).
+- AutoDL has transformers 4.57.1 → reads sidecar; platform (suspected `< 4.47`) → reads inline. The local-49 vs platform-0 gap implies GPTQModel wrote a *correct* sidecar but a *broken-or-different* inline.
+- `tokenizer.json` also grows from 3.6M (base) to 6.7M (GPTQModel-rewritten); `added_tokens.json` appears where it wasn't in base → vocab encoding may also have drifted.
 
 This explains RTN-passes-at-42 vs every-GPTQModel-fails-at-0 perfectly: RTN's `quantize_gptq_rtn_sym.py:107` (`copy_metadata`) unconditionally `shutil.copy2()` overwrites tokenizer files from the input dir AFTER its numpy quant step → RTN's artifact has the base model's tokenizer byte-for-byte. v17/v21/v22's `quantize_gptqmodel_w4a16.py:976` (`copy_runtime_assets`) had an `if not target.exists()` guard that silently kept GPTQModel's bloated re-serialization. Fix: removed the guard in commit `57f9cef06`.
 
