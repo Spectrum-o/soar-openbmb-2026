@@ -9,45 +9,68 @@
 
 ## Server-side sync cheat sheet — DO THIS FIRST
 
+AutoDL instances start **blank** every time (only `/root/autodl-fs/` persistent NAS survives). Pick the path that matches your situation.
+
+### Fresh AutoDL instance (no repo on disk yet)
+
+Use the bootstrap script. It clones via SSH deploy key + sets up the venv + compiles all the kernel deps. 30–60 min wall time.
+
 ```bash
-# 1. Land on the working tree on the AutoDL box
+# Single-line invocation (env vars MUST be on the same line as the bash call
+# so they're inherited into the script).
+WORK_DIR=/root/autodl-tmp/zyn/soar \
+BRANCH=quant/w4a16 \
+SSH_KEY_PATH=/root/autodl-fs/zyn/soar_deploy_key \
+bash /root/autodl-fs/zyn/bootstrap_gpu.sh install 2>&1 \
+  | tee /root/autodl-fs/zyn/logs/install_$(date +%Y%m%d_%H%M%S).log
+```
+
+After bootstrap finishes, the repo is at `/root/autodl-tmp/zyn/soar/sglang/` on branch `quant/w4a16`, already up to date with the latest pushed commits (the script clones fresh from origin). **No `git pull` needed.**
+
+`bootstrap_gpu.sh install` is venv-only — no model download, no server start. Idempotent: re-runs skip finished steps. Available actions: `all | install | model | serve | serve-bg | bench | ssh | autosync | autosync-stop | autosync-once`.
+
+### Instance you've already bootstrapped before (repo on disk)
+
+Just pull.
+
+```bash
 cd /root/autodl-tmp/zyn/soar/sglang
-
-# 2. Make sure you're on the working branch
 git fetch origin
-git status              # expect: clean, on quant/w4a16
-git branch --show-current   # expect: quant/w4a16
-
-# 3. Pull the prep work landed locally on 2026-05-21
+git status                    # expect: clean, on quant/w4a16
+git branch --show-current     # expect: quant/w4a16
 git pull origin quant/w4a16
+```
 
-# 4. Verify you got the 3 new commits (newest first)
+### Verify the pull landed (either path)
+
+```bash
+cd /root/autodl-tmp/zyn/soar/sglang
 git log --oneline -5
-# Should show, top-to-bottom:
+# Top-to-bottom should read:
+#   509d341fd docs: server-side sync cheat sheet at top of handoff
 #   5a1480678 perf: cherry-pick chunked-prefill 65K + op-fusion verify patch
 #   7a53cd2ac tools: parse_quant_diagnostic for platform vs local log diff
 #   d8aaaf1e4 v21+v22 platform=0: harden fix_qzeros + pin gptqmodel + diagnostics
 #   5c028829c night work: 14 files of CPU-only infra + bug fix in multi-adaptive windowing
-#   8d4d6f9e7 tools: quant_config_validator + calib_set_preview
 
-# 5. Sanity check the new tooling + tests load on the server's python
+# CPU-only self tests (no GPU needed; runs in ~1s)
+source sglang_minicpm_sala_env/bin/activate
+python3 -m unittest tests.test_parse_quant_diagnostic tests.test_calibration_tools 2>&1 | tail -3
+# Expect: Ran 49 tests in <0.05s, OK
+
 python3 tools/parse_quant_diagnostic.py --help | head -5
-python3 -m unittest tests.test_parse_quant_diagnostic -v 2>&1 | tail -3
-# Expect: 22 tests OK
 
-# 6. Inspect the existing v21 quant artifact (cpu-only, no GPU needed)
-python3 tools/inspect_quant_artifact.py \
-    --artifact /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
-
-# 7. Parse the LATEST local quant log (so we have a baseline for diffing
-#    against the next platform run later)
+# Baseline-extract the latest known-good local quant log (the v21 run that
+# scored 49 locally). We'll compare future platform runs against this.
 python3 tools/parse_quant_diagnostic.py \
     --input scripts/logs/local_eval_quant_submission_gptqmodel_calib_w4a16_1779289794.log \
-    --output-md /tmp/baseline_local_quant.md
-cat /tmp/baseline_local_quant.md | head -30
+    --output-md /root/autodl-fs/zyn/logs/baseline_local_quant.md
+head -20 /root/autodl-fs/zyn/logs/baseline_local_quant.md
 ```
 
-If any step fails, **stop and read this doc end-to-end before doing anything else**. The state below tells you what changed and why.
+If `tests/test_parse_quant_diagnostic.py` fails, **stop** — the tool isn't going to be reliable for the platform-vs-local diff later. Debug before doing anything else.
+
+If `git status` shows uncommitted changes that don't look like yours, they're probably from the watchdog snapshot loop (`scripts/watchdog_commit.sh`, pid 25036 per the night-work summary). Check `git log --oneline` for `auto:` watchdog commits — those are safe to keep.
 
 ---
 
