@@ -1,0 +1,272 @@
+[prepare_model] using calibration from: /root/autodl-tmp/zyn/sglang/submission_gptqmodel_calib_w4a16/perf_public_set.jsonl
+[prepare_model] quantize timeout: 90 min
+[prepare_model] DIAGNOSTIC: script dir contents
+total 23456
+drwxr-xr-x  3 root root      186 May 22 02:26 .
+drwxr-xr-x 31 root root     4096 May 22 02:29 ..
+-rw-r--r--  1 root root     6228 May 21 22:06 README_SUBMISSION.md
+-rw-r--r--  1 root root 23925601 May 22 01:42 perf_public_set.jsonl
+-rwxr-xr-x  1 root root     9502 May 22 00:59 prepare_env.sh
+-rwxr-xr-x  1 root root     6858 May 21 22:06 prepare_model.sh
+-rwxr-xr-x  1 root root    54841 May 22 00:59 quantize_gptqmodel_w4a16.py
+drwxr-xr-x  2 root root       28 May 22 02:15 sglang
+[prepare_model] DIAGNOSTIC: input dir
+total 18515298
+drwxr-xr-x 2 root root       4096 May 17 11:48 .
+drwxr-xr-x 5 root root       4096 May 19 20:48 ..
+-rw-r--r-- 1 root root         43 May 11 22:17 .mdl
+-rw------- 1 root root       1110 May 11 22:52 .msc
+-rw-r--r-- 1 root root         36 May 11 22:52 .mv
+-rw-r--r-- 1 root root       9398 May 11 22:18 README.md
+-rw-r--r-- 1 root root       2397 May 11 22:18 config.json
+-rw-r--r-- 1 root root      11824 May 11 22:18 configuration_minicpm_sala.py
+-rw-r--r-- 1 root root        153 May 11 22:18 generation_config.json
+-rw-r--r-- 1 root root 4968143488 May 11 22:49 model-00001-of-00004.safetensors
+-rw-r--r-- 1 root root 4874002352 May 11 22:49 model-00002-of-00004.safetensors
+-rw-r--r-- 1 root root 4874002384 May 11 22:49 model-00003-of-00004.safetensors
+-rw-r--r-- 1 root root 4238305384 May 11 22:52 model-00004-of-00004.safetensors
+-rw-r--r-- 1 root root      32584 May 11 22:18 model.safetensors.index.json
+-rw-r--r-- 1 root root     132069 May 17 11:48 modeling_minicpm_sala.py
+-rw-r--r-- 1 root root     132102 May 17 11:48 modeling_minicpm_sala.py.bak_remove_head_first
+-rw-r--r-- 1 root root       3497 May 11 22:18 special_tokens_map.json
+-rw-r--r-- 1 root root    3676708 May 11 22:18 tokenizer.json
+-rw-r--r-- 1 root root    1181204 May 11 22:18 tokenizer.model
+[prepare_model] DIAGNOSTIC: calib jsonl path=/root/autodl-tmp/zyn/sglang/submission_gptqmodel_calib_w4a16/perf_public_set.jsonl
+[prepare_model] DIAGNOSTIC: calib jsonl size=23925601 bytes
+[prepare_model] DIAGNOSTIC: calib jsonl row count=150
+[prepare_model] DIAGNOSTIC: calib jsonl first row (first 200 chars):
+{"index": 121, "question": " Below is a numbered list of words. In these words, some appear more often than others. Memorize the ones that appear most often.\n1. elk 2. tragedy 3. elk 4. puppet 5. rep
+[calib] loaded 256 prompts from /root/autodl-tmp/zyn/sglang/submission_gptqmodel_calib_w4a16/perf_public_set.jsonl
+[calib] source has 150 usable rows; cycled deterministically to satisfy --num-calib=256
+[calib] task distribution: {'niah': 52, 'qa': 53, 'cwe': 54, 'fwe': 50, 'mcq': 47}
+[versions] python=3.12.13
+[versions] torch=2.9.1
+[versions] transformers=4.57.1
+[versions] gptqmodel=7.0.0
+[versions] flash-attn=2.8.3
+[versions] flash-linear-attention=0.3.0
+[versions] tokenizers=0.22.2
+[versions] huggingface-hub=0.34.0
+[versions] accelerate=1.12.0
+[versions] ninja=1.13.0
+
+WARN  Python GIL is enabled: Multi-gpu quant acceleration for MoE models is sub-optimal and multi-core accelerated cpu packing is also disabled. We recommend Python >= 3.13.3t with Pytorch > 2.8 for mult-gpu quantization and multi-cpu packing with env `PYTHON_GIL=0`.
+INFO  ENV: Auto setting PYTORCH_ALLOC_CONF='expandable_segments:True,max_split_size_mb:256,garbage_collection_threshold:0.7' for memory saving.
+INFO  ENV: Auto setting CUDA_DEVICE_ORDER=PCI_BUS_ID for correctness.          
+INFO  
+
+┌─────────────┐    ┌────────────────────────┐    ┌────────────┐    ┌─────────┐
+│ GPT-QModel  │ -> │ ▓▓▓▓▓▓▓▓▓▓▓▓ 16bit     │ -> │ ▒▒▒▒ 8bit  │ -> │ ░░ 4bit │
+└─────────────┘    └────────────────────────┘    └────────────┘    └─────────┘
+GPT-QModel   : 7.0.0+9feb2fc87
+Transformers : 4.57.1
+Torch        : 2.9.1+cu128
+Triton       : 3.5.1
+[register] also added minicpm_sala to gptqmodel.models.auto.SUPPORTED_MODELS (len=114)
+[register] registered minicpm_sala/MiniCPMSALAForCausalLM -> MiniCPMSALAGPTQ in 1 MODEL_MAP(s)
+INFO  QuantizeConfig: offload_to_disk_path auto set to temporary dir `/tmp/gptqmodel_knrsj7gj`
+[quant_config] offload_to_disk=False
+[load] GPTQModel.load(...)  kwargs=['trust_remote_code']
+[patch] forced minicpm_sala._attn_implementation = flash_attention_2
+[patch] forced minicpm_sala._attn_implementation = flash_attention_2
+[patch] forced minicpm_sala._attn_implementation = flash_attention_2
+[patch] forced minicpm_sala._attn_implementation = flash_attention_2
+Defuser public API `replace_fused_blocks()` requires transformers>=5.3.0. Current version is 4.57.1. This call is unsupported and will be skipped.
+INFO  Loader: Auto dtype (native bfloat16): `torch.bfloat16`                   
+INFO  Estimated Quantization BPW (bits per weight): 4.2875 bpw, based on [bits: 4, group_size: 128]
+INFO  Loader: loading model directly to CPU (not using meta device or turtle_model)
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:23<01:09, 23.12s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:30<00:27, 13.57s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:42<00:12, 12.85s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:52<00:00, 11.92s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:52<00:00, 13.12s/it]
+Defuser public API `convert_model()` requires transformers>=5.3.0. Current version is 4.57.1. This call is unsupported and will be skipped.
+INFO  Model: Loaded `generation_config`: GenerationConfig {
+  "bos_token_id": 1,
+  "eos_token_id": [
+    2,
+    73440
+  ],
+  "pad_token_id": 2
+}
+
+INFO  Model: Auto-fixed `generation_config` mismatch between model and `generation_config.json`.
+INFO  Model: Updated `generation_config`: GenerationConfig {
+  "bos_token_id": 1,
+  "do_sample": true,
+  "eos_token_id": [
+    2,
+    73440
+  ],
+  "pad_token_id": 2
+}
+
+INFO  Kernel: loaded -> `[]`                                                   
+[register] GPTQ wrapper class: __main__.MiniCPMSALAGPTQ
+[register] layer_modules=[['mlp.gate_proj', 'mlp.up_proj'], ['mlp.down_proj']]
+[calib] applying chat template to calibration prompts
+[calib] tokenized format: type=dict input_ids=Tensor(1, 8192) attention_mask=Tensor(1, 8192)
+[quantize] starting GPTQModel W4A16 group_size=128 samples=256 max_len=8192
+INFO  Packing Kernel: selected: `TorchLinear`                                  
+INFO  Packing Kernel: selected: `TorchLinear`                                  
+INFO  Calibration: Sort in descending order by length                          
+INFO  Calibration: Total padded tokens: 0                                      
+INFO  Calibration: Total non-padded tokens: 1724919                            
+INFO  Calibration: Total tokens: 1724919                                       
+INFO  Disk subsystem write throughput detected at 456.5 MB/s.                  
+INFO  ModuleLooper: capturing layer inputs from 256 calibration batches        
+[0 of 256] ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░| 0:00:00 / 0:00:00 [0/256] 0.0%Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 0/256 | 0:00:00 / 0:00Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 1/256 rows 1 | 0:00:04Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 2/256 rows 2 | 0:00:06Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 3/256 rows 3 | 0:00:07Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 4/256 rows 4 | 0:00:07Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 5/256 rows 5 | 0:00:08Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 6/256 rows 6 | 0:00:08Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 7/256 rows 7 | 0:00:08Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 8/256 rows 8 | 0:00:08Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 9/256 rows 9 | 0:00:08Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 10/256 rows 10 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 11/256 rows 11 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 12/256 rows 12 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 13/256 rows 13 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 14/256 rows 14 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 15/256 rows 15 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 16/256 rows 16 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 17/256 rows 17 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 18/256 rows 18 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 19/256 rows 19 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 20/256 rows 20 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 21/256 rows 21 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 22/256 rows 22 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 23/256 rows 23 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 24/256 rows 24 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 25/256 rows 25 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 26/256 rows 26 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 27/256 rows 27 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 28/256 rows 28 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 29/256 rows 29 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 30/256 rows 30 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 31/256 rows 31 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 32/256 rows 32 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 33/256 rows 33 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 34/256 rows 34 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 35/256 rows 35 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 36/256 rows 36 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 37/256 rows 37 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 38/256 rows 38 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 39/256 rows 39 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 40/256 rows 40 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 41/256 rows 41 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 42/256 rows 42 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 43/256 rows 43 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 44/256 rows 44 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 45/256 rows 45 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 46/256 rows 46 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 47/256 rows 47 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 48/256 rows 48 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 49/256 rows 49 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 50/256 rows 50 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 51/256 rows 51 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 52/256 rows 52 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 53/256 rows 53 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 54/256 rows 54 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 55/256 rows 55 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 56/256 rows 56 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 57/256 rows 57 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 58/256 rows 58 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 59/256 rows 59 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 60/256 rows 60 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 61/256 rows 61 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 62/256 rows 62 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 63/256 rows 63 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 64/256 rows 64 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 65/256 rows 65 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 66/256 rows 66 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 67/256 rows 67 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 68/256 rows 68 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 69/256 rows 69 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 70/256 rows 70 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 71/256 rows 71 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 72/256 rows 72 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 73/256 rows 73 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 74/256 rows 74 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 75/256 rows 75 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 76/256 rows 76 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 77/256 rows 77 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 78/256 rows 78 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 79/256 rows 79 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 80/256 rows 80 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 81/256 rows 81 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 82/256 rows 82 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 83/256 rows 83 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 84/256 rows 84 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 85/256 rows 85 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 86/256 rows 86 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 87/256 rows 87 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 88/256 rows 88 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 89/256 rows 89 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 90/256 rows 90 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 91/256 rows 91 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 92/256 rows 92 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 93/256 rows 93 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 94/256 rows 94 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 95/256 rows 95 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 96/256 rows 96 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 97/256 rows 97 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 98/256 rows 98 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 99/256 rows 99 | 0:00:Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 100/256 rows 100 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 101/256 rows 101 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 102/256 rows 102 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 103/256 rows 103 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 104/256 rows 104 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 105/256 rows 105 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 106/256 rows 106 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 107/256 rows 107 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 108/256 rows 108 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 109/256 rows 109 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 110/256 rows 110 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 111/256 rows 111 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 112/256 rows 112 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 113/256 rows 113 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 114/256 rows 114 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 115/256 rows 115 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 116/256 rows 116 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 117/256 rows 117 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 118/256 rows 118 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 119/256 rows 119 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 120/256 rows 120 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 121/256 rows 121 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 122/256 rows 122 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 123/256 rows 123 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 124/256 rows 124 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 125/256 rows 125 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 126/256 rows 126 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 127/256 rows 127 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 128/256 rows 128 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 129/256 rows 129 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 130/256 rows 130 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 131/256 rows 131 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 132/256 rows 132 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 133/256 rows 133 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 134/256 rows 134 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 135/256 rows 135 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 136/256 rows 136 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 137/256 rows 137 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 138/256 rows 138 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 139/256 rows 139 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 140/256 rows 140 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 141/256 rows 141 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 142/256 rows 142 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 143/256 rows 143 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 144/256 rows 144 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 145/256 rows 145 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 146/256 rows 146 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 147/256 rows 147 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 148/256 rows 148 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 149/256 rows 149 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 150/256 rows 150 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 151/256 rows 151 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 152/256 rows 152 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 153/256 rows 153 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 154/256 rows 154 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 155/256 rows 155 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 156/256 rows 156 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 157/256 rows 157 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 158/256 rows 158 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 159/256 rows 159 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 160/256 rows 160 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 161/256 rows 161 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 162/256 rows 162 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 163/256 rows 163 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 164/256 rows 164 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 165/256 rows 165 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 166/256 rows 166 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 167/256 rows 167 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 168/256 rows 168 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 169/256 rows 169 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 170/256 rows 170 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 171/256 rows 171 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 172/256 rows 172 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 173/256 rows 173 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 174/256 rows 174 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 175/256 rows 175 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 176/256 rows 176 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 177/256 rows 177 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 178/256 rows 178 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 179/256 rows 179 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 180/256 rows 180 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 181/256 rows 181 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 182/256 rows 182 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 183/256 rows 183 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 184/256 rows 184 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 185/256 rows 185 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 186/256 rows 186 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 187/256 rows 187 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 188/256 rows 188 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 189/256 rows 189 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 190/256 rows 190 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 191/256 rows 191 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 192/256 rows 192 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 193/256 rows 193 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 194/256 rows 194 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 195/256 rows 195 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 196/256 rows 196 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 197/256 rows 197 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 198/256 rows 198 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 199/256 rows 199 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 200/256 rows 200 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 201/256 rows 201 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 202/256 rows 202 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 203/256 rows 203 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 204/256 rows 204 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 205/256 rows 205 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 206/256 rows 206 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 207/256 rows 207 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 208/256 rows 208 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 209/256 rows 209 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 210/256 rows 210 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 211/256 rows 211 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 212/256 rows 212 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 213/256 rows 213 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 214/256 rows 214 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 215/256 rows 215 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 216/256 rows 216 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 217/256 rows 217 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 218/256 rows 218 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 219/256 rows 219 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 220/256 rows 220 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 221/256 rows 221 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 222/256 rows 222 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 223/256 rows 223 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 224/256 rows 224 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 225/256 rows 225 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 226/256 rows 226 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 227/256 rows 227 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 228/256 rows 228 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 229/256 rows 229 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 230/256 rows 230 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 231/256 rows 231 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 232/256 rows 232 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 233/256 rows 233 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 234/256 rows 234 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 235/256 rows 235 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 236/256 rows 236 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 237/256 rows 237 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 238/256 rows 238 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 239/256 rows 239 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 240/256 rows 240 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 241/256 rows 241 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 242/256 rows 242 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 243/256 rows 243 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 244/256 rows 244 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 245/256 rows 245 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 246/256 rows 246 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 247/256 rows 247 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 248/256 rows 248 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 249/256 rows 249 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 250/256 rows 250 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 251/256 rows 251 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 252/256 rows 252 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 253/256 rows 253 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 254/256 rows 254 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 255/256 rows 255 | 0:0Forward cached inputs (Pre MiniCPMSALADecoderLayer) Batch 256/256 rows 256 | 0:0                                                                                INFO  +------------+-------+--------+-------+---------+--------+---------+     
+INFO  | region     | count | last_s | avg_s | total_s | pct    | source  |     
+INFO  +------------+-------+--------+-------+---------+--------+---------+     
+INFO  | Capture inputs | 1     | 10.425 | 10.425 | 10.425  | 100.0% | cache_inputs:MiniCPMSALADecoderLayer |
+INFO  +----------------+-------+--------+--------+---------+--------+--------------------------------------+
+[0 of 32] ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░| 0:00:00 / 0:00:00 [0/32] 0.0%Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:00 / 0:00:00 [1/32] 3.1%Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:04 / 0:02:08 [1/32] 3.1%
+[0 of 256] ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░| 0:00:00 / 0:00:00 [0/256] 0.0%Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:04 / 0:02:08 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Row 0/256 | 0:00:00 / 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 1/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 2/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 3/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 4/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 5/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 6/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 7/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 8/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 9/256 | 0:Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 10/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:05 / 0:02:40 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 11/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 12/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 13/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 14/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 15/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 16/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 17/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 18/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 19/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 20/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:06 / 0:03:12 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 21/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 22/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 23/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 24/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 25/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 26/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 27/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 28/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 29/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:07 / 0:03:44 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 30/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 31/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 32/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 33/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 34/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 35/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 36/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 37/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 38/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 39/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 40/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 41/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:08 / 0:04:16 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 42/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 43/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 44/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 45/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 46/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 47/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 48/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 49/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 50/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 51/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 52/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 53/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:09 / 0:04:48 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 54/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 55/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 56/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 57/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 58/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 59/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 60/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 61/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 62/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 63/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 64/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 65/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:10 / 0:05:20 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 66/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 67/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 68/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 69/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 70/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 71/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 72/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 73/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 74/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 75/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 76/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:11 / 0:05:52 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 77/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 78/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 79/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 80/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 81/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 82/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 83/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 84/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 85/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 86/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 87/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 88/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:12 / 0:06:24 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 89/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 90/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 91/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 92/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 93/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 94/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 95/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 96/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 97/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 98/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 99/256 | 0Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 100/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:13 / 0:06:56 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 101/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 102/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 103/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 104/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 105/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 106/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 107/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 108/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 109/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 110/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 111/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:14 / 0:07:28 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 112/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 113/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 114/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 115/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 116/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 117/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 118/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 119/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 120/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 121/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 122/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 123/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:15 / 0:08:00 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 124/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 125/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 126/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 127/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 128/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 129/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 130/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 131/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 132/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 133/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 134/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 135/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:16 / 0:08:32 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 136/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 137/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 138/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 139/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 140/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 141/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 142/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 143/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 144/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 145/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:17 / 0:09:04 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 146/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:18 / 0:09:36 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 147/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:18 / 0:09:36 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 148/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:18 / 0:09:36 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 149/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:18 / 0:09:36 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 150/256 | Quantizing layer 0 of 31 [0 of 31] ▍░░░░░░░░░░░░░| 0:00:18 / 0:09:36 [1/32] 3.1%
+Forward: Layer=`model.layers.0`, subset=1/1, batches=256 Forward rows 151/256 | 
