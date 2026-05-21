@@ -109,12 +109,23 @@ Status legend:
 | 2026-05-20 | 16:30 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v20.tar.gz` | ⚠️ STALE | — | — | Built BEFORE qzeros root-cause fix (22:08) and calibration fix (21:50). **Do NOT submit.** Superseded by v21 |
 | 2026-05-20 | 22:08 | (no tarball — root-cause commit) | — | — | — | **ROOT CAUSE FOUND** for v6-v17 acc=0: gptqmodel 7.0.0 + sym=True writes `qzeros=7` per slot but Marlin dequant expects `qzeros=8`. Every weight gets `+1*scale` bias → garbage output. Fix in `fix_qzeros_for_marlin()` (commit `324ea90d2`) post-processes safetensors `0x77777777` → `0x88888888`. Idempotent. |
 | 2026-05-20 | 22:59 | (local_eval, no tarball) | — | ~13m | 63.33 (30/150) | v18 quant + qzeros in-place patch. First non-zero GPTQ result. 30-of-150 sample subset on `perf_public_set.jsonl`. Confirms qzeros fix was the right answer; remaining gap to 80-gate must come from calibration / module-set choices |
-| 2026-05-20 | 23:36 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v21.tar.gz` | 📦 | — | TBD (eval in flight) | MLP-only GPTQ with BOTH fixes baked into the quantizer: (1) `fix_qzeros_for_marlin()` auto-applied after `model.save()`; (2) calibration uses `tokenizer.truncation_side="left"` + `apply_chat_template` + `--max-calib-len 8192` to keep TAIL of long perf_public_set rows. Local eval on full 150 samples in progress; submit only if acc_ori ≥ 80 |
-| 2026-05-20 | 23:50 | `soar_gptqmodel_v17_minconfig_full_attn_submission_20260520_v22.tar.gz` | 📦 | — | TBD | **Full-attention** GPTQ (q/k/v/o_proj + MLP gate/up/down) with both fixes baked in (same qzeros + calib changes as v21). Built from `submission_gptq_v17_minconfig/` which intentionally keeps v17's module set so we can A/B against v21's MLP-only choice after qzeros root cause is fixed. **Use this if v21 lands in 70-80** — full attention might close the residual gap; or as parallel-track submission if a second slot opens. Symlinks dereferenced at pack time (whl + sglang/) |
+| 2026-05-20 | 23:36 | `soar_gptqmodel_calib_w4a16_mlp_only_submission_20260520_v21.tar.gz` | 🔴 acc | 5h | 0.0 | MLP-only GPTQ + qzeros fix + calib fix baked into the quantizer. **Platform acc=0** despite local acc=49 on full 150 perf_public_set. Bench timings S1=626 S8=998 Smax=2290 — identical to v17 → SGLang served + generated tokens normally, content was systematically broken. Triggered the platform-debug pre-processing turn 2026-05-21. |
+| 2026-05-20 | 23:50 | `soar_gptqmodel_v17_minconfig_full_attn_submission_20260520_v22.tar.gz` | 🔴 acc | 5h | 0.0 | Full-attn GPTQ + same qzeros+calib fixes as v21. **Platform acc=0**, same bench timings as v17/v21 (S1=626 S8=998 Smax=2290). v22 ALSO = 0 kills "MLP-only is the bug" hypothesis dead — issue is in the GPTQModel pipeline itself, not the module set. See `experiments/PLATFORM_DEBUG_HANDOFF.md` for the hardened response. |
 
 ---
 
 ## Open questions / next experiments
+
+### 🚨 2026-05-21 update: v22 (full-attn) ALSO platform=0 invalidates v17-era hypothesis ranking
+
+v21 (MLP-only) and v22 (full-attn) **both scored 0 on platform with literally identical bench timings to v17**. Plus RTN scored 40 on the same platform. So:
+
+- ❌ "full attention quantization is structurally unsafe" — REFUTED. v21 stripped attention; still 0.
+- ❌ "calibration recipe is the issue" — WEAKLY REFUTED. v21+v22 used the new left-trunc+chat-tpl+8K calib, both 0. RTN (no calibration at all) = 40.
+- ❌ "hidden eval set is qualitatively different" — WEAKLY REFUTED per SOAR-Toolkit README + perf_private_set being "same length/task distribution".
+- ✅ NEW LEADING HYPOTHESIS: `fix_qzeros_for_marlin()` **silently no-op'd on the platform** because the platform's gptqmodel version wrote qzeros in a layout the function did not recognize. Locally (AutoDL) `gptqmodel==7.0.0` writes 3-shard `model-NNNNN-of-NNNNN.safetensors` with qzeros = `0x77777777`; the function correctly patches 96 tensors to `0x88888888` and local acc reaches 49. On the platform, the install gate `gptqmodel>=7.0,<8.0` was skipped if any 7.x was pre-installed in the base env, and that .x release may write single-file `model.safetensors` or different dtypes — silently bypassing the glob/dtype/value checks.
+
+**Pre-processed response (committed 2026-05-21)**: hardened `fix_qzeros_for_marlin()` to glob `*.safetensors` (not just `model-*`), accept uint32, per-element replacement, print file inventory + sample values, and HARD EXIT on suspicious states. Pinned `gptqmodel==7.0.0`. Added DIAGNOSTIC prints in `prepare_model.sh` before/after quantize. See `experiments/PLATFORM_DEBUG_HANDOFF.md` for the next-action playbook.
 
 ### Why did v17 produce acc=0?
 

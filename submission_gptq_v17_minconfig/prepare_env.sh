@@ -68,6 +68,20 @@ raise SystemExit(0 if current >= minimum else 1)
 PY
 }
 
+python_pkg_exact_version() {
+    python3 - "$1" "$2" <<'PY'
+import importlib.metadata as metadata
+import sys
+
+pkg, expected = sys.argv[1], sys.argv[2]
+try:
+    version = metadata.version(pkg)
+except metadata.PackageNotFoundError:
+    raise SystemExit(1)
+raise SystemExit(0 if version == expected else 1)
+PY
+}
+
 flash_attn_importable() {
     python3 - <<'PY'
 import importlib.util
@@ -126,17 +140,29 @@ if [ -d "${SUBMISSION_DIR}/sglang/python" ]; then
     uv pip install --no-deps -e "${SUBMISSION_DIR}/sglang/python"
 fi
 
-# GPTQModel for onsite Hessian-based W4A16 quantization. Pin to a recent
-# stable release (7.x line) — newer ones have MiniCPM family support and
-# stable QuantizeConfig API.
-if python_pkg_major_ok gptqmodel 7 8 && \
+# GPTQModel for onsite Hessian-based W4A16 quantization. PINNED to the
+# EXACT version verified on AutoDL (96 qzeros tensors patched 7->8 by
+# fix_qzeros_for_marlin in the v21 quant run on 2026-05-20). The previous
+# major-range gate `>=7.0,<8.0` accepted any 7.x; when the platform base
+# env already had a different 7.x, the install was skipped and we ran
+# with an untested binary. v21 (local acc=49) and v22 (full-attn) both
+# scored 0 on the platform with bench timings identical to v17 — the
+# best-fit hypothesis is platform's gptqmodel writing qzeros in a layout
+# that the pre-2026-05-21 fix_qzeros silently no-op'd on. Pinning here
+# makes the install side deterministic; the hardened fix_qzeros also
+# now hard-exits on any layout mismatch, so if pin and hardening together
+# still fail, the platform log will tell us *why* instead of just acc=0.
+GPTQMODEL_PIN="${GPTQMODEL_PIN:-7.0.0}"
+
+if python_pkg_exact_version gptqmodel "${GPTQMODEL_PIN}" && \
    python_pkg_min_version transformers 4.45 && \
    python_pkg_present accelerate && \
    python_pkg_present ninja; then
-    echo "[prepare_env] GPTQModel dependencies already installed; skipping PyPI download"
+    echo "[prepare_env] gptqmodel ${GPTQMODEL_PIN} already installed; skipping PyPI download"
 else
-    echo "[prepare_env] installing GPTQModel + supporting packages"
-    install_with_cn_fallbacks "gptqmodel>=7.0,<8.0" "transformers>=4.45" accelerate ninja
+    installed_gptqmodel=$(python3 -c "import importlib.metadata as m; print(m.version('gptqmodel'))" 2>/dev/null || echo "(not installed)")
+    echo "[prepare_env] forcing gptqmodel==${GPTQMODEL_PIN} (currently: ${installed_gptqmodel})"
+    install_with_cn_fallbacks "gptqmodel==${GPTQMODEL_PIN}" "transformers>=4.45" accelerate ninja
 fi
 
 # Install flash-attn. SALA's HF modeling code (loaded via trust_remote_code)

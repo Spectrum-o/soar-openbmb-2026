@@ -110,6 +110,24 @@ EXTRA_ARGS+=(--no-offload-disk)
 
 echo "[prepare_model] quantize timeout: ${QUANT_TIMEOUT_MIN} min"
 
+# Diagnostic snapshot BEFORE quantize so platform logs show what we have.
+# v21/v22 both scored 0 on the platform with no remote signal of why;
+# these prints (script dir contents, calib file size + head row,
+# input/output dir existence) close that gap so the next failure mode
+# is visible from the eval log alone.
+echo "[prepare_model] DIAGNOSTIC: script dir contents"
+ls -la "${SCRIPT_DIR}" 2>&1 | head -40 || true
+echo "[prepare_model] DIAGNOSTIC: input dir"
+ls -la "${INPUT_DIR}" 2>&1 | head -20 || true
+if [ -n "${CALIB_JSONL}" ] && [ -f "${CALIB_JSONL}" ]; then
+    echo "[prepare_model] DIAGNOSTIC: calib jsonl path=${CALIB_JSONL}"
+    echo "[prepare_model] DIAGNOSTIC: calib jsonl size=$(stat -c%s "${CALIB_JSONL}" 2>/dev/null || stat -f%z "${CALIB_JSONL}") bytes"
+    echo "[prepare_model] DIAGNOSTIC: calib jsonl row count=$(wc -l < "${CALIB_JSONL}")"
+    echo "[prepare_model] DIAGNOSTIC: calib jsonl first row (first 200 chars):"
+    head -1 "${CALIB_JSONL}" | head -c 200 || true
+    echo ""
+fi
+
 set +e
 timeout "${QUANT_TIMEOUT_MIN}m" python3 "${SCRIPT_DIR}/quantize_gptqmodel_w4a16.py" \
     --input "${INPUT_DIR}" \
@@ -125,4 +143,17 @@ if [ "${quant_exit}" -eq 124 ]; then
 elif [ "${quant_exit}" -ne 0 ]; then
     echo "[prepare_model] quantize exited ${quant_exit}" >&2
     exit "${quant_exit}"
+fi
+
+# Diagnostic snapshot AFTER quantize so platform logs show the artifact
+# layout (single-file vs sharded, sizes, presence of qzeros via grep).
+# Independent of any Python introspection — if the Python step crashed
+# partway, this still produces output.
+echo "[prepare_model] DIAGNOSTIC: output dir contents after quantize"
+ls -la "${OUTPUT_DIR}" 2>&1 | head -30 || true
+echo "[prepare_model] DIAGNOSTIC: safetensors files in output"
+find "${OUTPUT_DIR}" -maxdepth 1 -name '*.safetensors' -exec ls -la {} \; 2>&1 || true
+if [ -f "${OUTPUT_DIR}/quantize_config.json" ]; then
+    echo "[prepare_model] DIAGNOSTIC: quantize_config.json"
+    cat "${OUTPUT_DIR}/quantize_config.json"
 fi

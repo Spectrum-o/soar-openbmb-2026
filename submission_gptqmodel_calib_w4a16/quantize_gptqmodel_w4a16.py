@@ -1002,56 +1002,174 @@ def save_model(model, output_dir: str) -> None:
 
 
 def fix_qzeros_for_marlin(output_dir: Path) -> None:
-    """Rewrite GPTQModel's qzeros from 0x77777777 (=7 per slot) to 0x88888888 (=8).
+    """Rewrite GPTQModel's qzeros 0x77777777 (=7 per slot) -> 0x88888888 (=8).
 
-    Verified 2026-05-20: gptqmodel 7.0.0 + sym=True writes uint4b8 qzeros
-    where every 4-bit slot equals 7 (packed int32 = 2004318071). SGLang's
-    Marlin dequant is `weight = (q_unsigned - qzero) * scale`, which with
-    qzero=7 gives a per-weight `+1*scale` additive bias relative to the
-    intended symmetric encoding (qzero=8 → range [-8, +7]). The bias
-    accumulates through every Linear in every layer and produces acc=0
-    end-to-end. The hand-written RTN-scalefix submission writes qzero=8
-    and was the one variant that did not collapse to 0 (acc=42).
+    gptqmodel 7.0.0 + sym=True writes uint4b8 qzeros where every 4-bit slot
+    equals 7 (packed int32 = 0x77777777). SGLang Marlin dequant
+    `(q - qzero) * scale` then adds a per-weight `+1*scale` bias that
+    accumulates to acc=0 end-to-end. RTN-scalefix wrote qzero=8 and was
+    the one variant that did not collapse to 0 (local acc=42).
 
-    Patch every shard's qzeros in place to 0x88888888.
+    HARDENED 2026-05-21 against platform-side silent-failure paths that
+    caused v21 (local acc=49) and v22 to both score 0 on the platform:
+      - Glob *.safetensors (not just model-*.safetensors) so single-file
+        outputs are caught. This was the prime suspect: a different
+        gptqmodel 7.x on the platform may write `model.safetensors` with
+        no shard suffix, which the old glob missed entirely.
+      - Treat torch.uint32 the same as torch.int32 via .view().
+      - Per-element mask `tensor == 0x77777777` instead of whole-tensor
+        blast, so mixed-value qzeros are repaired without clobbering
+        correct entries.
+      - Print file inventory + sample unique values so platform-side logs
+        are diagnostic enough to root-cause remotely.
+      - HARD EXIT if no .safetensors files OR no .qzeros tensors are
+        found. Previously these silently no-op'd; broken model went to
+        inference unfixed with no log signal.
+      - POST-WRITE sanity check: reload one shard and assert the first
+        .qzeros reads back as 0x88888888 end-to-end.
     """
     import torch
     from safetensors.torch import load_file, save_file
 
-    BAD = 0x77777777
-    GOOD_SIGNED = -2004318072  # int32 form of 0x88888888 (unsigned: 2290649224)
+    BAD_INT32 = 0x77777777                # 2004318071 (positive in int32)
+    GOOD_INT32 = -2004318072              # 0x88888888 reinterpreted as int32
 
-    shards = sorted(output_dir.glob("model-*.safetensors"))
+    shards = sorted(
+        p for p in output_dir.glob("*.safetensors")
+        if not p.name.endswith(".index.safetensors")
+    )
+
+    print(f"[qzeros-fix] output_dir inventory ({output_dir}):", flush=True)
+    for f in sorted(output_dir.iterdir()):
+        if f.is_file():
+            print(f"[qzeros-fix]   {f.name}  ({f.stat().st_size:,} bytes)",
+                  flush=True)
+    print(f"[qzeros-fix] scanning {len(shards)} .safetensors weight file(s)",
+          flush=True)
+
     if not shards:
-        print("[qzeros-fix] no safetensors shards found, skipping", flush=True)
-        return
+        bin_files = sorted(output_dir.glob("*.bin"))
+        msg = f"no .safetensors weight files in {output_dir}"
+        if bin_files:
+            msg += (f" (found {len(bin_files)} torch .bin files - gptqmodel "
+                    f"wrote a format SGLang Marlin loader does not support)")
+        raise RuntimeError(f"[qzeros-fix] FATAL: {msg}")
 
-    total_fixed = 0
+    total_qzeros_seen = 0
+    total_qzeros_patched = 0
+    total_already_good = 0
+    total_unknown_dtype = 0
+    total_unknown_values = 0
+    sample_summaries: list[str] = []
+
     for shard in shards:
         state = load_file(str(shard))
-        n_fixed = 0
+        n_fixed_this_shard = 0
         for key, tensor in list(state.items()):
-            if not key.endswith(".qzeros") or tensor.dtype != torch.int32:
+            if not key.endswith(".qzeros"):
                 continue
-            unique = tensor.flatten().unique().tolist()
-            if unique == [BAD]:
-                state[key] = torch.full_like(tensor, GOOD_SIGNED)
-                n_fixed += 1
-            elif unique == [GOOD_SIGNED]:
-                pass  # already correct
+            total_qzeros_seen += 1
+
+            if tensor.dtype == torch.uint32:
+                qview = tensor.view(torch.int32)
+                dst_dtype = torch.uint32
+            elif tensor.dtype == torch.int32:
+                qview = tensor
+                dst_dtype = torch.int32
             else:
-                print(
-                    f"[qzeros-fix] WARN: {key} has unexpected unique values "
-                    f"{unique[:5]} (expected [{BAD}] or [{GOOD_SIGNED}]); leaving alone",
-                    flush=True,
+                print(f"[qzeros-fix] WARN: {shard.name}::{key} unexpected "
+                      f"dtype {tensor.dtype}; skipping", flush=True)
+                total_unknown_dtype += 1
+                continue
+
+            if len(sample_summaries) < 5:
+                uniq_vals = qview.flatten().unique()[:6].tolist()
+                hex_vals = [f"0x{u & 0xFFFFFFFF:08x}" for u in uniq_vals]
+                sample_summaries.append(
+                    f"{shard.name}::{key} dtype={tensor.dtype} "
+                    f"unique[:6]={uniq_vals} hex={hex_vals}"
                 )
-        if n_fixed:
+
+            mask_bad = qview == BAD_INT32
+            n_bad = int(mask_bad.sum().item())
+            if n_bad == 0:
+                first_val = int(qview.flatten()[0].item())
+                if first_val == GOOD_INT32:
+                    total_already_good += 1
+                else:
+                    total_unknown_values += 1
+                continue
+
+            new_qview = qview.clone()
+            new_qview[mask_bad] = GOOD_INT32
+            state[key] = (
+                new_qview.view(torch.uint32) if dst_dtype == torch.uint32
+                else new_qview
+            )
+            n_fixed_this_shard += 1
+
+        if n_fixed_this_shard:
             save_file(state, str(shard))
-            print(f"[qzeros-fix] rewrote {n_fixed} qzeros tensors in {shard.name}",
-                  flush=True)
-            total_fixed += n_fixed
-    print(f"[qzeros-fix] total {total_fixed} qzeros tensors patched 0x77777777 -> 0x88888888",
+            print(f"[qzeros-fix] {shard.name}: patched {n_fixed_this_shard} "
+                  f"qzeros tensors", flush=True)
+            total_qzeros_patched += n_fixed_this_shard
+
+    print(f"[qzeros-fix] SUMMARY:", flush=True)
+    print(f"[qzeros-fix]   qzeros tensors seen:        {total_qzeros_seen}",
           flush=True)
+    print(f"[qzeros-fix]   patched (had 0x77777777):   {total_qzeros_patched}",
+          flush=True)
+    print(f"[qzeros-fix]   already good (0x88888888):  {total_already_good}",
+          flush=True)
+    print(f"[qzeros-fix]   unknown dtype skipped:      {total_unknown_dtype}",
+          flush=True)
+    print(f"[qzeros-fix]   unknown values not patched: {total_unknown_values}",
+          flush=True)
+    for s in sample_summaries:
+        print(f"[qzeros-fix]   sample: {s}", flush=True)
+
+    if total_qzeros_seen == 0:
+        raise RuntimeError(
+            "[qzeros-fix] FATAL: zero .qzeros tensors found in any shard. "
+            "Either no modules were actually quantized (calibration failed) "
+            "or gptqmodel wrote weights in an unrecognized layout. "
+            "DO NOT trust this artifact - inference will be garbage."
+        )
+
+    if total_unknown_values > 0 and total_qzeros_patched == 0:
+        raise RuntimeError(
+            f"[qzeros-fix] FATAL: {total_unknown_values} qzeros tensors had "
+            f"values that are neither the bad 0x77777777 nor the expected "
+            f"0x88888888. gptqmodel version here likely uses a different "
+            f"qzeros encoding. Inspect sample lines above and extend "
+            f"fix_qzeros_for_marlin to handle the new pattern."
+        )
+
+    verify_state = load_file(str(shards[0]))
+    verified = False
+    for key, tensor in verify_state.items():
+        if not key.endswith(".qzeros"):
+            continue
+        if tensor.dtype == torch.uint32:
+            tensor = tensor.view(torch.int32)
+        elif tensor.dtype != torch.int32:
+            continue
+        first_val = int(tensor.flatten()[0].item())
+        first_hex = f"0x{first_val & 0xFFFFFFFF:08x}"
+        print(f"[qzeros-fix] POST-CHECK {shards[0].name}::{key} first_val="
+              f"{first_val} ({first_hex})", flush=True)
+        if first_val == GOOD_INT32:
+            verified = True
+        break
+
+    if not verified and total_qzeros_patched > 0:
+        raise RuntimeError(
+            f"[qzeros-fix] FATAL: post-write sanity check failed. "
+            f"Reloaded {shards[0].name} and first qzeros does NOT have "
+            f"the expected 0x88888888 pattern. Save likely went to a "
+            f"different path or was overwritten."
+        )
+    print(f"[qzeros-fix] OK", flush=True)
 
 
 # ---------------------------------------------------------------------------
