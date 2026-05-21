@@ -579,12 +579,23 @@ def _slice_windows_for_prompt(
         return [(n_tokens - L, n_tokens)]
     windows = [(n_tokens - L, n_tokens)]
     mid_start = (n_tokens - L) // 2
-    windows.append((mid_start, mid_start + L))
+    mid_end = mid_start + L
+    windows.append((mid_start, mid_end))
     if n_tokens > int(12.5 * L):
-        lo = L
-        hi = n_tokens - 2 * L
-        if hi > lo:
-            start = rng.randint(lo, hi - 1)
+        # Random window placed in a region disjoint from tail AND centered mid.
+        # The naive "anywhere in [L, n-2L]" lets the random window collide
+        # with the centered mid (caught by tests/test_calibration_tools.py
+        # at seed=7, n=13L). Explicitly exclude the mid span.
+        #   region A (before mid): start in [L, mid_start - L]
+        #   region B (after mid):  start in [mid_end, (n - L) - L]
+        candidates = []
+        if mid_start - L >= L:
+            candidates.append((L, mid_start - L))
+        if (n_tokens - 2 * L) >= mid_end:
+            candidates.append((mid_end, n_tokens - 2 * L))
+        if candidates:
+            lo, hi = rng.choice(candidates)
+            start = rng.randint(lo, hi)
             windows.append((start, start + L))
     return windows
 

@@ -44,7 +44,18 @@ from pathlib import Path
 def slice_windows_for_prompt(
     n_tokens: int, max_len: int, rng: random.Random
 ) -> list[tuple[int, int]]:
-    """Return (start, end) windows under the multi-adaptive policy."""
+    """Return (start, end) windows under the multi-adaptive policy.
+
+    Policy:
+        n <= L:             [(0, n)]
+        L < n <= 4L:        [(n-L, n)]                       — tail only
+        4L < n <= 12.5L:    tail + centered mid              — 2 windows
+        n > 12.5L:          tail + mid + 1 random window     — 3 windows
+
+    The random window is drawn from regions that do NOT overlap the tail
+    or the centered mid (the naive "anywhere in [L, n-2L]" would let it
+    collide with the centered mid; we exclude that span explicitly).
+    """
     L = max_len
     if n_tokens <= L:
         return [(0, n_tokens)]
@@ -52,12 +63,20 @@ def slice_windows_for_prompt(
         return [(n_tokens - L, n_tokens)]
     windows = [(n_tokens - L, n_tokens)]
     mid_start = (n_tokens - L) // 2
-    windows.append((mid_start, mid_start + L))
+    mid_end = mid_start + L
+    windows.append((mid_start, mid_end))
     if n_tokens > int(12.5 * L):
-        lo = L
-        hi = n_tokens - 2 * L
-        if hi > lo:
-            start = rng.randint(lo, hi - 1)
+        # Random window placed in a region disjoint from tail and centered mid.
+        #   region A (before mid): start in [L, mid_start - L]
+        #   region B (after mid):  start in [mid_end, (n - L) - L]
+        candidates: list[tuple[int, int]] = []
+        if mid_start - L >= L:
+            candidates.append((L, mid_start - L))
+        if (n_tokens - 2 * L) >= mid_end:
+            candidates.append((mid_end, n_tokens - 2 * L))
+        if candidates:
+            lo, hi = rng.choice(candidates)
+            start = rng.randint(lo, hi)
             windows.append((start, start + L))
     return windows
 
