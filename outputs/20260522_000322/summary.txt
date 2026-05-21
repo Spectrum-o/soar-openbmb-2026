@@ -1,0 +1,10 @@
+Model: /root/autodl-fs/zyn/models/exp_h_chunked_prefill_revert-quantized
+Data: submission_gptqmodel_calib_w4a16/perf_public_set.jsonl
+Original Accuracy: 48.78%
+Normalized Accuracy: 60.97%
+Num Samples: 150
+Total Duration: 4095.55 s
+Total Output Tokens: 1559077
+Average Input Tokens: 57628.8
+Average Output Tokens: 10393.8
+TPS: 380.68
