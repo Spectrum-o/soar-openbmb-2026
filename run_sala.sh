@@ -30,7 +30,9 @@ python3 -m sglang.launch_server \
     --trust-remote-code \
     --disable-radix-cache \
     --attention-backend minicpm_flashinfer \
-    --chunked-prefill-size 8192 \
+    --chunked-prefill-size 65536 \
+    --max-prefill-tokens 65536 \
+    --mem-fraction-static 0.80 \
     --max-running-requests 32 \
     --skip-server-warmup \
     --port "${PORT}" \

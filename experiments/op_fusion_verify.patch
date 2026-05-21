@@ -1,0 +1,90 @@
+# MINICPM_FUSION_VERIFY: runtime check for the perf/op-fusion branch
+#
+# Adds an env-gated correctness check that runs the unfused RMSNorm
+# reference in parallel to the fused path and prints max-abs-diff per
+# layer per norm site. Zero overhead when MINICPM_FUSION_VERIFY is unset.
+#
+# Why a runtime check rather than a unit test:
+#   - attn/mlp have KV-cache side effects, so we cannot A/B by running
+#     the whole layer twice. Verify is scoped to the norm+add chain,
+#     which is exactly what the fusion changed.
+#   - sgl-kernel's fused_add_rmsnorm is an in-place CUDA op; behavior on
+#     real hidden states (long context, sparse attention path, low
+#     precision accumulation) can only be exercised on real GPU runs.
+#
+# How to apply (when ready to GPU-validate the op-fusion branch):
+#
+#     git checkout perf/op-fusion
+#     git apply experiments/op_fusion_verify.patch
+#
+# How to enable at runtime:
+#
+#     MINICPM_FUSION_VERIFY=1 bash run_sala.sh &
+#     # then send any prompt; stderr will show per-layer:
+#     # [fusion-verify L0 norm1] norm_diff=0.000e+00 res_diff=0.000e+00
+#
+# Expected: norm_diff and res_diff both < 1e-3 in bf16, < 1e-6 in fp32.
+# Anything larger is a real divergence the pure-torch CPU test missed.
+#
+# Validated 2026-05-21: `git apply --check` clean against
+# origin/perf/op-fusion HEAD (87c22ec88).
+#
+diff --git a/python/sglang/srt/models/minicpm.py b/python/sglang/srt/models/minicpm.py
+index a7d8d425b..b80f630d3 100644
+--- a/python/sglang/srt/models/minicpm.py
++++ b/python/sglang/srt/models/minicpm.py
+@@ -477,14 +477,33 @@ class MiniCPMDecoderLayer(nn.Module):
+     ) -> Tuple[torch.Tensor, torch.Tensor]:
+         # Build sparse metadata (model-specific logic!)
+ 
++        import os
++        _verify = os.environ.get("MINICPM_FUSION_VERIFY") == "1"
++
+         scale = self.config.scale_depth / math.sqrt(self.config.num_hidden_layers)
+ 
+         # Self Attention
++        if _verify:
++            _h_pre1 = hidden_states.detach().clone()
++            _r_pre1 = residual.detach().clone() if residual is not None else None
+         if residual is None:
+             residual = hidden_states
+             hidden_states = self.input_layernorm(hidden_states)
+         else:
+             hidden_states, residual = self.input_layernorm(hidden_states, residual)
++        if _verify:
++            _ref_combined1 = _h_pre1 if _r_pre1 is None else (_h_pre1 + _r_pre1)
++            _ref_normed1 = self.input_layernorm.forward_native(_ref_combined1)
++            _nd1 = (hidden_states.float() - _ref_normed1.float()).abs().max().item()
++            _rd1 = (
++                (residual.float() - _ref_combined1.float()).abs().max().item()
++                if _r_pre1 is not None else 0.0
++            )
++            print(
++                f"[fusion-verify L{self.layer_id} norm1] "
++                f"norm_diff={_nd1:.3e} res_diff={_rd1:.3e}",
++                flush=True,
++            )
+         hidden_states = self.self_attn(
+             positions=positions,
+             hidden_states=hidden_states,
+@@ -493,7 +512,20 @@ class MiniCPMDecoderLayer(nn.Module):
+         hidden_states = hidden_states * scale
+ 
+         # Fully Connected
++        if _verify:
++            _h_pre2 = hidden_states.detach().clone()
++            _r_pre2 = residual.detach().clone()
+         hidden_states, residual = self.post_attention_layernorm(hidden_states, residual)
++        if _verify:
++            _ref_combined2 = _h_pre2 + _r_pre2
++            _ref_normed2 = self.post_attention_layernorm.forward_native(_ref_combined2)
++            _nd2 = (hidden_states.float() - _ref_normed2.float()).abs().max().item()
++            _rd2 = (residual.float() - _ref_combined2.float()).abs().max().item()
++            print(
++                f"[fusion-verify L{self.layer_id} norm2] "
++                f"norm_diff={_nd2:.3e} res_diff={_rd2:.3e}",
++                flush=True,
++            )
+         hidden_states = self.mlp(hidden_states)
+         hidden_states = hidden_states * scale
+ 

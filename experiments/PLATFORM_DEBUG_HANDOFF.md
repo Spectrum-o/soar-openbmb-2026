@@ -214,6 +214,7 @@ The diff report ends with a "Verdict heuristic" section that names the most like
 | `tools/inspect_quant_artifact.py` | qzeros + scales sanity check (CPU, no model load) |
 | `tools/repetition_analyzer.py` | Per-prediction loop detection (built last night) |
 | `tools/parse_quant_diagnostic.py` | **NEW (2026-05-21)**: parse the new DIAGNOSTIC + qzeros-fix SUMMARY blocks from a quant log. Use `--compare` to diff platform log vs local log; the heuristic verdict at the end of the diff report points to the most likely divergence. Backward-compatible with legacy `[qzeros-fix]` format. Has 22 unit tests in `tests/test_parse_quant_diagnostic.py`. |
+| `experiments/op_fusion_verify.patch` | **NEW (2026-05-21)**: drop-in patch on top of `perf/op-fusion` that adds runtime norm+add correctness check, gated by `MINICPM_FUSION_VERIFY=1`. Validated `git apply --check` clean. Apply when ready to GPU-validate the op-fusion branch. |
 | `tools/quant_config_validator.py` | Tarball pre-flight (qzeros / sed / SGLANG_SERVER_ARGS) |
 | `tools/pack_submission.py` | Auto-pack v23/v24/etc |
 | `scripts/logs/local_eval_quant_*.log` | Local quantization runs; grep `qzeros-fix` for fix history |
@@ -231,3 +232,59 @@ User memory at `/home/zyn/.claude/projects/-home-zyn-program-2026-Spring-mlsys-c
 2. **Best fit**: `fix_qzeros_for_marlin()` silently no-op'd on the platform because the platform's gptqmodel wrote a layout the function didn't expect (likely single-file `model.safetensors` + glob mismatch, or different dtype).
 3. **Pre-processed**: hardened the fix to (a) catch any safetensors layout, (b) HARD EXIT on suspicious states, (c) print diagnostic info; pinned `gptqmodel==7.0.0`; added shell-level diagnostic prints before/after quantize.
 4. **Next step**: re-quant locally to confirm no regression → pack v23 → submit one slot → read the new diagnostic output → that tells us exactly what to fix next.
+
+---
+
+## Bonus pre-processing (2026-05-21, after platform-0 debug)
+
+These are independent of the quant=0 investigation but landed in the same pass to make the next platform submission carry as much value as possible:
+
+### Chunked-prefill cherry-pick (commit `5c028829c+1`)
+
+`config/chunked-prefill-tuned`'s 3-flag bundle (`--chunked-prefill-size 65536 --max-prefill-tokens 65536 --mem-fraction-static 0.80`) is now in:
+- `run_sala.sh` (AutoDL local launcher)
+- `submission_gptqmodel_calib_w4a16/prepare_env.sh` (v21 SGLANG_SERVER_ARGS)
+- `submission_gptq_v17_minconfig/prepare_env.sh` (v22 SGLANG_SERVER_ARGS)
+
+Source-branch measurement (RTX PRO 6000 Blackwell, 64×4096-in×512-out random-ids):
+- 8K (baseline): 267.67 tok/s, TTFT 34049ms
+- 32K: 425.58 tok/s, TTFT 13545ms (+59% / −60%)
+- 65K: **488.84 tok/s, TTFT 12529ms (+83% / −63%)**
+
+Two gotchas the source branch warned about, both addressed:
+1. SGLang default `--max-prefill-tokens=16384` silently caps actual prefill regardless of chunked-prefill-size — must set both.
+2. Auto-calc of `mem_fraction_static` can go negative under large chunks — must set explicitly (0.80 verified working).
+
+So even if v23 still scores 0 on acc, the perf metric in `benchmark_duration` should drop significantly (S1 ~600s → ~330s, similar drops on S8/Smax).
+
+### Op-fusion verify patch (`experiments/op_fusion_verify.patch`)
+
+The `perf/op-fusion` branch is bit-exact on a CPU mock model but has not been GPU-validated. The patch file in `experiments/` adds runtime instrumentation that runs the unfused RMSNorm reference alongside the fused path and prints per-layer max-abs-diff. Gated by `MINICPM_FUSION_VERIFY=1`; zero overhead when unset.
+
+Apply path:
+```
+git checkout perf/op-fusion
+git apply experiments/op_fusion_verify.patch
+git checkout - # back to quant/w4a16
+git cherry-pick perf/op-fusion  # if you want to bring op-fusion + verify into quant/w4a16
+```
+
+Runtime:
+```
+MINICPM_FUSION_VERIFY=1 bash run_sala.sh &
+# stderr per layer:
+# [fusion-verify L0 norm1] norm_diff=0.000e+00 res_diff=0.000e+00
+```
+
+Expected: both diffs < 1e-3 in bf16. Anything larger is a real bug the CPU test missed. The patch validates clean against `origin/perf/op-fusion` HEAD `87c22ec88`.
+
+### Op-fusion audit findings (no GPU needed)
+
+Math traced manually + cross-checked against SGLang sources:
+- RMSNorm signature: `forward(x, residual=None) → (normed, new_residual)` when residual is not None; calls `fused_add_rmsnorm` in-place. Matches the fusion code's usage. ✓
+- `apply_rope_with_cos_sin_cache_inplace` uses fp32 cos/sin internally (sgl-kernel C++ path). The dropped `q.float()/k.float()` upcast is safe on this fast path — same pattern as LLaMA/Qwen/Gemma. ⚠️ Fallback Python path would lose precision, but platform uses `--attention-backend minicpm_flashinfer` which routes to the fast path.
+- Only ONE `MiniCPMDecoderLayer` class exists; both dense (`MiniCPMAttention`) and Lightning (`MiniCPMLightningMixer`) layer types dispatch through it. Fusion covers both. ✓
+- `scale_depth/sqrt(L)` is applied to attn/mlp OUTPUT (matches old behavior) before the next fused norm consumes it. ✓
+- Subtle residual risk: `fused_add_rmsnorm` is in-place on both `x` and `residual` tensors. The fused forward code is correct in this scope. No callers depend on the pre-fusion residual.
+
+**Verdict**: code looks correct, but GPU validation is still needed because (a) chunked-prefill stress changes how residual tensors flow across micro-batches, (b) long-context numerical accumulation can't be exercised on CPU mock. The verify patch above is the cheap way to catch any real divergence.

@@ -234,7 +234,17 @@ export GPTQMODEL_MARLIN_USE_FP32="${GPTQMODEL_MARLIN_USE_FP32:-1}"
 
 # SGLang server args. NOTE: NO --kv-cache-dtype fp8_* (verified incompatible
 # with MiniCPM sparse backend in earlier submissions).
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype float16"
+# Chunked-prefill tuning (cherry-picked 2026-05-21 from config/chunked-prefill-tuned):
+#   chunk=8192   -> 267.67 tok/s,  TTFT 34049ms  (old baseline)
+#   chunk=32768  -> 425.58 tok/s,  TTFT 13545ms  (+59% throughput / -60% TTFT)
+#   chunk=65536  -> 488.84 tok/s,  TTFT 12529ms  (+83% throughput / -63% TTFT)
+# RTX PRO 6000 Blackwell, 64 prompts x 4096-in x 512-out random-ids.
+# Two gotchas the source branch documented:
+#   1. sglang default --max-prefill-tokens=16384 silently caps actual prefill
+#      regardless of --chunked-prefill-size. Must set it to match.
+#   2. With large chunks, sglang's auto-calc of mem_fraction_static can go
+#      negative. Must explicitly set --mem-fraction-static (0.80 verified).
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 65536 --max-prefill-tokens 65536 --mem-fraction-static 0.80 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype float16"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"
