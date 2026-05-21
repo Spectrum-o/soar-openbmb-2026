@@ -52,12 +52,15 @@ def extract_acc_from_log(log_text: str) -> float | None:
       "acc_ori": 0.0,
       "acc": 0.0,
       [SUCCESS] ... acc_ori=0.0
+    The regex captures a number with optional decimal portion but
+    won't consume trailing dots (e.g. "47.5..." captures 47.5 not 47.5..).
     """
+    num = r"(\d+(?:\.\d+)?)"
     for pattern in (
-        r'"acc_ori"\s*:\s*([\d.]+)',
-        r'"acc"\s*:\s*([\d.]+)',
-        r"acc_ori\s*=\s*([\d.]+)",
-        r"Average Score\s+([\d.]+)%?",
+        rf'"acc_ori"\s*:\s*{num}',
+        rf'"acc"\s*:\s*{num}',
+        rf"acc_ori\s*=\s*{num}",
+        rf"Average Score\s+{num}%?",
     ):
         m = re.search(pattern, log_text)
         if m:
