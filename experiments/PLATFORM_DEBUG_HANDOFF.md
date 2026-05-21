@@ -7,6 +7,70 @@
 
 ---
 
+## Server-side sync cheat sheet — DO THIS FIRST
+
+```bash
+# 1. Land on the working tree on the AutoDL box
+cd /root/autodl-tmp/zyn/soar/sglang
+
+# 2. Make sure you're on the working branch
+git fetch origin
+git status              # expect: clean, on quant/w4a16
+git branch --show-current   # expect: quant/w4a16
+
+# 3. Pull the prep work landed locally on 2026-05-21
+git pull origin quant/w4a16
+
+# 4. Verify you got the 3 new commits (newest first)
+git log --oneline -5
+# Should show, top-to-bottom:
+#   5a1480678 perf: cherry-pick chunked-prefill 65K + op-fusion verify patch
+#   7a53cd2ac tools: parse_quant_diagnostic for platform vs local log diff
+#   d8aaaf1e4 v21+v22 platform=0: harden fix_qzeros + pin gptqmodel + diagnostics
+#   5c028829c night work: 14 files of CPU-only infra + bug fix in multi-adaptive windowing
+#   8d4d6f9e7 tools: quant_config_validator + calib_set_preview
+
+# 5. Sanity check the new tooling + tests load on the server's python
+python3 tools/parse_quant_diagnostic.py --help | head -5
+python3 -m unittest tests.test_parse_quant_diagnostic -v 2>&1 | tail -3
+# Expect: 22 tests OK
+
+# 6. Inspect the existing v21 quant artifact (cpu-only, no GPU needed)
+python3 tools/inspect_quant_artifact.py \
+    --artifact /root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized
+
+# 7. Parse the LATEST local quant log (so we have a baseline for diffing
+#    against the next platform run later)
+python3 tools/parse_quant_diagnostic.py \
+    --input scripts/logs/local_eval_quant_submission_gptqmodel_calib_w4a16_1779289794.log \
+    --output-md /tmp/baseline_local_quant.md
+cat /tmp/baseline_local_quant.md | head -30
+```
+
+If any step fails, **stop and read this doc end-to-end before doing anything else**. The state below tells you what changed and why.
+
+---
+
+## What's new in those 3 commits (most recent first)
+
+### `5a1480678` — chunked-prefill + op-fusion verify patch
+- `--chunked-prefill-size 65536 --max-prefill-tokens 65536 --mem-fraction-static 0.80` in run_sala.sh + both prepare_env.sh files. Expected +83% throughput / −63% TTFT (measured on RTX PRO 6000 in `config/chunked-prefill-tuned`).
+- `experiments/op_fusion_verify.patch` — drop-in env-gated runtime check for the `perf/op-fusion` branch. Apply only when you want to GPU-validate op-fusion.
+
+### `7a53cd2ac` — parse_quant_diagnostic.py
+- `tools/parse_quant_diagnostic.py` + 22 unit tests in `tests/test_parse_quant_diagnostic.py`.
+- One-log mode: structured markdown report from a quant log.
+- `--compare` mode: side-by-side diff with a "Verdict heuristic" section that names the most likely divergence (FATAL on one side / safetensors file-count drift / qzeros patched count mismatch / package version drift).
+- Backward-compatible with legacy `[qzeros-fix]` format.
+
+### `d8aaaf1e4` — v21+v22 platform=0 hardening
+- `fix_qzeros_for_marlin()` rewritten to: glob `*.safetensors` (not just `model-*`), accept uint32 dtype, per-element replacement, print file inventory + sample unique values, HARD EXIT on suspicious states (no qzeros / unknown values / post-write check fail).
+- `prepare_env.sh`: `gptqmodel==7.0.0` pinned exactly (was `>=7.0,<8.0`); forces reinstall if a different .x is preinstalled.
+- `prepare_model.sh`: DIAGNOSTIC blocks before+after quantize (script dir / input dir / calib jsonl size+rows+head / output dir layout / quantize_config.json).
+- SUBMISSIONS.md updated with v21/v22 = 0 rows + 2026-05-21 hypothesis-reranking section.
+
+---
+
 ## State of the world (2026-05-21 ~15:00 local)
 
 Two SOAR platform submissions today, **both returned `acc_ori=0, final_score=0`**:
