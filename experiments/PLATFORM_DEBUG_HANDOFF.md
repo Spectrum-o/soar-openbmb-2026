@@ -41,6 +41,10 @@ Local AutoDL quant logs (`scripts/logs/local_eval_quant_..._1779289794.log`) sho
 
 `prepare_env.sh` install gate was loose: `gptqmodel>=7.0,<8.0`, and the install was **skipped** if any 7.x was already on the platform's base env. Platform may have had pre-installed `gptqmodel` at a different .x point release than AutoDL's `7.0.0`.
 
+### Tertiary hypothesis (H3) — python ABI mismatch
+
+Confirmed from local logs (2026-05-21): **AutoDL runs Python 3.12.13**, while the platform per prepare_env.sh comments + the bundled `flash_attn-...cp310-cp310...whl` wheel is **Python 3.10**. gptqmodel 7.0.0 (and safetensors) install different binary wheels per Python ABI. If the 3.10 wheel has different default `max_shard_size`, different qzeros packing in a C++ extension, or different safetensors output schema, the on-disk artifact diverges before our fix function ever runs. The new `parse_quant_diagnostic.py` tool will surface a `python=` version mismatch in the diff report.
+
 ---
 
 ## What's already pre-processed (this turn)
@@ -161,9 +165,22 @@ python3 tools/quant_config_validator.py \
 
 **The key thing to read in the platform log** (this is why the diagnostic was added):
 - `[prepare_env] gptqmodel ... already installed; skipping` vs `forcing gptqmodel==7.0.0 (currently: 7.X.Y)` — tells us if pinning bit
+- `[versions] python=...` — confirm 3.10 vs AutoDL's 3.12 (H3)
 - `[prepare_model] DIAGNOSTIC: output dir contents after quantize` — single file vs 3 shards
 - `[qzeros-fix] sample: model.safetensors::... unique[:6]=[...] hex=[...]` — what the platform's gptqmodel actually wrote
 - Any `[qzeros-fix] FATAL:` traceback — exact failure mode
+
+**Easiest way to consume all of this**: pipe both logs through the new parser:
+
+```bash
+python3 tools/parse_quant_diagnostic.py \
+    --input /path/to/platform_run.log \
+    --compare /path/to/local_run.log \
+    --output-md /tmp/diff_platform_vs_local.md
+cat /tmp/diff_platform_vs_local.md
+```
+
+The diff report ends with a "Verdict heuristic" section that names the most likely divergence (version drift / file-count drift / FATAL on one side / qzeros-patched count mismatch).
 
 ### Step 5 — branches based on v23 result
 
@@ -196,6 +213,7 @@ python3 tools/quant_config_validator.py \
 | `docs/awq_fallback_plan.md` | If GPTQ dies completely, 3-step AWQ alt |
 | `tools/inspect_quant_artifact.py` | qzeros + scales sanity check (CPU, no model load) |
 | `tools/repetition_analyzer.py` | Per-prediction loop detection (built last night) |
+| `tools/parse_quant_diagnostic.py` | **NEW (2026-05-21)**: parse the new DIAGNOSTIC + qzeros-fix SUMMARY blocks from a quant log. Use `--compare` to diff platform log vs local log; the heuristic verdict at the end of the diff report points to the most likely divergence. Backward-compatible with legacy `[qzeros-fix]` format. Has 22 unit tests in `tests/test_parse_quant_diagnostic.py`. |
 | `tools/quant_config_validator.py` | Tarball pre-flight (qzeros / sed / SGLANG_SERVER_ARGS) |
 | `tools/pack_submission.py` | Auto-pack v23/v24/etc |
 | `scripts/logs/local_eval_quant_*.log` | Local quantization runs; grep `qzeros-fix` for fix history |
