@@ -213,26 +213,60 @@ def check_prepare_env(root: Path) -> list[CheckResult]:
         f"need: {[p.relative_to(root) for p in candidates]}",
     ))
     if sed_targets_exist:
-        # The critical test: do the sed pattern points actually match?
-        # `sed -i 's/torch\.bfloat16/torch.float16/g' minicpm_backend.py`
+        # The critical INVARIANT: the bundled minicpm_*.py files end up in
+        # float16 state after prepare_env.sh's sed runs on the platform.
+        #
+        # Two ways this can be true:
+        #   (a) Source already in float16 state (e.g. perma-patched at
+        #       commit-time per 15abd6e72) -> sed matches zero lines but
+        #       file IS in target state already. THIS IS FINE.
+        #   (b) Source has bfloat16 -> sed matches and rewrites. ALSO FINE.
+        # The previous wording said "zero matches = critical" which gave a
+        # false positive on case (a). What we actually want to check is:
+        # AFTER sed runs (hypothetically), is the file fp16-correct?
+        # That's equivalent to: file contains zero `torch.bfloat16` AND
+        # zero bare `"bfloat16"` strings (the two sed targets).
         n_bf_matches = 0
         n_str_matches = 0
+        n_fp16_matches = 0
         for cand in candidates:
             ctext = cand.read_text(errors="replace")
             n_bf_matches += len(re.findall(r"torch\.bfloat16", ctext))
             n_str_matches += len(re.findall(r'"bfloat16"', ctext))
+            n_fp16_matches += len(re.findall(r"torch\.float16", ctext))
+
+        # Path-(a) check: file is already fp16-correct (no bf16 to replace,
+        # and at least one float16 reference present).
+        already_fp16 = (
+            n_bf_matches == 0
+            and n_str_matches == 0
+            and n_fp16_matches > 0
+        )
+        # Path-(b) check: file has bf16 references that sed can patch.
+        sed_will_work = n_bf_matches > 0 or n_str_matches > 0
+        passes = already_fp16 or sed_will_work
+        if already_fp16:
+            detail = (
+                "source already fp16-perma-patched (no bf16 left to replace; "
+                f"{n_fp16_matches} torch.float16 references) — sed will be a "
+                "no-op on platform but file is in target state. OK."
+            )
+        elif sed_will_work:
+            detail = (
+                f"sed will rewrite torch.bfloat16={n_bf_matches}, "
+                f'"bfloat16"={n_str_matches} matches to float16. OK.'
+            )
+        else:
+            detail = (
+                "CRITICAL — backend has neither bf16 (to sed-replace) nor fp16 "
+                "(already correct). Sed will no-op and file stays in unknown "
+                "dtype state. fp16 Marlin GEMM may fail at first generation."
+            )
         results.append(CheckResult(
-            "bundled sglang: sed-patch will actually match lines",
-            n_bf_matches > 0 or n_str_matches > 0,
-            f"torch.bfloat16 matches={n_bf_matches}, \"bfloat16\" matches={n_str_matches}",
+            "bundled sglang: sparse backend ends in fp16 state",
+            passes,
+            detail,
         ))
-        if n_bf_matches == 0 and n_str_matches == 0:
-            results.append(CheckResult(
-                "WARN: zero sed matches",
-                False,
-                "CRITICAL — sed will silently no-op, backend stays bf16, "
-                "fp16 Marlin GEMM produces garbage. SUSPECTED CAUSE of v21 platform acc=0",
-            ))
     return results
 
 
