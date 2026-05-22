@@ -58,8 +58,16 @@ bash scripts/sanity_check.sh                    # tests + variant preflights + t
 ```
 
 ### Submission iteration loop (this is the daily core loop)
+
+**Always run `scripts/full_preflight.sh` before packing any variant.** It mechanizes the SUBMISSIONS.md Hard Constraints into 15 auto-checks plus the v23-bug latent-assertion linter plus pack_submission preflight. The 2026-05-23 v3/v5/v5c failures (3 submissions wasted on the same auto_map.AutoConfig hard constraint) would have been caught by this wrapper.
+
 ```bash
-# Apply V24_PLAN.md decision tree to a platform log → pack the recommended variant
+# THE canonical pre-submission validator
+bash scripts/full_preflight.sh --variant submission_<name>           # check only
+bash scripts/full_preflight.sh --variant submission_<name> --pack    # check + pack + md5
+bash scripts/full_preflight.sh --all                                   # check every variant
+
+# Auto-decide v24+ variant from a platform log
 bash scripts/v24_auto.sh
 bash scripts/v24_auto.sh --dry-run              # preview without packing
 bash scripts/v24_auto.sh --log /path/to/platform_v23.log
@@ -131,6 +139,23 @@ network access except PyPI, (2) write a quantized model the bundled SGLang can l
 (qzeros fix present, gptqmodel pin, H4 tokenizer-overwrite guard, SGLANG_SERVER_ARGS
 exported, chunked-prefill not accidentally bumped, etc.). Always run preflight before
 packing.
+
+`tools/hard_constraints_lint.py` (added 2026-05-23) is the MORE comprehensive
+companion: mode-aware 15-check linter that maps each row of SUBMISSIONS.md's
+"Hard constraints" table to an auto-checker function. Use it via the
+`scripts/full_preflight.sh` wrapper which combines all three preflight tools.
+
+`tools/apply_lightning_skip_overlay.py` (added 2026-05-23) does post-quant
+surgery on a GPTQ or AWQ artifact to revert lightning-attention layers' MLPs
+to BF16 — for the mixed-precision experiments. Has CPU-only `--dry-run`,
+14 unit tests in `tests/test_apply_lightning_skip_overlay.py`.
+
+`tools/lint_latent_assertions.py` (added 2026-05-23 server-side) catches
+v23-style `shards[0]` blind-indexing assertion bugs in quantize_*.py scripts.
+
+`tools/verify_artifact_dequant.py` (added 2026-05-23 server-side) is the
+multi-module GPU-side dequant correctness verifier. Run post-quant to verify
+the artifact actually decodes correctly.
 
 ## Hard constraints (verified by failure — don't reinvent these)
 
