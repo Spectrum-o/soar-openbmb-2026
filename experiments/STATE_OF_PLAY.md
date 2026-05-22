@@ -28,7 +28,7 @@ center is `bash scripts/v24_auto.sh`.
 | v17 | Full-attn GPTQ | 0 | First end-to-end run. No qzeros fix, no tokenizer overwrite. |
 | v21 | MLP-only GPTQ + qzeros fix v1 | 0 (local 49) | Old fix_qzeros only globbed model-*.safetensors. |
 | v22 | Full-attn GPTQ + qzeros fix v1 | 0 | Same broken qzeros fix as v21. |
-| **v23** | MLP-only GPTQ + hardened qzeros + tokenizer overwrite | **submitted 2026-05-22 ~02:35**, awaiting | First submission with H1+H4 fixes baked in. |
+| **v23** | MLP-only GPTQ + hardened qzeros + tokenizer overwrite | **submitted 02:35 → FAILED 03:18 to my POST-CHECK bug, NOT to H1/H4** | qzeros patch worked (96/96); my assertion `shards[0]` had no qzeros (it's embedding) → spurious FATAL. Fixed in `551826514`. Repack as v23b. |
 
 ## Hypotheses (current state)
 
@@ -178,11 +178,11 @@ Output: a ready-to-upload tarball + the path.
 ## Branch state (as of this writing)
 
 - Current branch: `quant/w4a16`
-- Most recent feature commit: `866222047 tests: 14 cases for decide_next_variant + regex fix`
+- Most recent feature commit: `551826514 CRITICAL: fix_qzeros POST-CHECK was looking at shards[0] which has no qzeros`
 - Watchdog `auto:` commits running every 5 min on the server side
-- v23 tarball: submitted ~02:35 to SOAR platform
-- Server stops at 03:20 — local re-quant validation should be in progress
-- Platform result ETA: ~07:35
+- v23 tarball: **FAILED on platform** (my POST-CHECK bug; NOT H1/H4)
+- v23b needed: repack from current source with the POST-CHECK fix → submit
+- Platform result ETA for v23b: ~5h after submission
 
 ## Quick verification before any work
 
