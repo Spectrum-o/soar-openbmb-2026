@@ -5,3 +5,4 @@ timestamp,variant,quant_model,num_samples,concurrency,acc_ori,acc_overall,durati
 2026-05-22 02:27:30,submission_gptqmodel_calib_w4a16,/root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized,150,8,?,?,4453,/root/autodl-tmp/zyn/sglang/scripts/logs/local_eval_server_submission_gptqmodel_calib_w4a16_1779383597.log,/root/autodl-tmp/zyn/sglang/scripts/logs/local_eval_eval_submission_gptqmodel_calib_w4a16_1779383597.log
 2026-05-23 00:47:10,A_J0_baseline,"current 1849 recipe, no env overrides",,,,,,,,,scripts/logs/5h_20260523_004510_smoke/A_J0_baseline.log
 2026-05-23 00:48:42,B_5_14_smoke,"5/14 llm-compressor artifact, 30 samples",,,,,,,,,scripts/logs/5h_20260523_004510_smoke/B_5_14_smoke.log
+2026-05-23 00:48:53,C_rep_pen_sweep,rep_pen 1.0 / 1.05 / 1.10 sweep on J0 artifact,,,,,,,,,scripts/logs/5h_20260523_004510_smoke/C_rep_pen_sweep.log
