@@ -27,3 +27,4 @@ timestamp,variant,quant_model,num_samples,concurrency,acc_ori,acc_overall,durati
 2026-05-23 05:38:09,E_fallback_all_knobs,fallback: all 3 safe knobs stacked,,,,,,,,,scripts/logs/5h_20260523_013622_full/E_fallback_all_knobs.log
 2026-05-23 06:33:56,submission_gptqmodel_calib_w4a16_v25_calib_multi_adaptive,/root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16_v25_calib_multi_adaptive-quantized,60,32,51.50,51.50,3343,/root/autodl-tmp/zyn/sglang/scripts/logs/local_eval_server_submission_gptqmodel_calib_w4a16_v25_calib_multi_adaptive_1779485893.log,/root/autodl-tmp/zyn/sglang/scripts/logs/local_eval_eval_submission_gptqmodel_calib_w4a16_v25_calib_multi_adaptive_1779485893.log
 2026-05-23 06:33:58,F1_multi_adaptive,v25 multi-adaptive calibration windowing,51.50,,,,,,,1101,scripts/logs/5h_20260523_013622_full/F1_multi_adaptive.log
+2026-05-23 06:55:54,F2_g64,v25 group_size=64,,,,,,,,,scripts/logs/5h_20260523_013622_full/F2_g64.log
