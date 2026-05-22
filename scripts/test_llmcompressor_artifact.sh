@@ -76,6 +76,27 @@ echo " samples  : ${NUM_SAMPLES}"
 echo " serve-only: ${SERVE_ONLY}"
 echo "===================================================================="
 
+# ---- 1a. Ensure SALA sparse backend source is bf16 (not fp16-patched) ----
+# This artifact loads with --dtype bfloat16. If a prior gptq_marlin run
+# left python sources fp16-patched (sed-replaced bfloat16 → float16) and
+# its cleanup trap didn't fire (e.g. SIGKILLed by timeout), sglang will
+# crash here with "query and key must have the same dtype".
+BACKEND_DIR="${REPO_ROOT}/python/sglang/srt/layers/attention"
+for pyfile in "${BACKEND_DIR}/minicpm_backend.py" \
+              "${BACKEND_DIR}/minicpm_sparse_utils.py"; do
+    if [ -f "${pyfile}.local_eval.bak" ]; then
+        echo "[bf16-guard] restoring ${pyfile##*/} from .local_eval.bak"
+        mv "${pyfile}.local_eval.bak" "${pyfile}"
+    fi
+done
+N_BF16=$(grep -c "torch\.bfloat16" "${BACKEND_DIR}/minicpm_backend.py" \
+                                    "${BACKEND_DIR}/minicpm_sparse_utils.py" \
+         2>/dev/null | awk -F: '{s+=$2} END{print s+0}')
+if [ "${N_BF16}" -lt 5 ]; then
+    echo "[bf16-guard] WARN: only ${N_BF16} bfloat16 lines in SALA backend" >&2
+    echo "[bf16-guard]       (expected ≥5+2=7). Server may crash on dtype mismatch." >&2
+fi
+
 if [ ! -d "${ARTIFACT_PATH}" ]; then
     echo "FATAL: artifact dir not found at ${ARTIFACT_PATH}" >&2
     echo "       (memory says it was last seen 2026-05-14, ~5.4 GB)" >&2
