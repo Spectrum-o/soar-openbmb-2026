@@ -108,13 +108,14 @@ def detect_mode(variant_dir: Path) -> Mode:
     raw = pm.read_text(encoding="utf-8", errors="replace")
     code = _strip_shell_comments(raw)  # comments stripped — look only at actual commands
 
-    # Look for actual invocation patterns: `python3 quantize_X.py`, `bash quantize_X.sh`,
-    # or even just the script name with arguments on a non-comment line.
-    if re.search(r"python3?\s+\S*quantize_gptqmodel_w4a16(\.py)?\b", code):
+    # Look for actual invocation patterns OR variable assignments referencing
+    # the script (`QUANT_SCRIPT="${SCRIPT_DIR}/quantize_X.py"` then later
+    # `python3 "$QUANT_SCRIPT"`).
+    if re.search(r"(python3?\s+\S*quantize_gptqmodel_w4a16(\.py)?\b)|(\bquantize_gptqmodel_w4a16(\.py)?\b)", code):
         return Mode.GPTQ
-    if re.search(r"python3?\s+\S*quantize_gptq_rtn", code):
+    if re.search(r"(python3?\s+\S*quantize_gptq_rtn)|(\bquantize_gptq_rtn\w*\b)", code):
         return Mode.RTN
-    if re.search(r"python3?\s+\S*quantize_llmcompressor", code) or "AWQModifier" in code:
+    if re.search(r"(python3?\s+\S*quantize_llmcompressor)|(\bquantize_llmcompressor\w*\b)|AWQModifier", code):
         return Mode.LLM_COMPRESSOR
 
     has_config_write = (
