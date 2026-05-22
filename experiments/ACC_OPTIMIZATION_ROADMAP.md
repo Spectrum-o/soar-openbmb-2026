@@ -57,7 +57,13 @@ benchmark_duration {
 | **1849** (v24c) | **MLP-only GPTQ** | **hardened** | **✅** | **✅ (4.57.1)** | **58.61** ✅ |
 | RTN-scalefix | numpy direct (no GPTQModel) | — | unconditional copy | n/a (bypasses transformers) | 42 |
 
-**Conclusion**: H1 (qzeros) + H4 (tokenizer overwrite) + H5 (transformers pin) **must all stack**. Any one removed = back to acc=0. RTN's 42 is a separate baseline that doesn't touch any of these.
+**Conclusion** (server-side analysis 2026-05-22 evening):
+- **H1 (hardened qzeros)** + **H4 (tokenizer overwrite)** are the **acc drivers**. They lift acc from 0 to ~47.
+- **H5 (transformers pin to 4.57.1)** is a **load-time shape fix**, NOT an acc fix. H4 now overwrites `modeling_minicpm_sala.py`; on platform's transformers 5.9.0 this caused v23b's shape mismatch. H5 makes platform agree with our overlay.
+- **All three must stack** for a working pipeline, but H5's contribution is "unblock loading", not "raise acc".
+- **acc_ori=46.89 ≈ local v21 acc 47-49 within noise** → local↔platform delta on the raw metric is only ~2pp, NOT the 49pp we feared before fix2 landed.
+- **`acc=58.61` is platform-weighted** (probably fwe free-credit or task-bonus weighted). Don't anchor experiments to 58.61 — **anchor to acc_ori=46.89** when comparing with local results.
+- RTN's 42 is a separate baseline that doesn't go through any of these.
 
 ---
 
@@ -212,7 +218,7 @@ Parallel to ALL above:
    J0      | tail  | 256     | 8192    | 128    | 1.0     | ?   | ?    | ?   | ?   | ?  | ?   | ~20m    | 30m
    ```
 
-**Pass criterion**: J0 local acc within 5pp of platform 58.61. If not, local≠platform — investigate before further experiments.
+**Pass criterion**: J0 local **acc_ori within 5pp of 46.89** (the platform's raw metric — NOT 58.61, which is platform-weighted). The expected match is ~46-49 (also v21 local's range). If local acc_ori is **<40 or >55**, local≠platform — investigate before further experiments. The `acc` field (~58 range) is platform-side weighting that local may not reproduce, so don't anchor to it.
 
 ### Phase 1 — Cheap wins (no re-quant)
 
@@ -222,7 +228,7 @@ Parallel to ALL above:
 6. **repetition_penalty sweep** (1.0 / 1.05 / 1.10) — 30 min. Need to confirm SGLang server-arg or modify eval_model.py request payload.
 
 **Decision points**:
-- If llm-compressor scores > 58.61 → strong evidence to switch tool entirely
+- If llm-compressor's acc_ori > 47 → beats GPTQModel local, strong evidence to switch tool entirely. (Compare on acc_ori, not the platform-only acc.)
 - If repetition_penalty raises niah/cwe by >5pp → keep it as baseline going forward
 
 ### Phase 2 — Quant config tuning
@@ -275,7 +281,7 @@ Assuming all phases executed and each lever delivers its expected gain (no 100% 
 ## Open questions / unknowns
 
 1. **What is the actual correctness gate threshold?** Common practice is 80% but SOAR may be different. RTN-42 didn't clear, 1849-58.61 didn't clear → gate ≥ 60. Could be 60, 70, 80, or higher.
-2. **What is the platform's hidden eval set distribution?** Per `calibration_gotchas.md` line 7, "almost certainly harder than perf_public_set". Local 49 (v21) → platform 58.61 (1849) suggests local is NOT necessarily harder — maybe local is harder due to fwe overweighting? Need J0 + per-task to recalibrate.
+2. **What is the platform's hidden eval set distribution?** Per `calibration_gotchas.md` line 7, "almost certainly harder than perf_public_set". After 1849: acc_ori=46.89 vs local v21 47-49 → **delta is ~2pp on the raw metric** (within noise). The +12pp from acc_ori to platform `acc` is a platform-side weighting (fwe free-credit / task-bonus), NOT a difficulty difference. **Anchor future comparisons to acc_ori, not acc.**
 3. **Does gptqmodel's `QuantizeConfig.dynamic` field skip during quant?** Critical for clean mixed-precision implementation. Requires source code audit.
 4. **Does the 5/14 llm-compressor artifact still exist on disk?** `/root/autodl-fs/zyn/models/MiniCPM-SALA-W4A16/` may have been pruned. Check first before relying on it.
 5. **Does SOAR Toolkit's `eval_model.py` accept `repetition_penalty` in request payload?** Determines whether repetition_penalty sweep is a one-line change or a script modification.
