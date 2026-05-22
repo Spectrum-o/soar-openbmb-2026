@@ -17,3 +17,4 @@ timestamp,variant,quant_model,num_samples,concurrency,acc_ori,acc_overall,durati
 2026-05-23 02:43:34,A_J0_baseline,"current 1849 recipe, no env overrides",44.00,,,,,,,2293,scripts/logs/5h_20260523_013622_full/A_J0_baseline.log
 2026-05-23 02:45:05,B_5_14_smoke,"5/14 llm-compressor artifact, 30 samples",,,,,,,,,scripts/logs/5h_20260523_013622_full/B_5_14_smoke.log
 2026-05-23 02:45:15,C_rep_pen_sweep,rep_pen 1.0 / 1.05 / 1.10 sweep on J0 artifact,,,,,,,,,scripts/logs/5h_20260523_013622_full/C_rep_pen_sweep.log
+2026-05-23 03:12:15,D1_sym_false,sym=False (asymmetric),,,,,,,,,scripts/logs/5h_20260523_013622_full/D1_sym_false.log
