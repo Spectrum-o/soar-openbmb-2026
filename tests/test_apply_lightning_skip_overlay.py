@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+"""Unit tests for tools/apply_lightning_skip_overlay.py — pure-JSON / no GPU.
+
+Tests the index / config manipulation logic. Doesn't exercise safetensors
+I/O (which needs torch + GPU memory). The risky parts of the tool that
+benefit from automated testing are:
+  - find_lightning_layer_indices() — config parsing
+  - remove_quantized_lightning_tensors_from_index() — index surgery
+  - update_quantize_config_dynamic() — config patch
+
+Validates them with synthetic test fixtures: tmp config.json,
+model.safetensors.index.json, quantize_config.json.
+
+Run:
+    python3 -m unittest tests.test_apply_lightning_skip_overlay
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+
+# Import the module under test
+import apply_lightning_skip_overlay as overlay  # noqa: E402
+
+
+# Realistic SALA-like mixer_types: 8 dense + 24 lightning, interleaved
+SALA_LIKE_MIXER_TYPES = [
+    "minicpm4" if i % 4 == 0 else "lightning-attn"
+    for i in range(32)
+]
+
+
+def write_config_json(path: Path, mixer_types: list[str], num_hidden_layers: int | None = None) -> None:
+    cfg = {
+        "model_type": "minicpm_sala",
+        "mixer_types": mixer_types,
+        "num_hidden_layers": num_hidden_layers or len(mixer_types),
+        "auto_map": {"AutoConfig": "configuration_minicpm_sala.MiniCPMSALAConfig"},
+    }
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(cfg, f)
+
+
+def write_safetensors_index(
+    path: Path, layer_count: int, has_attn: bool = True, fmt: str = "gptq_marlin"
+) -> dict:
+    """Create a fake model.safetensors.index.json matching a quantized SALA artifact."""
+    weight_map: dict[str, str] = {
+        "model.embed_tokens.weight": "model-00001-of-00003.safetensors",
+        "model.norm.weight": "model-00003-of-00003.safetensors",
+        "lm_head.weight": "model-00003-of-00003.safetensors",
+    }
+
+    suffixes = (
+        (".qweight", ".qzeros", ".scales")
+        if fmt == "gptq_marlin"
+        else (".weight_packed", ".weight_scale", ".weight_zero_point")
+    )
+
+    for i in range(layer_count):
+        shard = f"model-{(i // 12) + 1:05d}-of-00003.safetensors"
+        # MLP quantized tensors (the things to be replaced for lightning layers)
+        for proj in ("gate_proj", "up_proj", "down_proj"):
+            for suf in suffixes:
+                weight_map[f"model.layers.{i}.mlp.{proj}{suf}"] = shard
+        if has_attn:
+            # attention BF16 (unquantized — already in MLP-only setup)
+            for proj in ("q_proj", "k_proj", "v_proj", "o_proj"):
+                weight_map[f"model.layers.{i}.self_attn.{proj}.weight"] = shard
+        # layer norms
+        weight_map[f"model.layers.{i}.input_layernorm.weight"] = shard
+        weight_map[f"model.layers.{i}.post_attention_layernorm.weight"] = shard
+
+    idx = {"metadata": {"total_size": 5_000_000_000}, "weight_map": weight_map}
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(idx, f)
+    return idx
+
+
+def write_quantize_config(path: Path, fmt: str = "gptq_marlin") -> None:
+    if fmt == "gptq_marlin":
+        cfg = {
+            "bits": 4,
+            "group_size": 128,
+            "quant_method": "gptq",
+            "desc_act": False,
+            "sym": True,
+            "lm_head": False,
+            "dynamic": {
+                "-:.*self_attn.*": True,
+            },
+        }
+    else:
+        cfg = {
+            "config_groups": {
+                "group_0": {
+                    "targets": ["Linear"],
+                    "weights": {"num_bits": 4, "group_size": 128, "symmetric": False},
+                }
+            },
+            "format": "pack-quantized",
+            "ignore": ["lm_head"],
+            "quant_method": "compressed-tensors",
+            "dynamic": {
+                "-:.*self_attn.*": True,
+            },
+        }
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(cfg, f)
+
+
+class TestFindLightningLayers(unittest.TestCase):
+    def test_typical_sala_mixer_types(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = Path(tmp) / "config.json"
+            write_config_json(cfg_path, SALA_LIKE_MIXER_TYPES)
+            indices, total = overlay.find_lightning_layer_indices(cfg_path)
+            # Every layer not at a multiple of 4 should be lightning
+            expected = [i for i in range(32) if i % 4 != 0]
+            self.assertEqual(indices, expected)
+            self.assertEqual(total, 32)
+
+    def test_all_lightning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = Path(tmp) / "config.json"
+            write_config_json(cfg_path, ["lightning-attn"] * 8)
+            indices, total = overlay.find_lightning_layer_indices(cfg_path)
+            self.assertEqual(indices, list(range(8)))
+            self.assertEqual(total, 8)
+
+    def test_no_lightning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = Path(tmp) / "config.json"
+            write_config_json(cfg_path, ["minicpm4"] * 8)
+            indices, total = overlay.find_lightning_layer_indices(cfg_path)
+            self.assertEqual(indices, [])
+            self.assertEqual(total, 8)
+
+    def test_missing_mixer_types_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = Path(tmp) / "config.json"
+            # config without mixer_types
+            with cfg_path.open("w", encoding="utf-8") as f:
+                json.dump({"model_type": "minicpm_sala", "num_hidden_layers": 8}, f)
+            with self.assertRaises(RuntimeError):
+                overlay.find_lightning_layer_indices(cfg_path)
+
+    def test_missing_config_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                overlay.find_lightning_layer_indices(Path(tmp) / "config.json")
+
+    def test_lightning_marker_variants(self):
+        # Should recognize all of these as lightning
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = Path(tmp) / "config.json"
+            mixer_types = ["minicpm4", "lightning-attn", "Lightning", "GATED_DELTA", "linear_attn"]
+            write_config_json(cfg_path, mixer_types)
+            indices, _ = overlay.find_lightning_layer_indices(cfg_path)
+            self.assertEqual(indices, [1, 2, 3, 4])
+
+
+class TestRemoveQuantizedLightningFromIndex(unittest.TestCase):
+    def test_gptq_marlin_format(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            idx_path = qdir / "model.safetensors.index.json"
+            original_idx = write_safetensors_index(idx_path, layer_count=8, fmt="gptq_marlin")
+            lightning_indices = [1, 3, 5, 7]
+
+            removed = overlay.remove_quantized_lightning_tensors_from_index(qdir, lightning_indices)
+
+            # 4 layers × 3 projs × 3 suffixes (qweight, qzeros, scales) = 36 tensors
+            self.assertEqual(len(removed), 4 * 3 * 3)
+            # Verify the named tensors are NO LONGER in the index
+            with idx_path.open() as f:
+                new_idx = json.load(f)
+            for layer in lightning_indices:
+                for proj in ("gate_proj", "up_proj", "down_proj"):
+                    self.assertNotIn(f"model.layers.{layer}.mlp.{proj}.qweight", new_idx["weight_map"])
+                    self.assertNotIn(f"model.layers.{layer}.mlp.{proj}.qzeros", new_idx["weight_map"])
+                    self.assertNotIn(f"model.layers.{layer}.mlp.{proj}.scales", new_idx["weight_map"])
+            # Dense layers (0, 2, 4, 6) should still be in the index
+            for layer in (0, 2, 4, 6):
+                self.assertIn(f"model.layers.{layer}.mlp.gate_proj.qweight", new_idx["weight_map"])
+            # Attention untouched
+            self.assertIn("model.layers.0.self_attn.q_proj.weight", new_idx["weight_map"])
+            self.assertIn("model.layers.7.self_attn.o_proj.weight", new_idx["weight_map"])
+
+    def test_compressed_tensors_format(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            idx_path = qdir / "model.safetensors.index.json"
+            write_safetensors_index(idx_path, layer_count=4, fmt="compressed_tensors")
+            lightning_indices = [0, 2]
+
+            removed = overlay.remove_quantized_lightning_tensors_from_index(qdir, lightning_indices)
+
+            # 2 layers × 3 projs × 3 ct suffixes = 18 tensors
+            self.assertEqual(len(removed), 2 * 3 * 3)
+            with idx_path.open() as f:
+                new_idx = json.load(f)
+            for layer in lightning_indices:
+                for proj in ("gate_proj", "up_proj", "down_proj"):
+                    self.assertNotIn(
+                        f"model.layers.{layer}.mlp.{proj}.weight_packed",
+                        new_idx["weight_map"],
+                    )
+
+    def test_empty_lightning_indices_noop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            idx_path = qdir / "model.safetensors.index.json"
+            original_idx = write_safetensors_index(idx_path, layer_count=4)
+            n_before = len(original_idx["weight_map"])
+
+            removed = overlay.remove_quantized_lightning_tensors_from_index(qdir, [])
+            self.assertEqual(len(removed), 0)
+
+            with idx_path.open() as f:
+                new_idx = json.load(f)
+            self.assertEqual(len(new_idx["weight_map"]), n_before)
+
+    def test_missing_index_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):
+                overlay.remove_quantized_lightning_tensors_from_index(Path(tmp), [1, 2])
+
+
+class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
+    def test_adds_per_layer_skip_rules_to_quantize_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            qcfg_path = qdir / "quantize_config.json"
+            write_quantize_config(qcfg_path)
+
+            overlay.update_quantize_config_dynamic(qdir, [1, 3, 5])
+
+            with qcfg_path.open() as f:
+                cfg = json.load(f)
+
+            # 3 layers × 3 projs = 9 new skip rules
+            dyn = cfg["dynamic"]
+            new_rules_count = sum(
+                1 for k in dyn
+                if "mlp" in k and "model.layers." in k
+            )
+            self.assertEqual(new_rules_count, 9)
+            # Original self_attn skip rule preserved
+            self.assertIn("-:.*self_attn.*", dyn)
+
+    def test_adds_to_config_json_quantization_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            # Write a config.json with quantization_config block
+            cfg_path = qdir / "config.json"
+            with cfg_path.open("w", encoding="utf-8") as f:
+                json.dump({
+                    "model_type": "minicpm_sala",
+                    "quantization_config": {
+                        "bits": 4,
+                        "dynamic": {},
+                    }
+                }, f)
+
+            overlay.update_quantize_config_dynamic(qdir, [2, 4])
+
+            with cfg_path.open() as f:
+                cfg = json.load(f)
+            qc = cfg["quantization_config"]
+            self.assertIn("dynamic", qc)
+            new_rules_count = sum(
+                1 for k in qc["dynamic"]
+                if "mlp" in k and "model.layers." in k
+            )
+            self.assertEqual(new_rules_count, 6)  # 2 layers × 3 projs
+
+    def test_no_files_no_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # Neither quantize_config.json nor config.json exists
+            # Should not raise
+            overlay.update_quantize_config_dynamic(Path(tmp), [1])
+
+
+class TestAlignmentInvariant(unittest.TestCase):
+    """The CRITICAL invariant: after applying overlay, the set of layer indices
+    referenced in quantize_config.json's dynamic field MUST equal the set we
+    removed from model.safetensors.index.json.
+
+    Misalignment is the v14-style KeyError pitfall.
+    """
+
+    def test_indices_match_between_index_and_dynamic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            write_safetensors_index(qdir / "model.safetensors.index.json", layer_count=8)
+            write_quantize_config(qdir / "quantize_config.json")
+
+            lightning_indices = [0, 2, 4]
+
+            removed = overlay.remove_quantized_lightning_tensors_from_index(qdir, lightning_indices)
+            overlay.update_quantize_config_dynamic(qdir, lightning_indices)
+
+            # Extract layer indices from removed set
+            removed_indices: set[int] = set()
+            for name in removed:
+                import re
+                m = re.search(r"model\.layers\.(\d+)\.mlp\.", name)
+                if m:
+                    removed_indices.add(int(m.group(1)))
+
+            # Extract layer indices from quantize_config.json's dynamic
+            with (qdir / "quantize_config.json").open() as f:
+                cfg = json.load(f)
+            dyn_indices: set[int] = set()
+            for rule in cfg.get("dynamic", {}):
+                import re
+                m = re.search(r"model\.layers\.(\d+)\.mlp", rule)
+                if m:
+                    dyn_indices.add(int(m.group(1)))
+
+            self.assertEqual(removed_indices, dyn_indices,
+                             "Alignment broken: index removes layers X but dynamic skips layers Y")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
