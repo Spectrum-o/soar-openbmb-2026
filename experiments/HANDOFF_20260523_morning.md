@@ -204,26 +204,31 @@ fbbaab3e5 v5e (bf16_chunk32k_fixed) + v6 (bf16_op_fusion_final): next stack step
 | `soar_bf16_op_fusion_final_20260523_0131.tar.gz` (v6) | 252 MB | cd997712f3bae1b600a16e9a91c8d45b | If v5e works |
 | `soar_awq_llmcompressor_20260523_0136.tar.gz` | 248 MB | c648b6cb39494c7e6427f68725545603 | If BF16 path stuck OR as W4A16 stretch |
 | `soar_w4a16_lightning_skip_20260523_0200.tar.gz` | 261 MB | c8f78301847c653f22e3f24e536a7826 | If acc is bottleneck on cwe/niah specifically (per-task signal needed first) |
+| `soar_awq_lightning_skip_20260523_0212.tar.gz` (**moonshot**) | 256 MB | 52c6e19019879f47b89943e5fc11461d | LAST — only after individual AWQ + lightning_skip have been GPU-validated. Stacks both — highest theoretical acc but lowest test confidence. |
 
 ---
 
 ## Pre-submission checklist (DO this every time, no exceptions)
 
 ```bash
-# 1. Lint the variant
-python3 tools/hard_constraints_lint.py --variant <NAME> --strict
+# Run the integrated 3-step preflight (recommended):
+bash scripts/full_preflight.sh --variant <name>           # check only
+bash scripts/full_preflight.sh --variant <name> --pack    # check + pack tarball + md5
 
-# 2. pack_submission preflight
-python3 tools/pack_submission.py --variant <NAME> --check-only
-
-# 3. md5sum the tarball
-md5sum <tarball>
-
-# 4. Submit to SOAR platform
+# Or run components individually:
+python3 tools/hard_constraints_lint.py --variant <name> --strict
+python3 tools/lint_latent_assertions.py submission_<name>/quantize_*.py
+python3 tools/pack_submission.py --variant <name> --check-only
 ```
 
-If step 1 reports FAIL, DO NOT proceed — fix the failure first.
-If you skip step 1 you'll repeat the v3/v5/v5c mistake.
+The integrated preflight ran clean against all 5 of tonight's new
+variants:
+- submission_bf16_config_fix (v5d): ✓
+- submission_bf16_chunk32k_fixed (v5e): ✓
+- submission_bf16_op_fusion_final (v6): ✓
+- submission_awq_llmcompressor: ✓
+- submission_w4a16_lightning_skip: ✓
+- submission_awq_lightning_skip (moonshot): ✓
 
 ---
 
