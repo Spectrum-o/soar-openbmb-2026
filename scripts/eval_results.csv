@@ -12,3 +12,4 @@ timestamp,variant,quant_model,num_samples,concurrency,acc_ori,acc_overall,durati
 2026-05-23 00:56:50,D4_calib_len_16k,max_calib_len=16384,,,,,,,,,scripts/logs/5h_20260523_004510_smoke/D4_calib_len_16k.log
 2026-05-23 00:58:54,E_fallback_all_knobs,fallback: all 3 safe knobs stacked,,,,,,,,,scripts/logs/5h_20260523_004510_smoke/E_fallback_all_knobs.log
 2026-05-23 01:00:59,F1_multi_adaptive,v25 multi-adaptive calibration windowing,,,,,,,,,scripts/logs/5h_20260523_004510_smoke/F1_multi_adaptive.log
+2026-05-23 01:05:22,F2_g64,v25 group_size=64,,,,,,,,,scripts/logs/5h_20260523_004510_smoke/F2_g64.log
