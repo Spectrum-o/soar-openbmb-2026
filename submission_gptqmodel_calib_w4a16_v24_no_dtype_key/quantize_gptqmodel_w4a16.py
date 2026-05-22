@@ -1085,6 +1085,7 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
     total_unknown_dtype = 0
     total_unknown_values = 0
     sample_summaries: list[str] = []
+    per_shard_patched: list[tuple[Path, int]] = []
 
     for shard in shards:
         state = load_file(str(shard))
@@ -1137,6 +1138,7 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
             print(f"[qzeros-fix] {shard.name}: patched {n_fixed_this_shard} "
                   f"qzeros tensors", flush=True)
             total_qzeros_patched += n_fixed_this_shard
+            per_shard_patched.append((shard, n_fixed_this_shard))
 
     print(f"[qzeros-fix] SUMMARY:", flush=True)
     print(f"[qzeros-fix]   qzeros tensors seen:        {total_qzeros_seen}",
@@ -1169,27 +1171,47 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
             f"fix_qzeros_for_marlin to handle the new pattern."
         )
 
-    verify_state = load_file(str(shards[0]))
+    # POST-CHECK: reload ONE shard that we actually wrote to and confirm
+    # the first qzeros tensor reads back as 0x88888888 end-to-end.
+    # CRITICAL BUG FIX 2026-05-22: previously iterated shards[0] blindly,
+    # but shard 0 contains embedding + lm_head + NO qzeros tensors at all
+    # for MLP-only quant artifacts (v21/v23 style). The for-loop completed
+    # without finding any qzeros, verified stayed False, and FATAL fired
+    # spuriously — bricked v23 platform submission at 02:39 even though
+    # the qzeros patch had succeeded (96/96 tensors correctly written).
+    #
+    # Fix: iterate the shards we actually patched (per_shard_patched list)
+    # OR if no patches were applied (all already good), iterate any shard
+    # with qzeros tensors. Skip post-check entirely only if NO shards have
+    # qzeros at all (which means total_qzeros_seen == 0, which would have
+    # already raised above).
+    check_targets = [s for s, _ in per_shard_patched] if per_shard_patched else shards
     verified = False
-    for key, tensor in verify_state.items():
-        if not key.endswith(".qzeros"):
-            continue
-        if tensor.dtype == torch.uint32:
-            tensor = tensor.view(torch.int32)
-        elif tensor.dtype != torch.int32:
-            continue
-        first_val = int(tensor.flatten()[0].item())
-        first_hex = f"0x{first_val & 0xFFFFFFFF:08x}"
-        print(f"[qzeros-fix] POST-CHECK {shards[0].name}::{key} first_val="
-              f"{first_val} ({first_hex})", flush=True)
-        if first_val == GOOD_INT32:
-            verified = True
-        break
+    for shard in check_targets:
+        verify_state = load_file(str(shard))
+        found_qzeros_in_this_shard = False
+        for key, tensor in verify_state.items():
+            if not key.endswith(".qzeros"):
+                continue
+            found_qzeros_in_this_shard = True
+            if tensor.dtype == torch.uint32:
+                tensor = tensor.view(torch.int32)
+            elif tensor.dtype != torch.int32:
+                continue
+            first_val = int(tensor.flatten()[0].item())
+            first_hex = f"0x{first_val & 0xFFFFFFFF:08x}"
+            print(f"[qzeros-fix] POST-CHECK {shard.name}::{key} first_val="
+                  f"{first_val} ({first_hex})", flush=True)
+            if first_val == GOOD_INT32:
+                verified = True
+            break  # one qzeros per shard is enough for the check
+        if verified:
+            break  # found a good qzeros, no need to check more shards
 
     if not verified and total_qzeros_patched > 0:
         raise RuntimeError(
             f"[qzeros-fix] FATAL: post-write sanity check failed. "
-            f"Reloaded {shards[0].name} and first qzeros does NOT have "
+            f"Reloaded patched shards and first qzeros does NOT have "
             f"the expected 0x88888888 pattern. Save likely went to a "
             f"different path or was overwritten."
         )

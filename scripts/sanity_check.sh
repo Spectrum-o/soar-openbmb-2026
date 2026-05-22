@@ -14,7 +14,7 @@ echo "===================================================================="
 
 # 1. Test suite
 echo
-echo "[1/4] Unit test suite (88 tests expected)..."
+echo "[1/4] Unit test suite (106 tests expected)..."
 if test_output=$(python3 -m unittest discover tests 2>&1 | tail -3); then
     echo "$test_output" | sed 's/^/    /'
 else
@@ -81,5 +81,5 @@ done
 
 echo
 echo "===================================================================="
-echo " ALL GREEN. 88 tests + variant preflights + CLI + shell syntax OK."
+echo " ALL GREEN. 106 tests + variant preflights + CLI + shell syntax OK."
 echo "===================================================================="
