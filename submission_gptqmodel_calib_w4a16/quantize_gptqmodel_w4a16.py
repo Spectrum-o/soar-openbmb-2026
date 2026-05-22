@@ -503,19 +503,35 @@ def make_quant_config(bits: int, group_size: int):
         sym=True (uint4b8 / uint8b128)
         desc_act=False (Marlin doesn't support desc_act=True for our case)
         group_size=128 by convention
+
+    EXPERIMENT KNOBS (read from env vars, default = current 1849 behavior):
+      GPTQ_SYM                  default "True" — set "False" for asymmetric (production standard)
+      GPTQ_DAMPENING_FRAC       default unset — set float like "0.1" to override (production uses 0.1 not 0.01)
+
+    Skip-layers knobs are NOT here — they're applied in the dynamic dict in
+    write_sglang_compatible_quant_config to keep quant-time and load-time
+    skip lists in sync (the v14-style alignment pitfall).
     """
     try:
         from gptqmodel import QuantizeConfig as ConfigClass  # type: ignore
     except ImportError:
         from gptqmodel import GPTQConfig as ConfigClass  # type: ignore  # noqa
 
+    sym_env = os.environ.get("GPTQ_SYM", "True").strip().lower()
+    sym_val = sym_env in ("true", "1", "yes")
     desired: dict[str, Any] = {
         "bits": bits,
         "group_size": group_size,
         "desc_act": False,
-        "sym": True,
+        "sym": sym_val,
         "lm_head": False,
     }
+    if "GPTQ_DAMPENING_FRAC" in os.environ:
+        try:
+            desired["dampening_frac"] = float(os.environ["GPTQ_DAMPENING_FRAC"])
+        except ValueError:
+            pass
+    print(f"[make_quant_config] sym={sym_val} dampening_frac={desired.get('dampening_frac', '(default)')}", flush=True)
     sig = inspect.signature(ConfigClass)
     kwargs = {k: v for k, v in desired.items() if k in sig.parameters}
     return ConfigClass(**kwargs)
@@ -841,7 +857,7 @@ def write_sglang_compatible_quant_config(
         "group_size": group_size,
         "quant_method": "gptq",
         "desc_act": False,
-        "sym": True,
+        "sym": os.environ.get("GPTQ_SYM", "True").strip().lower() in ("true", "1", "yes"),
         "lm_head": False,
         # Tell SGLang's GPTQ-Marlin loader to leave attention/Lightning
         # modules unquantized (UnquantizedLinearMethod). GPTQModel writes
@@ -853,6 +869,14 @@ def write_sglang_compatible_quant_config(
         # Patterns use `re.match` semantics (auto-anchored at start),
         # per get_dynamic_override in sglang/srt/layers/quantization/
         # utils.py:248. `-:<regex>` means "skip".
+        #
+        # NOTE on adding per-layer-index MLP skip (e.g. first-2 + last-2):
+        # both QUANT-TIME (GPTQModel) and LOAD-TIME (SGLang) skip lists must
+        # match exactly. Otherwise GPTQModel writes .qweight for a layer that
+        # SGLang then tries to load as BF16 .weight → v14-style KeyError.
+        # Implementing per-layer skip requires verifying QuantizeConfig.dynamic
+        # support in gptqmodel 7.0.0 — has to be validated on a GPU box.
+        # See experiments/UNATTENDED_5H_PLAN.md TODO_F for the experiment design.
         "dynamic": {
             "-:.*self_attn.*": True,  # keep all sparse/linear attention projections BF16
             "-:.*o_gate$": True,    # MiniCPM dense-attn output gate (only some layers have it)
