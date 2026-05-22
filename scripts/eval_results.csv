@@ -7,3 +7,4 @@ timestamp,variant,quant_model,num_samples,concurrency,acc_ori,acc_overall,durati
 2026-05-23 00:48:42,B_5_14_smoke,"5/14 llm-compressor artifact, 30 samples",,,,,,,,,scripts/logs/5h_20260523_004510_smoke/B_5_14_smoke.log
 2026-05-23 00:48:53,C_rep_pen_sweep,rep_pen 1.0 / 1.05 / 1.10 sweep on J0 artifact,,,,,,,,,scripts/logs/5h_20260523_004510_smoke/C_rep_pen_sweep.log
 2026-05-23 00:50:59,D1_sym_false,sym=False (asymmetric),,,,,,,,,scripts/logs/5h_20260523_004510_smoke/D1_sym_false.log
+2026-05-23 00:53:03,D2_damp_01,dampening_frac=0.1,,,,,,,,,scripts/logs/5h_20260523_004510_smoke/D2_damp_01.log
