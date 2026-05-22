@@ -53,12 +53,15 @@ python3 tools/pack_submission.py \
 
 python3 tools/pack_submission.py \
     --variant submission_gptqmodel_calib_w4a16_v24_bits8 \
-    --suffix _v24_bits8 --output-dir .
+    --output soar_gptqmodel_calib_w4a16_mlp_only_submission_20260522_v24_bits8.tar.gz
 ```
 
 ## What's NOT changed
 
 - All H1+H4 fixes from v23 (hardened qzeros, tokenizer overwrite)
+- qzeros repair covers both W4 `0x77777777 -> 0x88888888` and
+  W8 `0x7f7f7f7f -> 0x80808080`; without the W8 case this variant
+  can fail in `prepare_model` before SGLang starts.
 - MLP-only quant scope (same `dynamic` skip patterns)
 - SGLang args identical
 - Calibration recipe identical

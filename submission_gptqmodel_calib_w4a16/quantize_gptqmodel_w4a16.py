@@ -1021,13 +1021,17 @@ def save_model(model, output_dir: str) -> None:
 
 
 def fix_qzeros_for_marlin(output_dir: Path) -> None:
-    """Rewrite GPTQModel's qzeros 0x77777777 (=7 per slot) -> 0x88888888 (=8).
+    """Rewrite GPTQModel's symmetric qzeros to Marlin's expected bias.
 
     gptqmodel 7.0.0 + sym=True writes uint4b8 qzeros where every 4-bit slot
     equals 7 (packed int32 = 0x77777777). SGLang Marlin dequant
     `(q - qzero) * scale` then adds a per-weight `+1*scale` bias that
     accumulates to acc=0 end-to-end. RTN-scalefix wrote qzero=8 and was
     the one variant that did not collapse to 0 (local acc=42).
+
+    The same off-by-one pattern is expected for uint8b128 diagnostic variants:
+    8-bit symmetric qzeros can appear as 0x7f7f7f7f (=127 per slot), while
+    Marlin expects 0x80808080 (=128 per slot).
 
     HARDENED 2026-05-21 against platform-side silent-failure paths that
     caused v21 (local acc=49) and v22 to both score 0 on the platform:
@@ -1050,8 +1054,11 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
     import torch
     from safetensors.torch import load_file, save_file
 
-    BAD_INT32 = 0x77777777                # 2004318071 (positive in int32)
-    GOOD_INT32 = -2004318072              # 0x88888888 reinterpreted as int32
+    BAD_TO_GOOD_INT32 = {
+        0x77777777: -2004318072,          # 4-bit: 0x88888888 as int32
+        0x7F7F7F7F: -2139062144,          # 8-bit: 0x80808080 as int32
+    }
+    GOOD_INT32_VALUES = set(BAD_TO_GOOD_INT32.values())
 
     shards = sorted(
         p for p in output_dir.glob("*.safetensors")
@@ -1110,18 +1117,24 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
                     f"unique[:6]={uniq_vals} hex={hex_vals}"
                 )
 
-            mask_bad = qview == BAD_INT32
-            n_bad = int(mask_bad.sum().item())
+            bad_masks = {
+                bad: (qview == bad)
+                for bad in BAD_TO_GOOD_INT32
+            }
+            n_bad = sum(int(mask.sum().item()) for mask in bad_masks.values())
             if n_bad == 0:
                 first_val = int(qview.flatten()[0].item())
-                if first_val == GOOD_INT32:
+                if first_val in GOOD_INT32_VALUES:
                     total_already_good += 1
                 else:
                     total_unknown_values += 1
                 continue
 
             new_qview = qview.clone()
-            new_qview[mask_bad] = GOOD_INT32
+            for bad, good in BAD_TO_GOOD_INT32.items():
+                mask_bad = bad_masks[bad]
+                if bool(mask_bad.any().item()):
+                    new_qview[mask_bad] = good
             state[key] = (
                 new_qview.view(torch.uint32) if dst_dtype == torch.uint32
                 else new_qview
@@ -1160,10 +1173,11 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
     if total_unknown_values > 0 and total_qzeros_patched == 0:
         raise RuntimeError(
             f"[qzeros-fix] FATAL: {total_unknown_values} qzeros tensors had "
-            f"values that are neither the bad 0x77777777 nor the expected "
-            f"0x88888888. gptqmodel version here likely uses a different "
-            f"qzeros encoding. Inspect sample lines above and extend "
-            f"fix_qzeros_for_marlin to handle the new pattern."
+            f"values that are neither a known bad packed qzero "
+            f"(0x77777777/0x7f7f7f7f) nor a known-good Marlin bias "
+            f"(0x88888888/0x80808080). gptqmodel version here likely "
+            f"uses a different qzeros encoding. Inspect sample lines above "
+            f"and extend fix_qzeros_for_marlin to handle the new pattern."
         )
 
     # POST-CHECK: reload ONE shard that we actually wrote to and confirm
@@ -1197,7 +1211,7 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
             first_hex = f"0x{first_val & 0xFFFFFFFF:08x}"
             print(f"[qzeros-fix] POST-CHECK {shard.name}::{key} first_val="
                   f"{first_val} ({first_hex})", flush=True)
-            if first_val == GOOD_INT32:
+            if first_val in GOOD_INT32_VALUES:
                 verified = True
             break  # one qzeros per shard is enough for the check
         if verified:
@@ -1207,7 +1221,8 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
         raise RuntimeError(
             f"[qzeros-fix] FATAL: post-write sanity check failed. "
             f"Reloaded patched shards and first qzeros does NOT have "
-            f"the expected 0x88888888 pattern. Save likely went to a "
+            f"an expected Marlin bias pattern (0x88888888/0x80808080). "
+            f"Save likely went to a "
             f"different path or was overwritten."
         )
     print(f"[qzeros-fix] OK", flush=True)

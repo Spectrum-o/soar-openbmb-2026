@@ -154,24 +154,116 @@ fi
 # still fail, the platform log will tell us *why* instead of just acc=0.
 GPTQMODEL_PIN="${GPTQMODEL_PIN:-7.0.0}"
 
-if python_pkg_exact_version gptqmodel "${GPTQMODEL_PIN}" && \
-   python_pkg_exact_version transformers "${TRANSFORMERS_PIN:-4.57.1}" && \
-   python_pkg_present accelerate && \
-   python_pkg_present ninja; then
-    echo "[prepare_env] gptqmodel ${GPTQMODEL_PIN} + transformers ${TRANSFORMERS_PIN:-4.57.1} already installed; skipping PyPI download"
-else
+TRANSFORMERS_PIN="${TRANSFORMERS_PIN:-4.57.1}"
+
+# v24_pin_transformers — TWO concerns, handled separately:
+#   1. gptqmodel must be EXACTLY pinned, and accelerate must be PRESENT
+#      (they were missing on the
+#      2026-05-22 18:18 platform run when this was a single bundled
+#      `uv pip install --force-reinstall gptqmodel transformers accelerate ninja`
+#      call. prepare_env reached prepare_model with gptqmodel/accelerate absent,
+#      so the install result must be verified explicitly.)
+#   2. transformers must be EXACTLY 4.57.1 (the actual hypothesis under
+#      test, because platform's transformers 5.9.0 vs local 4.57.1 likely
+#      explains the v23b shape-mismatch crash).
+#
+# Fix: do each install separately, then HARD-VERIFY every package is present
+# before continuing. Never trust uv's exit code alone.
+
+# Step 1: ensure required packages are installed. GPTQModel is pinned exactly;
+# accelerate/ninja only need to be importable/present.
+if ! python_pkg_exact_version gptqmodel "${GPTQMODEL_PIN}"; then
     installed_gptqmodel=$(python3 -c "import importlib.metadata as m; print(m.version('gptqmodel'))" 2>/dev/null || echo "(not installed)")
-    installed_transformers=$(python3 -c "import importlib.metadata as m; print(m.version('transformers'))" 2>/dev/null || echo "(not installed)")
-    echo "[prepare_env] forcing gptqmodel==${GPTQMODEL_PIN} (currently: ${installed_gptqmodel})"
-    echo "[prepare_env] forcing transformers==${TRANSFORMERS_PIN:-4.57.1} (currently: ${installed_transformers})"
-    # v24_pin_transformers variant: pin transformers exactly to match AutoDL
-    # (where v21 got local acc=49). The platform may otherwise install an
-    # older version (e.g. <4.47, which silently ignores chat_template.jinja
-    # sidecar — see H4 in PLATFORM_DEBUG_HANDOFF.md). --force-reinstall ensures
-    # the pinned version wins even if a different one is already installed.
-    install_with_cn_fallbacks --force-reinstall "gptqmodel==${GPTQMODEL_PIN}" \
-        "transformers==${TRANSFORMERS_PIN:-4.57.1}" accelerate ninja
+    echo "[prepare_env] installing gptqmodel==${GPTQMODEL_PIN} (currently: ${installed_gptqmodel})"
+    install_with_cn_fallbacks "gptqmodel==${GPTQMODEL_PIN}"
 fi
+
+for pkg_spec in "accelerate" "ninja"; do
+    if ! python_pkg_present "${pkg_spec}"; then
+        echo "[prepare_env] installing missing ${pkg_spec}"
+        install_with_cn_fallbacks "${pkg_spec}"
+    fi
+done
+
+# Step 2: force-reinstall transformers (the hypothesis variable) and enforce
+# the dependency window that transformers 4.57.1 requires.
+#
+# DO NOT pass --no-deps here. transformers 4.57.1 declares
+# huggingface-hub>=0.34.0,<1.0 and the platform's base env had hub==1.16.0
+# (paired with transformers 5.9.0). The 2026-05-22 18:33 platform run used
+# --no-deps and crashed with `ImportError: huggingface-hub==1.16.0 ...
+# required <1.0`.
+#
+# Even if transformers is already exactly 4.57.1, still enforce the
+# transitive ranges below: the failed run reached prepare_model with
+# transformers==4.57.1 but hub==1.16.0, so a metadata-only transformers gate is
+# insufficient.
+if ! python_pkg_exact_version transformers "${TRANSFORMERS_PIN}"; then
+    installed_transformers=$(python3 -c "import importlib.metadata as m; print(m.version('transformers'))" 2>/dev/null || echo "(not installed)")
+    echo "[prepare_env] forcing transformers==${TRANSFORMERS_PIN} (currently: ${installed_transformers})"
+    install_with_cn_fallbacks --force-reinstall "transformers==${TRANSFORMERS_PIN}"
+fi
+
+echo "[prepare_env] enforcing transformers dependency window: huggingface-hub>=0.34.0,<1.0 tokenizers>=0.22.0,<0.23.0"
+install_with_cn_fallbacks \
+    "huggingface-hub>=0.34.0,<1.0" \
+    "tokenizers>=0.22.0,<0.23.0"
+
+# Step 3: HARD GUARD. v24_pin_transformers's first platform attempt failed
+# because uv reported success while gptqmodel + accelerate were missing.
+# Refuse to proceed if any required package is absent, with a loud diagnostic
+# so the platform log unambiguously surfaces the cause.
+if ! python_pkg_exact_version gptqmodel "${GPTQMODEL_PIN}"; then
+    installed_gptqmodel=$(python3 -c "import importlib.metadata as m; print(m.version('gptqmodel'))" 2>/dev/null || echo "(not installed)")
+    echo "[prepare_env] FATAL: gptqmodel==${GPTQMODEL_PIN} required after install step, got ${installed_gptqmodel}" >&2
+    exit 1
+fi
+
+if ! python_pkg_exact_version transformers "${TRANSFORMERS_PIN}"; then
+    installed_transformers=$(python3 -c "import importlib.metadata as m; print(m.version('transformers'))" 2>/dev/null || echo "(not installed)")
+    echo "[prepare_env] FATAL: transformers==${TRANSFORMERS_PIN} required after install step, got ${installed_transformers}" >&2
+    exit 1
+fi
+
+for pkg in accelerate ninja; do
+    if ! python_pkg_present "${pkg}"; then
+        echo "[prepare_env] FATAL: ${pkg} not installed after install step, refusing to proceed" >&2
+        echo "[prepare_env] FATAL: this usually means the active --index-url did not have the package's cp$(python3 -c 'import sys; print(f\"{sys.version_info.major}{sys.version_info.minor}\")') wheel" >&2
+        exit 1
+    fi
+done
+
+# IMPORT SMOKE TEST — the 2026-05-22 18:33 run passed metadata-only HARD GUARD
+# (transformers==4.57.1 was correctly registered in dist-info) but failed at
+# `import transformers` because huggingface-hub was on an incompatible 1.16.0
+# from the platform's base env. importlib.metadata can't detect broken-by-dep
+# states; an actual import can.
+#
+# Do not import gptqmodel here: quantize_gptqmodel_w4a16.py applies a small
+# transformers-4.57 compatibility shim before importing gptqmodel. A bare
+# prepare_env import would be a different code path and can create a false
+# failure. Metadata exact-version checks above are enough for gptqmodel.
+echo "[prepare_env] import smoke test: transformers"
+if ! python3 - <<'PY'
+import importlib.metadata as metadata
+import transformers
+
+print(
+    "[smoke] "
+    f"transformers={metadata.version('transformers')} "
+    f"huggingface-hub={metadata.version('huggingface-hub')} "
+    f"tokenizers={metadata.version('tokenizers')} "
+    f"gptqmodel={metadata.version('gptqmodel')}",
+    flush=True,
+)
+PY
+then
+    echo "[prepare_env] FATAL: import smoke test failed; metadata says packages are installed but they don't actually load" >&2
+    echo "[prepare_env] FATAL: see traceback above. Most likely cause: a transitive dep (huggingface-hub, tokenizers) is on a version incompatible with transformers==${TRANSFORMERS_PIN}" >&2
+    exit 1
+fi
+
+echo "[prepare_env] all required packages present: gptqmodel==${GPTQMODEL_PIN} transformers==${TRANSFORMERS_PIN} accelerate ninja"
 
 # Install flash-attn. SALA's HF modeling code (loaded via trust_remote_code)
 # hard-asserts `_attn_implementation == "flash_attention_2"` at __init__

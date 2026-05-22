@@ -139,22 +139,19 @@ echo
 # e.g. submission_gptqmodel_calib_w4a16_v24_no_dtype_key → _v24_no_dtype_key
 SUFFIX="_$(echo "${VARIANT_DIR}" | sed 's/^submission_gptqmodel_calib_w4a16_//')"
 STAMP=$(date +%Y%m%d_%H%M%S)
-TAR_PREFIX="soar_gptqmodel_calib_w4a16_mlp_only_submission_${STAMP}"
+TARBALL="${REPO_ROOT}/soar_gptqmodel_calib_w4a16_mlp_only_submission_${STAMP}${SUFFIX}.tar.gz"
 
-echo "[2/2] pack ${VARIANT_DIR} → ${TAR_PREFIX}${SUFFIX}.tar.gz"
+echo "[2/2] pack ${VARIANT_DIR} → $(basename "${TARBALL}")"
 if [ "${DRY_RUN}" -eq 1 ]; then
-    echo "  [dry-run] would run: python3 tools/pack_submission.py --variant ${VARIANT_DIR} --suffix ${SUFFIX} --output-dir ${REPO_ROOT}"
+    echo "  [dry-run] would run: python3 tools/pack_submission.py --variant ${VARIANT_DIR} --output ${TARBALL}"
 else
     cd "${REPO_ROOT}"
     python3 tools/pack_submission.py \
         --variant "${VARIANT_DIR}" \
-        --suffix "${SUFFIX}" \
-        --output-dir "${REPO_ROOT}"
+        --output "${TARBALL}"
 
-    # Find the produced tarball
-    TARBALL=$(ls -t "${REPO_ROOT}"/soar_*"${SUFFIX}".tar.gz 2>/dev/null | head -1)
-    if [ -z "${TARBALL}" ]; then
-        echo "warning: could not locate produced tarball" >&2
+    if [ ! -f "${TARBALL}" ]; then
+        echo "error: could not locate produced tarball at ${TARBALL}" >&2
         exit 5
     fi
 

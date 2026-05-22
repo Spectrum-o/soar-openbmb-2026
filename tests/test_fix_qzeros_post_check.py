@@ -101,12 +101,11 @@ def _build_v23_style_artifact(out_dir: Path, n_layers_per_shard: tuple = (0, 2, 
     save_file(s3, str(out_dir / "model-00003-of-00003.safetensors"))
 
 
-def _all_qzeros_good(out_dir: Path) -> bool:
-    """Reload every shard, check every .qzeros tensor is 0x88888888."""
+def _all_qzeros_good(out_dir: Path, expected: int = -2004318072) -> bool:
+    """Reload every shard, check every .qzeros tensor has expected bias."""
     import torch
     from safetensors.torch import load_file
 
-    GOOD = -2004318072
     for shard in sorted(out_dir.glob("model-*.safetensors")):
         state = load_file(str(shard))
         for k, v in state.items():
@@ -115,7 +114,7 @@ def _all_qzeros_good(out_dir: Path) -> bool:
             if v.dtype == torch.uint32:
                 v = v.view(torch.int32)
             first = int(v.flatten()[0].item())
-            if first != GOOD:
+            if first != expected:
                 return False
     return True
 
@@ -219,6 +218,38 @@ class TestFixQzerosV23ShardLayout(unittest.TestCase):
             except RuntimeError as e:
                 self.fail(f"fix_qzeros raised on already-good artifact: {e}")
             self.assertTrue(_all_qzeros_good(out))
+
+    def test_bits8_qzeros_are_patched_to_0x80808080(self):
+        """v24_bits8 uses uint8b128, so symmetric qzeros should be 128.
+
+        GPTQModel's off-by-one pattern generalizes from 4-bit 7->8 to
+        8-bit 127->128. The previous fix only recognized 0x77777777 and
+        would FATAL on an 8-bit diagnostic artifact.
+        """
+        import torch
+        from safetensors.torch import save_file
+
+        BAD8 = 0x7F7F7F7F
+        GOOD8 = -2139062144  # 0x80808080 as signed int32
+
+        mod = _import_quantize_module("submission_gptqmodel_calib_w4a16")
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "artifact"
+            out.mkdir()
+            save_file({
+                "model.embed_tokens.weight": torch.zeros(100, 64, dtype=torch.float16),
+            }, str(out / "model-00001-of-00003.safetensors"))
+            save_file({
+                "model.layers.0.mlp.gate_proj.qzeros": torch.full((4, 8), BAD8, dtype=torch.int32),
+                "model.layers.0.mlp.up_proj.qzeros": torch.full((4, 8), BAD8, dtype=torch.int32),
+                "model.layers.0.mlp.down_proj.qzeros": torch.full((4, 8), BAD8, dtype=torch.int32),
+            }, str(out / "model-00002-of-00003.safetensors"))
+            try:
+                mod.fix_qzeros_for_marlin(out)
+            except RuntimeError as e:
+                self.fail(f"fix_qzeros raised on bits8 qzeros layout: {e}")
+            self.assertTrue(_all_qzeros_good(out, expected=GOOD8),
+                            "bits8 qzeros not patched to 0x80808080")
 
 
 if __name__ == "__main__":

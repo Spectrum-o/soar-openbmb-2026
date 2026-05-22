@@ -1,9 +1,15 @@
-# v24_pin_transformers — fork of v23 forcing transformers==4.57.1
+# v24_pin_transformers — force transformers==4.57.1
 
 > **PRECONDITION**: only submit if v23 platform returns `acc_ori = 0`
 > with `[qzeros-fix] OK` in the log AND the `[versions] transformers=X.Y.Z`
 > line shows a different version than AutoDL's 4.57.1. If platform's
 > transformers matches AutoDL's, this variant tests nothing.
+>
+> 2026-05-22 update: the platform log for `v24_bits8` showed
+> `Transformers version 5.9.0 is used for model type minicpm_sala` and warned
+> that MiniCPM-SALA may be incompatible with transformers >= 5.0. This variant
+> is now the direct test of that warning: force the platform back to the repo's
+> pinned `transformers==4.57.1`.
 
 ## The diff vs v23
 
@@ -24,26 +30,21 @@ In `prepare_env.sh`, replace the gptqmodel install gate:
   fi
 ```
 
-Single behavior change: platform's transformers gets force-reinstalled
-to 4.57.1 (the version where v21 achieved local acc=49 on AutoDL).
+Single behavior change: platform's transformers gets force-reinstalled to
+4.57.1, matching the local/reference stack and this repo's `python/pyproject.toml`.
 
 ## Why this might matter
 
-`transformers v4.47.0` (PR #33957, 2024-12-05) added `chat_template.jinja`
-sidecar file support. AutoDL has `transformers==4.57.1` so it reads the
-sidecar correctly. If the platform's transformers is older than 4.47
-(quite likely — many production envs lag releases by months), it
-silently ignores the sidecar and reads only the inline chat_template
-in `tokenizer_config.json`. The H4 fix (commit `57f9cef06`) overwrites
-the tokenizer files with base BF16's, which only has inline, so H4
-SHOULD address this. But H4 only fires when the platform's
-quantize_gptqmodel_w4a16.py runs `copy_runtime_assets`. If that flow
-has an issue on the platform that we don't know about, the tokenizer
-overwrite may not actually take effect.
+There are two separate reasons this can matter:
 
-This variant addresses H4 from a DIFFERENT angle: even if the tokenizer
-overwrite fails, forcing transformers to 4.57.1 means the platform
-reads the sidecar just like AutoDL, which gives the same result.
+1. MiniCPM-SALA has known version sensitivity. The local stack and this repo
+   pin `transformers==4.57.1`; the platform currently shows 5.9.0 and SGLang
+   itself warns about potential MiniCPM-SALA/RoPE incompatibility under
+   transformers >=5.0.
+2. GPTQModel touches tokenizer/config during save. Even though the H4 fix now
+   overwrites tokenizer files from the BF16 source model, using the same
+   transformers version as local removes a large parsing/rendering variable
+   around `chat_template`, config aliases, and custom MiniCPM-SALA code.
 
 ## Variant dir structure
 
@@ -67,7 +68,7 @@ python3 tools/pack_submission.py \
 
 python3 tools/pack_submission.py \
     --variant submission_gptqmodel_calib_w4a16_v24_pin_transformers \
-    --suffix _v24_pin_transformers --output-dir .
+    --output soar_gptqmodel_calib_w4a16_submission_20260522_v24_pin_transformers.tar.gz
 ```
 
 ## Risk: transformers + gptqmodel compatibility
@@ -86,6 +87,6 @@ forcing newer).
 
 | Platform result | What it means | Next action |
 |---|---|---|
-| `acc_ori >= 30` | transformers version was the issue (or H4 wasn't taking effect) | Cherry-pick into v23 source as `transformers==4.57.1` pin |
-| `acc_ori = 0` with `[versions] transformers=4.57.1` and clean log | Not the version | Move to v24_bits8 or v24_no_dtype_key |
+| `acc_ori >= 30` | transformers 5.9.0 was a major part of the failure | Keep the exact pin in the main GPTQModel submission path |
+| `acc_ori = 0` with `[versions] transformers=4.57.1` and clean log | Not primarily the transformers version | Focus on GPTQModel artifact format, full-linear vs MLP-only, or calibration |
 | Pip install fails | 4.57.1 conflicts with platform base env | Try `TRANSFORMERS_PIN=4.46.0` |
