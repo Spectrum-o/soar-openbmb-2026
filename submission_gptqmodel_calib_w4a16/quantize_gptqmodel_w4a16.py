@@ -501,12 +501,32 @@ def make_quant_config(bits: int, group_size: int):
     For SGLang gptq_marlin we need:
         bits=4 or 8
         sym=True (uint4b8 / uint8b128)
-        desc_act=False (Marlin doesn't support desc_act=True for our case)
         group_size=128 by convention
 
+    SGLang's gptq_marlin loader DOES support desc_act=True (act-order).
+    See python/sglang/srt/layers/quantization/gptq.py: the desc_act path
+    flows through `process_weights_after_loading` which sorts g_idx and
+    sets up `g_idx_sort_indices`. The historical "Marlin doesn't support
+    desc_act" note in earlier comments was wrong — it would only have
+    been true at group_size=-1 (per-channel), which forces desc_act=False
+    automatically at gptq.py:238. Verified 2026-05-23.
+
     EXPERIMENT KNOBS (read from env vars, default = current 1849 behavior):
-      GPTQ_SYM                  default "True" — set "False" for asymmetric (production standard)
-      GPTQ_DAMPENING_FRAC       default unset — set float like "0.1" to override (production uses 0.1 not 0.01)
+      GPTQ_SYM                  default "True"  — set "False" for asymmetric
+      GPTQ_DAMPENING_FRAC       default unset    — float, e.g. "0.1"
+      GPTQ_DESC_ACT             default "False" — set "True" to enable
+                                                  activation-order quant.
+                                                  Higher acc on long-context
+                                                  models in principle; needs
+                                                  one 5h slot to verify on
+                                                  the platform. Pairs well
+                                                  with GPTQ_STATIC_GROUPS=True.
+      GPTQ_STATIC_GROUPS        default "False" — set "True" to keep the
+                                                  group boundaries fixed
+                                                  across the act-order
+                                                  permutation. Standard
+                                                  llm-compressor / AutoGPTQ
+                                                  recipe with desc_act.
 
     Skip-layers knobs are NOT here — they're applied in the dynamic dict in
     write_sglang_compatible_quant_config to keep quant-time and load-time
@@ -519,10 +539,15 @@ def make_quant_config(bits: int, group_size: int):
 
     sym_env = os.environ.get("GPTQ_SYM", "True").strip().lower()
     sym_val = sym_env in ("true", "1", "yes")
+    desc_act_env = os.environ.get("GPTQ_DESC_ACT", "False").strip().lower()
+    desc_act_val = desc_act_env in ("true", "1", "yes")
+    static_groups_env = os.environ.get("GPTQ_STATIC_GROUPS", "False").strip().lower()
+    static_groups_val = static_groups_env in ("true", "1", "yes")
     desired: dict[str, Any] = {
         "bits": bits,
         "group_size": group_size,
-        "desc_act": False,
+        "desc_act": desc_act_val,
+        "static_groups": static_groups_val,
         "sym": sym_val,
         "lm_head": False,
     }
@@ -531,7 +556,12 @@ def make_quant_config(bits: int, group_size: int):
             desired["dampening_frac"] = float(os.environ["GPTQ_DAMPENING_FRAC"])
         except ValueError:
             pass
-    print(f"[make_quant_config] sym={sym_val} dampening_frac={desired.get('dampening_frac', '(default)')}", flush=True)
+    print(
+        f"[make_quant_config] sym={sym_val} desc_act={desc_act_val} "
+        f"static_groups={static_groups_val} "
+        f"dampening_frac={desired.get('dampening_frac', '(default)')}",
+        flush=True,
+    )
     sig = inspect.signature(ConfigClass)
     kwargs = {k: v for k, v in desired.items() if k in sig.parameters}
     return ConfigClass(**kwargs)
@@ -856,7 +886,7 @@ def write_sglang_compatible_quant_config(
         "bits": bits,
         "group_size": group_size,
         "quant_method": "gptq",
-        "desc_act": False,
+        "desc_act": os.environ.get("GPTQ_DESC_ACT", "False").strip().lower() in ("true", "1", "yes"),
         "sym": os.environ.get("GPTQ_SYM", "True").strip().lower() in ("true", "1", "yes"),
         "lm_head": False,
         # Tell SGLang's GPTQ-Marlin loader to leave attention/Lightning
