@@ -58,18 +58,40 @@ preflight_one() {
     echo " FULL PREFLIGHT: $v"
     echo "============================================================"
 
-    # Step 1: Hard Constraints linter
+    # Step 1: Hard Constraints linter (SUBMISSIONS.md row mapping)
     echo
-    echo "[1/2] Hard Constraints linter (strict)"
+    echo "[1/3] Hard Constraints linter (strict)"
     if ! python3 "$REPO_ROOT/tools/hard_constraints_lint.py" --variant "$v_full" --strict; then
         echo
         echo "  ✗ Hard Constraints linter FAILED — do NOT pack until fixed" >&2
         return 1
     fi
 
-    # Step 2: pack_submission --check-only
+    # Step 2: Latent-assertion lint (catches v23-style shards[0] blind-indexing
+    # bugs in any quantize_*.py the variant ships)
+    if [ -f "$REPO_ROOT/tools/lint_latent_assertions.py" ]; then
+        echo
+        echo "[2/3] Latent-assertion linter (v23 bug class)"
+        # Scan any quantize_*.py inside the variant dir (the script handles
+        # symlinks correctly by resolving them).
+        local lint_paths=()
+        while IFS= read -r p; do
+            lint_paths+=("$p")
+        done < <(find "$v_full" -maxdepth 2 -name 'quantize_*.py' -o -name 'apply_*overlay*.py' 2>/dev/null)
+        if [ "${#lint_paths[@]}" -gt 0 ]; then
+            if ! python3 "$REPO_ROOT/tools/lint_latent_assertions.py" "${lint_paths[@]}" 2>&1; then
+                echo
+                echo "  ✗ Latent-assertion linter FAILED — quant script has v23-style assertion bug" >&2
+                return 1
+            fi
+        else
+            echo "  (no quantize_*.py / overlay scripts to lint)"
+        fi
+    fi
+
+    # Step 3: pack_submission --check-only
     echo
-    echo "[2/2] pack_submission preflight"
+    echo "[3/3] pack_submission preflight"
     if ! python3 "$REPO_ROOT/tools/pack_submission.py" --variant "$v_full" --check-only; then
         echo
         echo "  ✗ pack_submission preflight FAILED" >&2
