@@ -204,11 +204,16 @@ if should_run "E"; then
     if [ -n "$WINNERS" ]; then
         log "Phase E winners detected: $WINNERS"
         # WINNERS is a string of env var assignments like "GPTQ_SYM=False GPTQ_DAMPENING_FRAC=0.1"
-        eval "env $WINNERS" run_exp "E_winners_combo" "stacked winners: $WINNERS" \
-            bash "$REPO_ROOT/scripts/local_eval.sh" \
-                --variant submission_gptqmodel_calib_w4a16 \
-                --num-samples "$SAMPLES_FULL" \
-                --force-requant
+        # Use subshell so exports don't leak; run_exp is a shell function so env vars
+        # must be in this process's env, not passed via `env` prefix command.
+        (
+            eval "export $WINNERS"
+            run_exp "E_winners_combo" "stacked winners: $WINNERS" \
+                bash "$REPO_ROOT/scripts/local_eval.sh" \
+                    --variant submission_gptqmodel_calib_w4a16 \
+                    --num-samples "$SAMPLES_FULL" \
+                    --force-requant
+        )
     else
         log "Phase E: no clear winners from D (none > baseline + 2pp). Running Phase D combo all-anyway"
         GPTQ_SYM=False GPTQ_DAMPENING_FRAC=0.1 NUM_CALIB=1024 \
