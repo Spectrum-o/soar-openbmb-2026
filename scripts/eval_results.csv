@@ -20,3 +20,5 @@ timestamp,variant,quant_model,num_samples,concurrency,acc_ori,acc_overall,durati
 2026-05-23 03:12:15,D1_sym_false,sym=False (asymmetric),,,,,,,,,scripts/logs/5h_20260523_013622_full/D1_sym_false.log
 2026-05-23 03:50:05,submission_gptqmodel_calib_w4a16,/root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized,60,32,50.89,50.89,2265,/root/autodl-tmp/zyn/sglang/scripts/logs/local_eval_server_submission_gptqmodel_calib_w4a16_1779477140.log,/root/autodl-tmp/zyn/sglang/scripts/logs/local_eval_eval_submission_gptqmodel_calib_w4a16_1779477140.log
 2026-05-23 03:50:10,D2_damp_01,dampening_frac=0.1,50.89,,,,,,,963,scripts/logs/5h_20260523_013622_full/D2_damp_01.log
+2026-05-23 04:42:47,submission_gptqmodel_calib_w4a16,/root/autodl-fs/zyn/models/submission_gptqmodel_calib_w4a16-quantized,60,32,49.50,49.50,3153,/root/autodl-tmp/zyn/sglang/scripts/logs/local_eval_server_submission_gptqmodel_calib_w4a16_1779479414.log,/root/autodl-tmp/zyn/sglang/scripts/logs/local_eval_eval_submission_gptqmodel_calib_w4a16_1779479414.log
+2026-05-23 04:42:48,D3_calib_512,num_calib=512,49.50,,,,,,,1092,scripts/logs/5h_20260523_013622_full/D3_calib_512.log
