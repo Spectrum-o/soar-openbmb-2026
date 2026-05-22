@@ -162,12 +162,17 @@ def collect_lightning_mlp_tensors(
 def remove_quantized_lightning_tensors_from_index(
     quantized_dir: Path, lightning_indices: list[int]
 ) -> set[str]:
-    """Remove the .qweight/.qzeros/.scales entries for lightning MLPs from
+    """Remove the quantized tensor entries for lightning MLPs from
     model.safetensors.index.json. Returns the set of removed tensor names.
 
     The actual tensors stay in the safetensors files (we don't rewrite
     shards) — they just become unreferenced dead data. SGLang load uses
     only the index, so it won't see them.
+
+    Handles BOTH formats:
+      - gptq_marlin: .qweight, .qzeros, .scales, .g_idx
+      - compressed-tensors (AWQ/W4A16_ASYM): .weight_packed, .weight_scale,
+        .weight_zero_point, .weight_shape, .weight_g_idx
     """
     index_path = quantized_dir / "model.safetensors.index.json"
     if not index_path.exists():
@@ -181,8 +186,21 @@ def remove_quantized_lightning_tensors_from_index(
         idx = json.load(f)
     weight_map = idx.get("weight_map", {})
 
-    # Patterns to remove for each lightning layer's MLP
-    suffixes = (".qweight", ".qzeros", ".scales", ".g_idx", ".bias")
+    # Quantized-format tensor suffixes (both gptq_marlin and compressed-tensors)
+    suffixes = (
+        # gptq_marlin format
+        ".qweight",
+        ".qzeros",
+        ".scales",
+        ".g_idx",
+        ".bias",
+        # compressed-tensors format
+        ".weight_packed",
+        ".weight_scale",
+        ".weight_zero_point",
+        ".weight_shape",
+        ".weight_g_idx",
+    )
     projs = ("gate_proj", "up_proj", "down_proj")
     removed: set[str] = set()
     for layer_idx in lightning_indices:
@@ -192,12 +210,22 @@ def remove_quantized_lightning_tensors_from_index(
                 if name in weight_map:
                     del weight_map[name]
                     removed.add(name)
+            # Also remove the plain .weight (rare but possible if quant chose
+            # to retain unquantized weight alongside packed)
+            name_weight = f"model.layers.{layer_idx}.mlp.{proj}.weight"
+            if name_weight in weight_map:
+                del weight_map[name_weight]
+                removed.add(name_weight)
 
     idx["weight_map"] = weight_map
     with index_path.open("w", encoding="utf-8") as f:
         json.dump(idx, f, indent=2, ensure_ascii=False)
 
     print(f"[index] removed {len(removed)} quantized tensors for lightning MLPs", flush=True)
+    if removed:
+        # Show first few for verification
+        sample = sorted(removed)[:6]
+        print(f"[index] sample removed: {sample}", flush=True)
     return removed
 
 
