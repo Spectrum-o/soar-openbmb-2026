@@ -1,0 +1,1 @@
+../submission_gptqmodel_calib_w4a16_v24_pin_transformers/prepare_env.sh
