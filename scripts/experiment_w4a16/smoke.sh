@@ -50,16 +50,26 @@ check "submission_bf16_official_args/ exists" \
     "test -d '$REPO_ROOT/submission_bf16_official_args'"
 check "submission_awq_official_args/ exists" \
     "test -d '$REPO_ROOT/submission_awq_official_args'"
+check "submission_gptq_official_args/ exists" \
+    "test -d '$REPO_ROOT/submission_gptq_official_args'"
 check "submission_bf16_official_args/prepare_env.sh parses" \
     "bash -n '$REPO_ROOT/submission_bf16_official_args/prepare_env.sh'"
 check "submission_awq_official_args/prepare_env.sh parses" \
     "bash -n '$REPO_ROOT/submission_awq_official_args/prepare_env.sh'"
+check "submission_gptq_official_args/prepare_env.sh parses" \
+    "bash -n '$REPO_ROOT/submission_gptq_official_args/prepare_env.sh'"
 check "submission_bf16_official_args/prepare_model.sh exists" \
     "test -f '$REPO_ROOT/submission_bf16_official_args/prepare_model.sh'"
 check "submission_awq_official_args/prepare_model.sh resolves (symlink)" \
     "test -e '$REPO_ROOT/submission_awq_official_args/prepare_model.sh'"
+check "submission_gptq_official_args/prepare_model.sh parses" \
+    "bash -n '$REPO_ROOT/submission_gptq_official_args/prepare_model.sh'"
 check "submission_awq_official_args/quantize_llmcompressor_awq.py resolves" \
     "test -e '$REPO_ROOT/submission_awq_official_args/quantize_llmcompressor_awq.py'"
+check "submission_gptq_official_args/quantize_llmcompressor_gptq.py exists" \
+    "test -f '$REPO_ROOT/submission_gptq_official_args/quantize_llmcompressor_gptq.py'"
+check "tools/apply_lightning_skip_overlay.py executable (for P6)" \
+    "test -x '$REPO_ROOT/tools/apply_lightning_skip_overlay.py'"
 check "scripts/local_eval.sh executable" \
     "test -x '$REPO_ROOT/scripts/local_eval.sh'"
 check "scripts/experiment_w4a16/run_plan.sh executable" \
@@ -68,6 +78,7 @@ check "scripts/experiment_w4a16/run_plan.sh executable" \
 echo "[2] SGLANG_SERVER_ARGS contain official W4A16 recipe"
 BF16_ARGS=$(grep -E '^export SGLANG_SERVER_ARGS=' "$REPO_ROOT/submission_bf16_official_args/prepare_env.sh" 2>/dev/null | head -1)
 AWQ_ARGS=$(grep -E '^export SGLANG_SERVER_ARGS=' "$REPO_ROOT/submission_awq_official_args/prepare_env.sh" 2>/dev/null | head -1)
+GPTQ_ARGS=$(grep -E '^export SGLANG_SERVER_ARGS=' "$REPO_ROOT/submission_gptq_official_args/prepare_env.sh" 2>/dev/null | head -1)
 check "bf16 variant has chunked-prefill 65536" \
     "echo '$BF16_ARGS' | grep -q 'chunked-prefill-size 65536'"
 check "bf16 variant has mem-fraction-static 0.80" \
@@ -82,6 +93,12 @@ check "awq variant has compressed-tensors loader" \
     "echo '$AWQ_ARGS' | grep -q 'compressed-tensors'"
 check "awq variant does NOT have gptq_marlin" \
     "! echo '$AWQ_ARGS' | grep -q 'gptq_marlin'"
+check "gptq variant has chunked-prefill 65536" \
+    "echo '$GPTQ_ARGS' | grep -q 'chunked-prefill-size 65536'"
+check "gptq variant has compressed-tensors loader" \
+    "echo '$GPTQ_ARGS' | grep -q 'compressed-tensors'"
+check "gptq variant does NOT have gptq_marlin" \
+    "! echo '$GPTQ_ARGS' | grep -q 'gptq_marlin'"
 
 echo "[3] Python env (this venv)"
 check "uv on PATH" \

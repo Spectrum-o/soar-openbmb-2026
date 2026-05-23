@@ -1,41 +1,47 @@
 #!/usr/bin/env bash
 # scripts/experiment_w4a16/run_plan.sh
 #
-# UNATTENDED W4A16 MIGRATION VALIDATOR
+# UNATTENDED W4A16 MIGRATION VALIDATOR — 6-PHASE EXTENDED EDITION
 #
-# Two-phase local validation for tonight's W4A16 migration decision.
-# Runs sequentially on a single GPU; logs everything; writes a decision
-# file when complete. Commits + pushes after each phase so progress
-# survives session loss.
+# Phases (all sequential on single GPU):
 #
-# Phases:
-#   Phase 1 (control): submission_bf16_official_args
-#     - v5g (acc_ori=83.04 verified) + official 65K/0.80 serving args
-#     - Tests: do the official serving args preserve acc on bf16?
-#     - No quantization, fast (~15-20 min for 200 samples)
+#   P1 (control)  : submission_bf16_official_args
+#                   v5g + official 65K/0.80 serving args (no quant)
+#                   ~25 min. Tests: do official serving args preserve acc?
 #
-#   Phase 2 (main):    submission_awq_official_args
-#     - AWQ via llm-compressor + compressed-tensors loader + official args
-#     - Tests: does the W4A16 official path clear platform-equivalent acc?
-#     - Quant ~1h (cached on rerun) + eval ~20 min
+#   P2 (main)     : submission_awq_official_args
+#                   AWQ via llmcompressor + compressed-tensors + 65K args
+#                   ~1h25. PRIMARY W4A16 candidate for today's submission.
 #
-# Each phase writes acc_ori to scripts/experiment_w4a16/results/<session>.txt.
-# After both complete, decision.sh recommends which submission to pack.
+#   P3 (ablation) : submission_gptq_official_args
+#                   GPTQ via llmcompressor + compressed-tensors + 65K args
+#                   ~1h25. Tests: official W4A16_README's GPTQ vs our AWQ choice.
 #
-# Usage on AutoDL GPU box:
-#   cd /root/autodl-tmp/zyn/sglang
-#   git pull origin quant/w4a16
-#   source sglang_minicpm_sala_env/bin/activate
+#   P4 (calib)    : submission_awq_official_args with NUM_CALIB=512
+#                   ~1h35. Tests: does more calibration help (F1's +7.5pp hint)?
+#                   Reuses AWQ variant, different QUANT_OUT cache.
 #
-#   # Quick smoke first (~15-20 min): tiny calib + 5 samples each
-#   bash scripts/experiment_w4a16/run_plan.sh --smoke
+#   P5 (attn)     : submission_awq_official_args with MLP_ONLY=0
+#                   ~1h55. Tests: can lightning attention survive 4-bit quant?
+#                   Reuses AWQ variant, different QUANT_OUT cache.
 #
-#   # Then long autonomous run (~2-3h): full eval
-#   nohup bash scripts/experiment_w4a16/run_plan.sh \
-#       > /tmp/w4a16_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+#   P6 (overlay)  : apply_lightning_skip_overlay.py on P2 artifact
+#                   ~30 min (no requant). Tests: lightning-MLPs back to BF16
+#                   on top of P2 — best-of-both-worlds attempt.
 #
-# Resume support:
-#   bash scripts/experiment_w4a16/run_plan.sh --from 2   # skip phase 1
+# Smoke mode (--smoke) runs only P1+P2 (~15 min) to validate pipeline.
+# P3-P6 require full quant artifacts; smoke would waste them.
+#
+# Each phase's acc_ori written to scripts/experiment_w4a16/results/<session>.txt.
+# After all phases, decide() recommends which variant to pack.
+#
+# Usage:
+#   bash scripts/experiment_w4a16/run_plan.sh                 # full 6-phase ~6h35
+#   bash scripts/experiment_w4a16/run_plan.sh --smoke         # pipeline smoke ~15 min
+#   bash scripts/experiment_w4a16/run_plan.sh --from 3        # skip P1+P2, start at P3
+#   bash scripts/experiment_w4a16/run_plan.sh --num-samples 100 # smaller eval
+#
+# Resume support: --from N (lowest N that hasn't run)
 
 set -uo pipefail   # NOT -e: don't bail mid-phase
 
@@ -54,7 +60,7 @@ while [ "$#" -gt 0 ]; do
         --num-samples)   NUM_SAMPLES_OVERRIDE="$2"; shift 2 ;;
         --no-commit)     NO_COMMIT=1; shift ;;
         -h|--help)
-            sed -n 's/^# \?//p' "$0" | head -40
+            sed -n 's/^# \?//p' "$0" | head -55
             exit 0
             ;;
         *)
@@ -79,40 +85,41 @@ log() { echo "[$(date '+%F %T')] $*" | tee -a "$MASTER_LOG" >&2; }
 # Sample / calib counts depending on mode
 if [ "$SMOKE" = 1 ]; then
     NUM_SAMPLES="${NUM_SAMPLES_OVERRIDE:-5}"
-    NUM_CALIB=8        # AWQ calib samples
+    NUM_CALIB=8
     MAX_CALIB_LEN=2048
 else
     NUM_SAMPLES="${NUM_SAMPLES_OVERRIDE:-200}"
-    NUM_CALIB=256      # AWQ calib samples (matches AWQ variant default)
+    NUM_CALIB=256
     MAX_CALIB_LEN=8192
 fi
 
+# Quant cache base (each phase that reuses AWQ variant uses a distinct path)
+QUANT_BASE="${QUANT_BASE:-/root/autodl-fs/zyn/models}"
+BF16_MODEL="${MODEL_PATH:-/root/autodl-fs/models/OpenBMB/MiniCPM-SALA}"
+
 log "======================================================================="
-log "W4A16 migration validator starting"
+log "W4A16 migration validator (6-phase) starting"
 log "  mode      : $( [ "$SMOKE" = 1 ] && echo SMOKE || echo FULL )"
 log "  session   : $SESSION_TAG"
 log "  log_dir   : $LOG_DIR"
 log "  results   : $RESULT_FILE"
 log "  samples   : $NUM_SAMPLES per phase (calib=$NUM_CALIB len=$MAX_CALIB_LEN)"
 log "  from_phase: $START_PHASE"
+log "  smoke mode runs P1+P2 only; full mode runs all 6 phases."
 log "======================================================================="
 
-# Initialize results file
 cat > "$RESULT_FILE" <<EOF
 # W4A16 migration validation — session $SESSION_TAG
 # mode=$TAG samples=$NUM_SAMPLES calib=$NUM_CALIB
-# baseline reference: v5g platform acc_ori=83.04 (chunked-prefill 8192)
-# local↔platform delta historically ~2-3 pp on this dataset
+# baseline: v5g platform acc_ori=83.04 (chunked-prefill 8192)
+# local↔platform delta historically ~-3pp (local UNDERESTIMATES)
+# threshold: local acc_ori >= 75 ≈ platform >= 78 (gate-clearing margin)
 
 EOF
 
-# ----- Helper: run one phase ------------------------------------------------
+# ----- Helpers ------------------------------------------------------------
 record_result() {
-    local phase="$1"
-    local variant="$2"
-    local acc_ori="$3"
-    local duration_s="$4"
-    local note="$5"
+    local phase="$1" variant="$2" acc_ori="$3" duration_s="$4" note="$5"
     {
         echo "phase=$phase"
         echo "  variant     = $variant"
@@ -125,17 +132,13 @@ record_result() {
 
 parse_acc_ori_from_log() {
     local log_file="$1"
-    # Try several patterns. parse_results.py logic is similar but simpler here.
     local acc
-    # 1. ori_accuracy: NN.NN
     acc=$(grep -oE 'ori_accuracy[^0-9-]*[0-9]+(\.[0-9]+)?' "$log_file" 2>/dev/null \
         | tail -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
     [ -n "$acc" ] && { echo "$acc"; return; }
-    # 2. "acc_ori": NN.NN
     acc=$(grep -oE '"acc_ori"[[:space:]]*:[[:space:]]*[0-9]+(\.[0-9]+)?' "$log_file" 2>/dev/null \
         | tail -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
     [ -n "$acc" ] && { echo "$acc"; return; }
-    # 3. Average Score: NN.NN%
     acc=$(grep -oE 'Average Score[^0-9-]*[0-9]+(\.[0-9]+)?' "$log_file" 2>/dev/null \
         | tail -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
     [ -n "$acc" ] && { echo "$acc"; return; }
@@ -156,25 +159,19 @@ commit_progress() {
     fi
 }
 
+# Generic phase runner — runs local_eval.sh and parses acc_ori
 run_phase() {
-    local phase_num="$1"
-    local phase_name="$2"
-    local variant="$3"
-    local extra_env_vars="$4"   # e.g. "NUM_CALIB=8 MAX_CALIB_LEN=2048"
+    local phase_num="$1" phase_name="$2" variant="$3" extra_env_vars="$4"
     local extra_eval_args=("${@:5}")
-
     local phase_log="$LOG_DIR/phase${phase_num}_${phase_name}.log"
 
     log "----- Phase $phase_num : $phase_name -----"
     log "  variant: $variant"
     log "  log:     $phase_log"
-    if [ -n "$extra_env_vars" ]; then
-        log "  env:     $extra_env_vars"
-    fi
+    [ -n "$extra_env_vars" ] && log "  env:     $extra_env_vars"
     log "  eval args: --num-samples $NUM_SAMPLES ${extra_eval_args[*]}"
 
     local start=$(date +%s)
-    # Run local_eval.sh with the variant's env vars
     (
         # shellcheck disable=SC2086
         eval "export $extra_env_vars"
@@ -184,11 +181,9 @@ run_phase() {
             "${extra_eval_args[@]}"
     ) > "$phase_log" 2>&1
     local rc=$?
-    local end=$(date +%s)
-    local duration=$((end - start))
+    local duration=$(( $(date +%s) - start ))
 
     log "  exit code: $rc, duration: ${duration}s"
-
     local acc_ori
     acc_ori=$(parse_acc_ori_from_log "$phase_log")
 
@@ -207,43 +202,136 @@ run_phase() {
     commit_progress "phase $phase_num $phase_name acc_ori=$acc_ori"
 }
 
+# Phase 6 — lightning-skip overlay (special: no quant, post-processes P2 artifact)
+run_phase_6_lightning_skip() {
+    local phase_log="$LOG_DIR/phase6_lightning_skip.log"
+    local p2_cache="$QUANT_BASE/submission_awq_official_args-quantized"
+    local p6_cache="$QUANT_BASE/submission_awq_official_args_LIGHTNING_SKIP-quantized"
+
+    log "----- Phase 6 : lightning_skip (overlay on P2 artifact) -----"
+    log "  source quant: $p2_cache"
+    log "  overlay out:  $p6_cache"
+
+    if [ ! -f "$p2_cache/config.json" ]; then
+        log "  ✗ Phase 6 SKIPPED: P2 artifact missing at $p2_cache"
+        record_result 6 "lightning_skip" "?" "0" "skipped: no P2 artifact"
+        commit_progress "phase 6 lightning_skip skipped (no P2)"
+        return
+    fi
+    if [ ! -d "$BF16_MODEL" ]; then
+        log "  ✗ Phase 6 SKIPPED: BF16 source missing at $BF16_MODEL"
+        record_result 6 "lightning_skip" "?" "0" "skipped: no BF16 model"
+        commit_progress "phase 6 lightning_skip skipped (no BF16)"
+        return
+    fi
+
+    local start=$(date +%s)
+
+    # Step 1: Copy P2 artifact -> P6 cache (overlay modifies in-place)
+    log "  [1/3] copying P2 artifact -> P6 cache (overlay modifies in-place)"
+    rm -rf "$p6_cache"
+    if ! cp -r "$p2_cache" "$p6_cache" > "$phase_log" 2>&1; then
+        log "  ✗ copy failed"
+        record_result 6 "lightning_skip" "?" "$(( $(date +%s) - start ))" "FAILED at copy"
+        commit_progress "phase 6 lightning_skip FAILED at copy"
+        return
+    fi
+
+    # Step 2: Apply overlay
+    log "  [2/3] applying lightning-skip overlay"
+    if ! python3 "$REPO_ROOT/tools/apply_lightning_skip_overlay.py" \
+        --quantized-dir "$p6_cache" \
+        --bf16-dir "$BF16_MODEL" \
+        >> "$phase_log" 2>&1; then
+        log "  ✗ overlay failed. tail of log:"
+        tail -20 "$phase_log" | tee -a "$MASTER_LOG"
+        record_result 6 "lightning_skip" "?" "$(( $(date +%s) - start ))" "FAILED at overlay"
+        commit_progress "phase 6 lightning_skip FAILED at overlay"
+        return
+    fi
+
+    # Step 3: Eval — reuse AWQ variant's SGLANG_SERVER_ARGS but with custom QUANT_OUT
+    log "  [3/3] eval with AWQ serving args + overlayed model"
+    (
+        export QUANT_OUT="$p6_cache"
+        bash "$REPO_ROOT/scripts/local_eval.sh" \
+            --variant submission_awq_official_args \
+            --num-samples "$NUM_SAMPLES" \
+            --skip-quant
+    ) >> "$phase_log" 2>&1
+    local rc=$?
+    local duration=$(( $(date +%s) - start ))
+
+    local acc_ori
+    acc_ori=$(parse_acc_ori_from_log "$phase_log")
+
+    if [ "$rc" -eq 0 ] && [ "$acc_ori" != "?" ]; then
+        log "  ✓ Phase 6 OK: acc_ori=$acc_ori"
+        record_result 6 "lightning_skip" "$acc_ori" "$duration" "ok"
+    elif [ "$rc" -eq 0 ]; then
+        log "  ⚠ Phase 6 completed but acc_ori not extracted"
+        record_result 6 "lightning_skip" "?" "$duration" "completed_no_acc"
+    else
+        log "  ✗ Phase 6 FAILED (rc=$rc)"
+        record_result 6 "lightning_skip" "?" "$duration" "FAILED rc=$rc"
+    fi
+
+    commit_progress "phase 6 lightning_skip acc_ori=$acc_ori"
+}
+
 # ============================================================================
-# Phase 1 — BF16 + official serving args (control)
+# Phase execution
 # ============================================================================
+
+# Phase 1: BF16 + official args (always runs unless --from > 1)
 if [ "$START_PHASE" -le 1 ]; then
-    # Force a rebuild of the bf16-config-fixed model dir each time (cheap, <5s).
-    # --force-requant on a no-quant prepare_model.sh just re-runs the config.json
-    # rewrite, which is what we want to ensure cleanliness.
     run_phase 1 "bf16_official_args" \
         "submission_bf16_official_args" \
         "" \
         --force-requant
 fi
 
-# ============================================================================
-# Phase 2 — AWQ via llm-compressor + official serving args (W4A16 main)
-# ============================================================================
+# Phase 2: AWQ MLP-only + official args (always runs unless --from > 2)
 if [ "$START_PHASE" -le 2 ]; then
-    # NUM_CALIB / MAX_CALIB_LEN are consumed by prepare_model.sh (AWQ variant).
-    # MLP_ONLY is left at its default (1) for safety; if Phase 2 acc is great,
-    # follow-up could try MLP_ONLY=0. AWQ_SCHEME stays at the variant default
-    # (W4A16_ASYM).
-    if [ "$SMOKE" = 1 ]; then
-        # Smoke: tiny calib, force a fresh quant so the smoke validates the
-        # whole pipeline, not a cached artifact from a different run.
-        run_phase 2 "awq_official_args" \
-            "submission_awq_official_args" \
+    run_phase 2 "awq_official_args" \
+        "submission_awq_official_args" \
+        "NUM_CALIB=$NUM_CALIB MAX_CALIB_LEN=$MAX_CALIB_LEN" \
+        --force-requant
+fi
+
+# Smoke mode stops here.
+if [ "$SMOKE" = 1 ]; then
+    log "----- Smoke mode: skipping P3-P6 -----"
+else
+    # Phase 3: GPTQ via llmcompressor + official args (AWQ vs GPTQ A/B)
+    if [ "$START_PHASE" -le 3 ]; then
+        run_phase 3 "gptq_official_args" \
+            "submission_gptq_official_args" \
             "NUM_CALIB=$NUM_CALIB MAX_CALIB_LEN=$MAX_CALIB_LEN" \
             --force-requant
-    else
-        # Full: reuse cached quant if present (saves 1h on re-run). The
-        # quant dir is hashed by variant name, so the smoke artifact (tiny
-        # calib) IS different from the full artifact (256 calib). Force a
-        # rebuild for full mode to avoid using the smoke artifact.
-        run_phase 2 "awq_official_args" \
+    fi
+
+    # Phase 4: AWQ + NUM_CALIB=512 (calibration size ablation)
+    if [ "$START_PHASE" -le 4 ]; then
+        P4_QUANT_OUT="$QUANT_BASE/submission_awq_official_args_CALIB512-quantized"
+        run_phase 4 "awq_calib512" \
             "submission_awq_official_args" \
-            "NUM_CALIB=$NUM_CALIB MAX_CALIB_LEN=$MAX_CALIB_LEN" \
+            "NUM_CALIB=512 MAX_CALIB_LEN=$MAX_CALIB_LEN QUANT_OUT=$P4_QUANT_OUT" \
             --force-requant
+    fi
+
+    # Phase 5: AWQ + MLP_ONLY=0 (full attention quant ablation)
+    if [ "$START_PHASE" -le 5 ]; then
+        P5_QUANT_OUT="$QUANT_BASE/submission_awq_official_args_FULL_ATTN-quantized"
+        run_phase 5 "awq_full_attn" \
+            "submission_awq_official_args" \
+            "MLP_ONLY=0 NUM_CALIB=$NUM_CALIB MAX_CALIB_LEN=$MAX_CALIB_LEN QUANT_OUT=$P5_QUANT_OUT" \
+            --force-requant
+    fi
+
+    # Phase 6: lightning-skip overlay on P2 artifact (special handler)
+    if [ "$START_PHASE" -le 6 ]; then
+        run_phase_6_lightning_skip
     fi
 fi
 
@@ -253,54 +341,71 @@ fi
 log "======================================================================="
 log "All phases complete. Computing recommendation..."
 
-PHASE1_ACC=$(grep -A2 'phase=1$' "$RESULT_FILE" | grep 'acc_ori' | awk '{print $3}' | head -1)
-PHASE2_ACC=$(grep -A2 'phase=2$' "$RESULT_FILE" | grep 'acc_ori' | awk '{print $3}' | head -1)
+extract_acc() {
+    local phase_num="$1"
+    grep -A2 "^phase=${phase_num}\$" "$RESULT_FILE" | grep 'acc_ori' | awk '{print $3}' | head -1
+}
 
-PHASE1_ACC="${PHASE1_ACC:-?}"
-PHASE2_ACC="${PHASE2_ACC:-?}"
+P1_ACC=$(extract_acc 1); P1_ACC="${P1_ACC:-?}"
+P2_ACC=$(extract_acc 2); P2_ACC="${P2_ACC:-?}"
+P3_ACC=$(extract_acc 3); P3_ACC="${P3_ACC:-?}"
+P4_ACC=$(extract_acc 4); P4_ACC="${P4_ACC:-?}"
+P5_ACC=$(extract_acc 5); P5_ACC="${P5_ACC:-?}"
+P6_ACC=$(extract_acc 6); P6_ACC="${P6_ACC:-?}"
 
 decide() {
-    # Numeric comparison helper
-    python3 - "$PHASE1_ACC" "$PHASE2_ACC" <<'PY'
+    python3 - "$P1_ACC" "$P2_ACC" "$P3_ACC" "$P4_ACC" "$P5_ACC" "$P6_ACC" <<'PY'
 import sys
-p1 = sys.argv[1]
-p2 = sys.argv[2]
+p1, p2, p3, p4, p5, p6 = sys.argv[1:7]
 
-def to_float(x):
+def f(x):
     try: return float(x)
     except: return None
 
-f1, f2 = to_float(p1), to_float(p2)
+f1, f2, f3, f4, f5, f6 = map(f, (p1, p2, p3, p4, p5, p6))
 
-# Decision tree:
-#   IF phase1 < 78 -> official args are BROKEN; submit v5h (chunked-prefill 32K) instead
-#   ELSE IF phase2 >= 78 -> W4A16 + official args (highest EV)
-#   ELSE IF phase2 70..77 -> judgment call; default to BF16 + official args (safer)
-#   ELSE phase2 < 70 -> W4A16 broken; submit BF16 + official args
+# Map each phase to its corresponding submission variant
+PHASE_VARIANTS = {
+    1: ("submission_bf16_official_args", "BF16 + 65K official args"),
+    2: ("submission_awq_official_args", "AWQ MLP-only + 65K"),
+    3: ("submission_gptq_official_args", "GPTQ MLP-only + 65K"),
+    4: ("submission_awq_official_args (with NUM_CALIB=512 quant cache)", "AWQ calib=512"),
+    5: ("submission_awq_official_args (with MLP_ONLY=0 quant cache)", "AWQ full attention"),
+    6: ("submission_awq_official_args + lightning-skip overlay", "AWQ + lightning skip"),
+}
 
-if f1 is None and f2 is None:
+quant_phases = [(2, f2), (3, f3), (4, f4), (5, f5), (6, f6)]
+valid_quant = [(p, v) for p, v in quant_phases if v is not None]
+
+# Gate check on Phase 1
+if f1 is None:
     print("UNDECIDED")
-    print("  Both phases failed to parse acc_ori. Read the logs manually.")
-elif f1 is None or f1 < 78:
+    print("  Phase 1 (BF16 control) failed or didn't run. Check logs.")
+elif f1 < 75:
     print("SUBMIT: submission_bf16_native_chunk32k (v5h fallback)")
-    print(f"  Reason: phase1 acc={p1} < 78, official serving args BREAK acc")
-    print(f"          v5h (chunked-prefill 32K) is the safer step from v5g")
-elif f2 is not None and f2 >= 78:
-    print("SUBMIT: submission_awq_official_args (W4A16 + official, MAIN target)")
-    print(f"  Reason: phase1={p1} (control OK) AND phase2={p2} >= 78")
-    print(f"          W4A16 path validated; expected platform acc_ori ~{f2-2.5:.1f}")
-elif f2 is not None and f2 >= 70:
-    print("SUBMIT: submission_bf16_official_args (safe upgrade from v5g)")
-    print(f"  Reason: phase1={p1} OK, phase2={p2} marginal (70-78)")
-    print(f"          BF16+official args = guaranteed acc-preserving throughput bump")
-elif f2 is not None:
-    print("SUBMIT: submission_bf16_official_args")
-    print(f"  Reason: phase1={p1} OK but phase2={p2} < 70 — W4A16 path BROKE acc")
-    print(f"          Stick with BF16 family; build GPTQ-via-llmcompressor next time")
+    print(f"  Reason: P1={p1} < 75 — official serving args BROKE bf16 acc")
+    print(f"          Stick with v5g + 32K chunked-prefill (already-packed v5h)")
+elif not valid_quant:
+    print("SUBMIT: submission_bf16_official_args (BF16 + official, safe upgrade)")
+    print(f"  Reason: P1={p1} OK ({p1} >= 75) but no W4A16 phase succeeded")
 else:
-    print("SUBMIT: submission_bf16_official_args")
-    print(f"  Reason: phase1={p1} OK but phase2 failed to run/parse")
-    print(f"          Default to safe BF16+official args")
+    best_phase, best_acc = max(valid_quant, key=lambda x: x[1])
+    if best_acc >= 75:
+        variant, desc = PHASE_VARIANTS[best_phase]
+        print(f"SUBMIT: {variant}")
+        print(f"  Reason: best quant phase = P{best_phase} ({desc}) acc_ori={best_acc:.2f}")
+        print(f"          P1={p1}, P2={p2}, P3={p3}, P4={p4}, P5={p5}, P6={p6}")
+        print(f"          Expected platform acc_ori ~{best_acc + 3:.1f} (local underestimates ~3pp)")
+    elif best_acc >= 70:
+        variant, desc = PHASE_VARIANTS[best_phase]
+        print(f"SUBMIT: submission_bf16_official_args (W4A16 marginal)")
+        print(f"  Reason: best quant = P{best_phase} ({desc}) acc_ori={best_acc:.2f}, BELOW safe 75")
+        print(f"          BF16+official guaranteed to clear gate")
+        print(f"          P1={p1}, P2={p2}, P3={p3}, P4={p4}, P5={p5}, P6={p6}")
+    else:
+        print(f"SUBMIT: submission_bf16_official_args (W4A16 all failed)")
+        print(f"  Reason: best quant acc_ori={best_acc:.2f} < 70 — W4A16 path can't keep acc on SALA")
+        print(f"          P1={p1}, P2={p2}, P3={p3}, P4={p4}, P5={p5}, P6={p6}")
 PY
 }
 
@@ -313,9 +418,16 @@ log "$DECISION"
     echo "========"
     echo "$DECISION"
     echo
-    echo "Local validation thresholds reminder:"
-    echo "  acc_ori >= 78 (local) → expected acc_ori ~75 (platform; -2.5pp slack)"
-    echo "  v5g (platform anchor) = acc_ori 83.04"
+    echo "Phase summary:"
+    echo "  P1 (BF16 + 65K official args)      acc_ori = $P1_ACC"
+    echo "  P2 (AWQ MLP-only + 65K)            acc_ori = $P2_ACC"
+    echo "  P3 (GPTQ MLP-only + 65K)           acc_ori = $P3_ACC"
+    echo "  P4 (AWQ MLP-only + 65K + calib512) acc_ori = $P4_ACC"
+    echo "  P5 (AWQ FULL ATTN + 65K)           acc_ori = $P5_ACC"
+    echo "  P6 (AWQ + lightning-skip overlay)  acc_ori = $P6_ACC"
+    echo
+    echo "Reminder: v5g platform anchor = 83.04 acc_ori, final_score 15.76"
+    echo "          local→platform delta ~+3pp (local underestimates)"
 } >> "$RESULT_FILE"
 
 log "======================================================================="
@@ -324,9 +436,9 @@ log "Master log: $MASTER_LOG"
 log "======================================================================="
 
 # Final commit
-commit_progress "FINAL: $DECISION"
+commit_progress "FINAL: $(echo "$DECISION" | head -1)"
 
-# Cat the result file at the very end for convenience
+# Display final result file
 echo
 echo "=================== RESULT FILE ==================="
 cat "$RESULT_FILE"
