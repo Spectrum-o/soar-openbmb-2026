@@ -1,0 +1,1 @@
+../submission_awq_llmcompressor/prepare_model.sh
