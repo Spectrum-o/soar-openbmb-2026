@@ -353,7 +353,12 @@ export GPTQMODEL_MARLIN_USE_FP32="${GPTQMODEL_MARLIN_USE_FP32:-1}"
 # If v23 passes, we add chunked-prefill 65K in v24 to compound the perf win.
 # Reverting this back to 65K (and the two companion flags) is a one-line
 # change once v23's acc is known.
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype float16"
+# MEM-FRACTION EXPLICIT (2026-05-23 added):
+# Setting 0.80 explicitly to match 1849's verified-safe config on 84GB platform.
+# W4A16 model (5GB) + 0.80 × 84 KV (67GB) + 0.7GB buffer (8K chunked-prefill)
+# = 72.7GB ≤ 84GB ✓ (11GB headroom). Same budget as 1849 which ran successfully
+# on platform (acc_ori=46.89), so OOM risk is essentially zero.
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --mem-fraction-static 0.80 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype float16"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"

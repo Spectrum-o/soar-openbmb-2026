@@ -1,0 +1,1 @@
+../submission_gptqmodel_no_fp16_patch/prepare_model.sh

@@ -316,17 +316,26 @@ fi
 
 print_versions
 
-# v5g NATIVE BF16 mode — SKIP the fp16 sed-patch.
+# v5j: SKIPPING the fp16 sed-patch on sparse backend.
 #
-# WHY: v5d (BF16 + fp16 sed-patch + --dtype float16) returned acc_ori=46.64
-# on platform — SAME as 1849's quantized acc_ori=46.89. That means quant
-# isn't hurting acc; the fp16 conversion is the prime suspect for the
-# acc-vs-baseline (19.13 final_score, gate cleared) gap.
+# WHY: this patch hard-converts torch.bfloat16 to torch.float16 throughout
+# minicpm_backend.py + minicpm_sparse_utils.py. That includes lightning
+# attention's recurrent state h_t. fp16 has range ±65504; bf16 has ±3.4e38.
+# In lightning recurrence h_t = g_t × h_{t-1} + ..., the state can grow
+# large across long contexts → fp16 loses precision / overflows.
 #
-# Baseline 19.13 uses default platform args = native bfloat16 throughout.
-# v5g replicates that with: no fp16 sed-patch, --dtype bfloat16 in server args.
-# If acc jumps significantly, the fp16 conversion was the bottleneck.
-echo "[prepare_env] v5g NATIVE BF16 mode — skipping fp16 sed-patch (baseline-faithful)"
+# 1849 (with this patch) hit acc_ori=46.89. v5d (BF16 + this patch) hit
+# acc_ori=46.64 → patch is the prime suspect, NOT --dtype float16 alone.
+#
+# Official + champion's GPTQ + Marlin recipe does NOT include this patch.
+# SGLang's auto-cast at Linear boundaries should keep sparse backend bf16
+# while Marlin GEMM internally uses fp16. We are testing whether SGLang's
+# auto-cast handles this correctly.
+#
+# v5j is BYTE-IDENTICAL to 1849 except for this skip — single-variable
+# diagnostic. If acc jumps, the sed-patch is the bug; the official Marlin
+# path is fine and we should never re-enable this patch.
+echo "[prepare_env] v5j: SKIPPING the fp16 sed-patch (mirrors official/champion recipe)"
 
 # Marlin GEMM env. Use FP32 accumulation for higher numerical stability
 # during decode (small perf cost; safer for correctness gate).
@@ -344,13 +353,19 @@ export GPTQMODEL_MARLIN_USE_FP32="${GPTQMODEL_MARLIN_USE_FP32:-1}"
 # If v23 passes, we add chunked-prefill 65K in v24 to compound the perf win.
 # Reverting this back to 65K (and the two companion flags) is a one-line
 # change once v23's acc is known.
-# MEM-FRACTION FIX (2026-05-23 added):
-# Platform GPU is RTX 6000D = 84GB (NOT 96GB like AutoDL Blackwell).
-# Without explicit --mem-fraction-static, SGLang defaults to ~0.88.
-# BF16 model (18GB) + 0.88 × 84 KV cache (73.9GB) + 32K chunked-prefill
-# buffer (~3GB) = 94.9GB on a 84GB GPU → guaranteed OOM on platform.
-# Setting 0.65 explicitly: 18 + 0.65×84 + 3 = 76GB ≤ 84GB ✓ (8GB headroom).
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.65 --skip-server-warmup --dense-as-sparse --dtype bfloat16"
+# MEM-FRACTION EXPLICIT (2026-05-23 added):
+# Setting 0.80 explicitly to match 1849's verified-safe config on 84GB platform.
+# W4A16 model (5GB) + 0.80 × 84 KV (67GB) + 0.7GB buffer (8K chunked-prefill)
+# = 72.7GB ≤ 84GB ✓ (11GB headroom). Same budget as 1849 which ran successfully
+# on platform (acc_ori=46.89), so OOM risk is essentially zero.
+#
+# DTYPE BFLOAT16 (v5j_dtype_bf16 variant, NOT v5j):
+# v5j tests removing only the sed-patch, keeping --dtype float16.
+# THIS variant tests removing BOTH: the sed-patch AND switching dtype to bfloat16.
+# Marlin GEMM internally still outputs fp16; SGLang must cast that to bf16
+# for the sparse-backend boundary. If v5j gives partial result (50-70 acc),
+# this tests whether explicit --dtype bfloat16 fixes the remaining gap.
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --mem-fraction-static 0.80 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype bfloat16"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"
