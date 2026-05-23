@@ -51,7 +51,24 @@ def main() -> int:
         for r in reader:
             rows.append(r)
 
-    # Find baseline acc_ori (latest occurrence)
+    # Filter to this session ONLY. Without this filter, a smoke run's D1
+    # acc (often 0 or tiny because of 3-sample eval) could be picked as a
+    # winner against a baseline from an earlier full run, and vice versa.
+    # Session tag is encoded in log_path (scripts/logs/5h_{SESSION}/X.log).
+    session_marker = f"5h_{args.session}"
+    in_session = [
+        r for r in rows
+        if session_marker in (r.get("log_path") or "")
+    ]
+    if not in_session:
+        # No rows from this session yet. Don't fall back to other sessions —
+        # that's the bug we're fixing.
+        print(f"[pick_winners] no rows for session {args.session}", file=sys.stderr)
+        print("", end="")
+        return 0
+    rows = in_session
+
+    # Find baseline acc_ori (latest occurrence WITHIN this session)
     baseline_acc: float | None = None
     for r in reversed(rows):
         if r.get("exp") == args.baseline_exp:
@@ -61,7 +78,12 @@ def main() -> int:
             except (ValueError, KeyError):
                 continue
     if baseline_acc is None:
-        print("", end="")  # no baseline → no winners
+        print(
+            f"[pick_winners] no baseline ({args.baseline_exp}) found in session "
+            f"{args.session} with parseable acc — cannot pick winners",
+            file=sys.stderr,
+        )
+        print("", end="")
         return 0
 
     # Find Phase D experiments that beat baseline + threshold

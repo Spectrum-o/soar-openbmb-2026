@@ -69,20 +69,46 @@ def parse_aggregate(log_path: Path) -> dict[str, str]:
     except Exception:
         return out
 
-    # acc / acc_ori — try canonical names first
+    # acc / acc_ori — try canonical names first.
+    # Patterns are tried in priority order:
+    #   1. JSON-style "acc": N — most authoritative (final summary block)
+    #   2. line-anchored "acc = N" or "acc: N" — common in CLI output
+    #   3. inline "acc=N" — fallback (also matches per-sample log lines, so
+    #      we LAST-match these to bias toward the summary at end-of-log)
+    # Within (1) and (2) we take the LAST match because summary blocks
+    # are typically printed once at end-of-log. (3) is fall-through only.
     for key in ("acc_ori", "acc"):
-        patterns = [
-            rf"\"{key}\"\s*:\s*([0-9.]+)",
-            rf"\b{key}\s*[=:]\s*([0-9.]+)",
+        # Build pattern list with priority. Order matters.
+        prioritized: list[tuple[str, bool]] = [
+            # (pattern, take_first_match) — JSON-style is high-confidence
+            (rf"\"{key}\"\s*:\s*([0-9.]+)", False),
+            # Line-anchored — e.g. "acc_ori = 46.89" on its own line
+            (rf"(?m)^\s*{key}\s*[=:]\s*([0-9.]+)", False),
+            # Inline anywhere — last-resort, biased to end-of-log
+            (rf"\b{key}\s*[=:]\s*([0-9.]+)", False),
         ]
-        for pat in patterns:
+        for pat, _ in prioritized:
             matches = re.findall(pat, text, re.IGNORECASE)
-            if matches:
-                val = float(matches[-1])
-                if val < 1.0:  # fraction → percent
-                    val *= 100
-                out[key] = f"{val:.2f}"
-                break
+            if not matches:
+                continue
+            # Filter to plausible accuracy values (0..100 or 0..1). Per-sample
+            # logs sometimes print raw token counts as acc=N; the range gate
+            # drops those.
+            plausible: list[float] = []
+            for raw in matches:
+                try:
+                    v = float(raw)
+                except ValueError:
+                    continue
+                if 0.0 <= v <= 100.0:
+                    plausible.append(v)
+            if not plausible:
+                continue
+            val = plausible[-1]  # last plausible match (closest to summary)
+            if val <= 1.0:  # fraction → percent
+                val *= 100
+            out[key] = f"{val:.2f}"
+            break
 
     # acc_ori variants in older SOAR scripts
     if not out["acc_ori"]:
@@ -127,11 +153,17 @@ def parse_aggregate(log_path: Path) -> dict[str, str]:
 def find_predictions_jsonl(repo_root: Path, log_path: Path) -> Path | None:
     """Find the predictions.jsonl associated with this experiment.
 
-    Heuristic: most recently modified predictions.jsonl in outputs/ subdirs,
-    where mtime is AFTER the experiment's log mtime (an experiment writes
-    its log throughout the run, so log mtime > eval start time).
-
-    Falls back to: any predictions.jsonl in outputs/, sorted by recency.
+    Strategy (strictest first):
+      1. The log itself often mentions an explicit output dir; grep for it.
+      2. Otherwise scope by mtime: predictions.jsonl whose mtime falls between
+         the experiment's log start (ctime) and end (mtime). Across a 5h
+         pipeline running 9 experiments, this is the only way to avoid
+         cross-contaminating one experiment's per-task scores with the
+         predictions.jsonl from a DIFFERENT experiment that also ran in the
+         last 12 hours. The pre-fix heuristic (12h backward window from log
+         mtime) was almost always returning the SAME predictions.jsonl for
+         every phase.
+      3. Last resort: most recent predictions.jsonl globally.
     """
     candidates: list[Path] = []
     for root in (repo_root / "outputs", repo_root.parent / "outputs", repo_root / "scripts" / "logs"):
@@ -142,20 +174,53 @@ def find_predictions_jsonl(repo_root: Path, log_path: Path) -> Path | None:
     if not candidates:
         return None
 
-    # Sort by mtime descending
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-
+    # Strategy 1: log file explicitly mentions an output dir
     if log_path.exists():
-        log_mtime = log_path.stat().st_mtime
-        # Pick the predictions.jsonl whose mtime is closest to (but not too
-        # far before) the log mtime. Tolerant of clock skew.
-        for c in candidates:
-            cm = c.stat().st_mtime
-            # Within a 12-hour window backward from log mtime
-            if cm <= log_mtime and (log_mtime - cm) < 12 * 3600:
-                return c
+        try:
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            log_text = ""
+        # SOAR Toolkit logs typically print "Output dir: <path>" or similar
+        import re as _re
+        for m in _re.finditer(r"(?:output[_\s-]*dir|saving to|writing to)\s*[:=]?\s*(\S+)",
+                              log_text, _re.IGNORECASE):
+            mentioned = Path(m.group(1).strip().rstrip(":,;"))
+            if not mentioned.is_absolute():
+                mentioned = repo_root / mentioned
+            candidate = mentioned / "predictions.jsonl"
+            if candidate.exists() and candidate in candidates:
+                return candidate
 
-    # Fall back to most recent
+    # Strategy 2: time-scoped to the experiment's log lifetime
+    if log_path.exists():
+        try:
+            log_stat = log_path.stat()
+            # ctime ≈ when run_exp opened the log (start of experiment)
+            log_start = min(log_stat.st_ctime, log_stat.st_mtime)
+            log_end = log_stat.st_mtime
+        except OSError:
+            log_start = log_end = 0.0
+
+        if log_start > 0:
+            scoped: list[Path] = []
+            for c in candidates:
+                try:
+                    cm = c.stat().st_mtime
+                except OSError:
+                    continue
+                # predictions.jsonl was written during this experiment's run.
+                # Allow a 60-second slop on each side for clock skew / writes
+                # that happen just after the eval log is closed.
+                if (log_start - 60) <= cm <= (log_end + 60):
+                    scoped.append(c)
+            if scoped:
+                # Pick the one closest to log_end (most likely the FINAL save)
+                scoped.sort(key=lambda p: abs(p.stat().st_mtime - log_end))
+                return scoped[0]
+
+    # Strategy 3: most recent globally — last-resort fallback. Warn-quality
+    # match; the caller should treat per-task numbers as suggestive.
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
