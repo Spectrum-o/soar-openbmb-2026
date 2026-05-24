@@ -1,141 +1,89 @@
-# FP8 KV Cache on SALA — Path D investigation, dead-end as of 2026-05-24
+# FP8 KV Cache on SALA — DEAD END (Blackwell SM 12.0 binary missing) 2026-05-25
 
-> Written after the 2026-05-24 evening session burned a smoke slot on chunk32k_fp8kv
-> Path D. Records what failed, why, what to instrument next session, and an
-> alternative (Path E) that side-steps the scale-plumbing question.
+> Final root cause found 2026-05-25 00:06 after 4 patch iterations
+> (Path B/D/E v1/E v2/E v3). The blocker is NOT Python plumbing.
+> sgl_kernel's FlashAttention FP8 kernel only ships a Hopper (SM 9.0)
+> binary; SOAR's RTX 6000D and AutoDL's RTX PRO 6000 Blackwell are both
+> SM 12.0 (Blackwell) — no kernel image. **Do not attempt FP8 KV on this
+> hardware again without first recompiling sgl_kernel for Blackwell.**
 
-## TL;DR
+## Confirmation log line
 
-SOAR official toolkit (https://soar.openbmb.cn/toolkit) lists **W4A16 + Marlin + FP8 KV
-Cache** as 路径一 (the canonical optimization stack). On SALA's hybrid backend, the
-`--kv-cache-dtype fp8_e5m2` flag does allocate the KV pool as fp8 — but FlashAttention
-rejects fp8 K/V at CUDA graph capture (`RuntimeError: FlashAttention only support fp16
-and bf16 data type`). Two patches have been attempted; both insufficient.
+From `scripts/logs/local_eval_server_*chunk32k_fp8kv_*.log` (smoke 2026-05-25 00:06):
 
-- **Path B** (commit `e7a962905`, abandoned): inline scale=1.0 fallback inside
-  `minicpm_backend.py` forward_extend/forward_decode. Didn't fix the real problem
-  (no quant_method on RadixAttention so layer.k_scale stayed None).
-- **Path D** (commit `136c4ec3c`, smoke-tested + crashed 2026-05-24 20:21):
-  3-line patch on `python/sglang/srt/layers/quantization/gptq.py:364` —
-  `GPTQMarlinConfig.get_quant_method` returns `BaseKVCacheMethod` for
-  `RadixAttention`. Theory: RadixAttention.__init__ would then auto-attach
-  `layer.k_scale` via `create_weights`, forward_decode's scale path would activate.
-  In practice: same `RuntimeError: FlashAttention only support fp16 and bf16`.
+```
+[2026-05-25 00:06:52] Using FP8 KV cache but no scaling factors provided. Defaulting to scaling factors of 1.0. This may lead to less accurate results!
+[2026-05-25 00:06:52] Using KV cache dtype: torch.float8_e4m3fn
+[2026-05-25 00:06:52] Capture cuda graph begin.
+CUDA error (/sgl-kernel/build/_deps/repo-flash-attention-src/hopper/flash_fwd_launch_template.h:166): no kernel image is available for execution on the device
+```
 
-Submitting `submission_*_chunk32k_fp8kv` to the platform **WILL crash** until SALA-side
-work lands. Currently dropped from `scripts/gpu_smoke_remaining.sh` queue.
+`/hopper/` in the path is the smoking gun — the only FP8-capable FA backend bundled with our sgl_kernel build is `flash-attention/hopper` (SM 9.0). On SM 12.0 the kernel image is absent → CUDA loader throws "no kernel image is available."
 
-## Architectural facts
+Also noteworthy: SGLang's own startup prints `"no scaling factors provided. Defaulting to scaling factors of 1.0"`. So Path D's effort to attach `BaseKVCacheMethod` to RadixAttention was unnecessary — SGLang already falls back to 1.0 internally. We were patching the wrong layer for 3 hours.
 
-Verified by reading source 2026-05-24:
+## Patch trail (all reverted on 2026-05-25 ~00:10)
 
-| Component | Location | Note |
+| Patch | What | Outcome |
 |---|---|---|
-| SALA model | `python/sglang/srt/models/minicpm.py:564` (`MiniCPMSALAForCausalLM`) | NOT loaded via `trust_remote_code`. The HF modeling file is the standalone-HF path. |
-| Backend dispatch | `python/sglang/srt/layers/attention/attention_registry.py:244` | Returns `HybridLinearAttnBackend(full_attn, linear_attn)` |
-| Dense attn backend | `minicpm_flashinfer` / `minicpm_flashattn` → `MiniCPMSparseBackend` | `python/sglang/srt/layers/attention/minicpm_backend.py:147` |
-| Linear (lightning) attn | `SimpleGLAAttnBackend` | No KV cache; linear-recurrent state. |
-| RadixAttention | `python/sglang/srt/layers/radix_attention.py:43` | Per-layer module owning `self.k_scale`/`self.v_scale` |
-| Quant method attach | `radix_attention.py:85-88` | `quant_method = quant_config.get_quant_method(self, prefix); quant_method.create_weights(self)` |
-| KV scale create | `python/sglang/srt/layers/quantization/kv_cache.py:30-44` | `layer.k_scale = Parameter(-1.0)` initial |
-| Post-load default | `kv_cache.py:47-67` | Both scales <0 → fallback to `1.0` |
-| Decode fp8 branch | `minicpm_backend.py:1148-1155` | `if kv_cache_dtype_str != "auto" and layer.head_dim <= 256:` casts q to fp8, sets `k_descale`/`v_descale` IF `layer.k_scale is not None` |
+| Path B (e7a962905) | inline scale=1.0 in minicpm_backend.py | abandoned before this session |
+| Path D (136c4ec3c) | GPTQMarlinConfig.get_quant_method → RadixAttention → BaseKVCacheMethod | redundant; SGLang has built-in fallback |
+| Path E v1 (this session, attempted in scripts/gpu_smoke_phase3.sh) | dequant `key_cache/value_cache` after `get_kv_buffer` | wrong call site; sparse path doesn't go through get_kv_buffer-based decode |
+| Path E v2 (manual, minicpm_sparse_utils.py:514) | dequant `q/k/k2` in `compressed_attention` before `infllmv2_attn_stage1` | fixed sparse-stage-1 crash; revealed the real FA call further down |
+| Path E v3 (manual, minicpm_backend.py:1148+) | force descale `torch.ones((bs, tp_k_head_num // 2))` of fresh float32 | wrong shape; FA wants different `num_heads_k` |
+| Path E v4 (manual, descale shape = `2 * bs`) | match SALA's sparse head_group double | hit CUDA "no kernel image" at flash_fwd_launch_template.h:166 — Blackwell SM 12.0 has no FP8 FA kernel binary |
+| fp8_e5m2 → fp8_e4m3 (variant prepare_env.sh) | toolkit says e5m2; we tried e4m3 to satisfy SGLang's earlier "only supports fp16, bf16, fp8_e4m3" check | accepted by Python plumbing; still blocked by Blackwell binary |
 
-The toolkit doc explicitly warns: *"Lightning Attention 层使用独立线性注意力状态，优化路径不同"*. The linear (lightning) layers don't go through KV cache at all — only dense layers benefit from FP8 KV.
+All reverted via `git checkout --`. Tree clean.
 
-## Observed Path D crash signature
+## Why the official toolkit recommends this anyway
 
-`submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv` smoke 2026-05-24 20:21:
+`https://soar.openbmb.cn/toolkit` 路径一 lists W4A16 + Marlin + FP8 KV. That recommendation assumes:
 
-```
-[server_args] kv_cache_dtype='fp8_e5m2', attention_backend='minicpm_flashattn'
-[20:21:47] Using KV cache dtype: torch.float8_e5m2     ← pool IS fp8
-[20:21:48] Capture cuda graph begin.
-...
-File "/root/autodl-tmp/zyn/sglang/python/sglang/srt/model_executor/cuda_graph_runner.py", line 723, in capture_one_batch_size
-RuntimeError: FlashAttention only support fp16 and bf16 data type
-Exception: Capture cuda graph failed: FlashAttention only support fp16 and bf16 data type
-[20:21:49] Received sigquit from a child process. It usually means the child failed.
-```
+1. Hopper GPU (e.g. H100, H800, H20, RTX 6000 Ada) — has FP8 FA kernel binaries
+2. Standard transformer attention path (not SALA's hybrid InfLLMv2 + lightning split)
 
-Crash during graph capture means forward_decode/forward_extend is invoked on dummy
-batches and FA rejects the fp8 K/V. We don't yet know *whether* `layer.k_scale` was
-populated, *whether* `k_descale` was passed to the FA call, or *whether* the FA-call
-site even forwards descales in the SALA sparse path.
+SOAR platform's RTX 6000D is **Blackwell SM 12.0**, not Hopper. The kernel that would dequant fp8 K/V doesn't exist for our hardware. Toolkit doc doesn't call this out — probably written for general guidance, not SOAR-specific hardware.
 
-## Hypotheses (ranked)
+The toolkit's hint *"Lightning Attention 层使用独立线性注意力状态，优化路径不同"* is real but secondary — that's a code-path concern. The blocker is one level deeper at the binary level.
 
-1. **`process_weights_after_loading` not called for auto-attached BaseKVCacheMethod**
-   on RadixAttention. SGLang's loader iterates Linear layers for this hook; if the
-   hook isn't invoked for our auto-attached method, k_scale stays at `-1.0` sentinel.
-   `layer.k_scale is not None` is True (-1.0 isn't None), so descale path activates,
-   but descales are negative → FA rejects or returns garbage.
-2. **The FA-call site in `minicpm_backend.py` forward_decode** (after line 1211, not
-   read yet) doesn't forward `k_descale`/`v_descale` to the FA invocation — the
-   scales are computed but ignored.
-3. **Sparse-K path** (`get_topk_for_sparse`, `get_block_table_v3`, lines 1182-1204)
-   operates on raw cache tensors that are fp8 → internal kernels don't dequant →
-   fp8 tensors leak into FA.
-4. **GPTQMarlinConfig.get_quant_method isn't called for RadixAttention** at all —
-   maybe SGLang's loader only invokes get_quant_method for `LinearBase` instances,
-   never for `RadixAttention`. RadixAttention.__init__ does call it (line 86), so
-   this is unlikely, but possible if the model construction path is different for
-   SALA's hybrid layout.
+## What would actually unblock FP8 KV on Blackwell
 
-## What to instrument next session
+1. **Wait for upstream sgl_kernel Blackwell FP8 FA** — flash-attention 2.x added Hopper FP8 in v2.8, Blackwell support depends on FlashAttention release cadence. Track `Dao-AILab/flash-attention` issues.
+2. **Compile sgl_kernel from source with SM 12.0 target + Blackwell FP8 PTX** — non-trivial; the sgl_kernel cmake doesn't auto-target arches above SM 9.0 for FP8 paths. Several day's work + may hit further ABI breakage.
+3. **Bypass FA entirely for fp8 K/V** — write a Python-level dequant path that converts fp8 KV cache to bf16 immediately after `get_kv_buffer`, then calls FA with bf16 K/V. Loses ALL bandwidth benefit. Equivalent to bf16 KV — pointless.
 
-Don't try another blind 3-line patch. Add diagnostic prints:
+None of these are tonight-work. **The cost-benefit on SOAR's specific hardware says: don't pursue FP8 KV.**
 
-1. **`RadixAttention.__init__`** (`radix_attention.py:85-88`) — for SALA's dense
-   layers, log `quant_config.__class__.__name__`,
-   `self.quant_method.__class__.__name__ if quant_method else None`. Confirm
-   whether `BaseKVCacheMethod` is actually attached for GPTQMarlinConfig with
-   Path D applied.
-2. **`forward_decode`** (`minicpm_backend.py:1148`) — log `layer.k_scale`,
-   `layer.v_scale`, `self.kv_cache_dtype_str`, `layer.head_dim`. Confirm the
-   branch is taken with valid (positive) scales.
-3. **The actual FA call** (read minicpm_backend.py 1211+) — confirm
-   `k_descale`/`v_descale` reach the FA invocation.
-4. **`BaseKVCacheMethod.process_weights_after_loading`** (`kv_cache.py:47`) —
-   add `print` at function entry. Verify it's called for our auto-attached
-   method.
+## What to do instead
 
-## Path E: side-step the scale plumbing
+Throughput optimization paths that don't depend on Blackwell-FP8 FA:
 
-If instrumentation reveals deep plumbing issues, the pragmatic fallback is to
-dequant fp8 → bf16 inside `minicpm_backend.py:1158` after `get_kv_buffer`:
+- **W4A16 Marlin Linear quant** — already shipped (chunk32k_safe got platform `acc_ori=80.31, final_score=22.9` on 2026-05-25). The Marlin GEMM kernel IS Blackwell-compatible (SM 9.0+ PTX).
+- **chunk32k_opfusion REAL** — local smoke 82.67 with overlay actually applied (this session E1). Worth submitting to platform; expected small throughput win from RMSNorm/RoPE fusion.
+- **Full-attn (q/k/v/o) W4A16** — high-risk smoke. E3 attempt this session crashed at `validate_gptq_wrapper`'s forbidden-strings check (the MLP-only quantize script proactively rejects any layer_modules containing `self_attn`). To run: skip/relax that validator + handle lightning layers' missing self_attn modules. ~1 day engineering.
+- **Speculative decoding** — orthogonal axis, not yet tried. SGLang has built-in speculative; could give 1.5-2x decode speedup.
+- **Marlin tile/warp tuning per RTX 6000D** — toolkit 路径一 step 4. Would need profiling + sgl-kernel rebuild but the binary IS available.
 
-```python
-key_cache, value_cache = forward_batch.token_to_kv_pool.get_kv_buffer(layer.layer_id)
-if self.kv_cache_dtype_str.startswith("fp8"):
-    key_cache = key_cache.to(torch.bfloat16)
-    value_cache = value_cache.to(torch.bfloat16)
-    if q.dtype != torch.bfloat16:
-        q = q.to(torch.bfloat16)
-```
+## File:line citations (don't waste time re-reading)
 
-Trade-off: defeats ~50% of fp8 bandwidth win (we dequant immediately after fetching)
-but unblocks FA. Useful as proof-of-concept that the SALA hybrid backend can run
-under fp8 KV pool at all, before investing more in scale-aware Path D fixes.
+- `python/sglang/srt/layers/attention/minicpm_backend.py:1148-1155` — dense forward_decode fp8 dispatch + descale prep
+- `python/sglang/srt/layers/attention/minicpm_backend.py:1196-1204` — head_group reshape (`// 2`) for sparse path
+- `python/sglang/srt/layers/attention/minicpm_backend.py:1244-1248` — FA call site
+- `python/sglang/srt/layers/attention/minicpm_attention_kernels.py:139` — sgl_kernel flash_attn_with_kvcache wrapper
+- `sglang_minicpm_sala_env/lib/.../sgl_kernel/flash_attn.py:223` — Python entry; check at C++ level
+- `python/sglang/srt/layers/attention/minicpm_sparse_utils.py:514` — sparse stage-1 CUDA call (`infllmv2_attn_stage1`)
+- `python/sglang/srt/layers/quantization/kv_cache.py:30-79` — BaseKVCacheMethod (create_weights, process_weights_after_loading)
+- `python/sglang/srt/layers/quantization/gptq.py:364` — GPTQMarlinConfig.get_quant_method (Path D injection point)
+- `python/sglang/srt/models/minicpm.py:155` — SALA RadixAttention construction
+- `python/sglang/srt/layers/attention/attention_registry.py:213-244` — HybridLinearAttnBackend dispatch
 
-## Recommended next steps (in order)
+## Bottom line
 
-1. Run the instrumented diagnostic smoke. Goal: identify which of the 4 hypotheses
-   above is the actual failure.
-2. If it's H1 (process_weights_after_loading not called): add a manual call in
-   `MiniCPMSparseBackend.__init__` for each RadixAttention layer the runner owns.
-3. If it's H2 (FA call doesn't forward descales): patch the FA call site to pass
-   them.
-4. If H3 or H4: shelf Path D and ship Path E as a working fallback (acc=82-ish,
-   throughput improvement reduced but non-zero).
-5. **Don't queue chunk32k_fp8kv in any smoke orchestrator until smoke locally
-   reaches `acc_ori ≥ 75` for at least 30 samples.** The variant tarball staged
-   in `~/OneDrive/soar_submissions/` should NOT be submitted to platform.
+**FP8 KV cache is a hardware-binary dead end on SOAR's Blackwell GPU as of 2026-05-25.** Stop iterating on Path D/E variants. Reallocate budget to op-fusion / full-attn quant / speculative decoding / Marlin tuning.
 
-## References
-
-- Official toolkit: https://soar.openbmb.cn/toolkit (路径一)
-- Path B commit: `e7a962905 fix(smoke): drop chunk32k_fp8kv from default queue — Path B patch insufficient`
-- Path D commit: `136c4ec3c fp8kv v2: align with SOAR official toolkit (fp8_e5m2 + Path D patch)`
-- Path D crash log: `scripts/logs/local_eval_server_submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv_1779625293.log` (search for line "RuntimeError: FlashAttention only support")
-- Companion auto-memory: `~/.claude/projects/.../memory/fp8kv_sala_investigation.md`
+Commit history of attempts:
+- `e7a962905` Path B abandoned (chunk32k_fp8kv dropped from default queue)
+- `136c4ec3c` Path D added (insufficient; this doc supersedes)
+- `1a96283d7` Phase 3 orchestrator including Path E v1
+- 2026-05-25 ~00:10 Path E v2/v3/v4 manual debugging — all reverted, no commit
