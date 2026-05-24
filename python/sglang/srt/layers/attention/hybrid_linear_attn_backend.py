@@ -40,6 +40,12 @@ try:
     SIMPLE_GLA_AVAILABLE = True
 except ImportError:
     SIMPLE_GLA_AVAILABLE = False
+# Tree-verify variant of Simple GLA (vendored under sglang/srt/layers/attention/fla)
+# — used when forward_batch.forward_mode.is_target_verify() to respect the
+# EAGLE3 candidate-tree causal structure for Lightning Attention layers.
+from sglang.srt.layers.attention.fla.fused_recurrent import (
+    fused_recurrent_simple_gla_update,
+)
 from sglang.srt.layers.radix_attention import RadixAttention
 from sglang.srt.mem_cache.memory_pool import HybridReqToTokenPool, MambaPool
 from sglang.srt.model_executor.forward_batch_info import ForwardBatch, ForwardMode
@@ -1567,6 +1573,19 @@ class SimpleGLAAttnBackend(MambaAttnBackendBase):
         else:
             seq_len = torch.max(forward_batch.extend_seq_lens)
 
+        is_target_verify = forward_batch.forward_mode.is_target_verify()
+
+        # Tree-verify path: reuse the snapshot-and-replay pattern that the
+        # GDR backend implements (see GDNAttnBackend.forward_extend). Each
+        # candidate token in the EAGLE3 verify tree must attend only to its
+        # ancestors, which for a linear-attention recurrence means reloading
+        # h from the parent token's cached state at each non-root step.
+        if is_target_verify:
+            return self._forward_target_verify(
+                q=q, k=k, v=v, forward_batch=forward_batch, layer_id=layer_id,
+                num_heads=num_heads, head_dim=head_dim,
+            )
+
         mamba_indices = self._get_mamba_indices(forward_batch)
         initial_state = None
         has_initial_state = forward_batch.extend_prefix_lens is not None and forward_batch.extend_prefix_lens > 0
@@ -1627,6 +1646,89 @@ class SimpleGLAAttnBackend(MambaAttnBackendBase):
         o = o.reshape(-1, num_heads * head_dim)
 
         return o
+
+    def _forward_target_verify(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        forward_batch: ForwardBatch,
+        layer_id: int,
+        num_heads: int,
+        head_dim: int,
+    ) -> torch.Tensor:
+        """Tree-aware Simple GLA forward for the EAGLE3 verify path.
+
+        Mirrors the structure of ``GDNAttnBackend.forward_extend`` under
+        ``is_target_verify``: it reads the per-request recurrent state from
+        the SSM cache as the root state, then invokes
+        ``fused_recurrent_simple_gla_update`` which (a) reloads h from the
+        parent token at each non-root step via
+        ``retrieve_parent_token``, and (b) caches the per-step state in
+        ``intermediate_states_buffer`` so descendant steps can reload it.
+
+        ``disable_state_update=True`` because the verify path must not commit
+        to the persistent SSM cache before the verifier decides which draft
+        tokens are accepted; that update happens in a subsequent
+        draft_extend phase.
+        """
+        forward_metadata = self.forward_metadata
+        query_start_loc = forward_metadata.query_start_loc
+        retrieve_parent_token = forward_metadata.retrieve_parent_token
+
+        cache_idx = self.req_to_token_pool.mamba_map.get(layer_id)
+        if cache_idx is None:
+            raise RuntimeError(
+                f"SimpleGLAAttnBackend layer {layer_id} is missing from mamba_map "
+                f"during target_verify; lightning layers must be registered in "
+                f"cache_params.layers. Available: "
+                f"{list(self.req_to_token_pool.mamba_map.keys())}"
+            )
+
+        mamba_cache_params = self.req_to_token_pool.mamba2_layer_cache(cache_idx)
+        if not isinstance(mamba_cache_params, MambaPool.SpeculativeState):
+            raise RuntimeError(
+                "SimpleGLAAttnBackend tree-verify path requires the mamba "
+                "pool to have been allocated with speculative_num_draft_tokens "
+                "(MambaPool.SpeculativeState). Got: "
+                f"{type(mamba_cache_params).__name__}"
+            )
+
+        ssm_states = mamba_cache_params.temporal
+        intermediate_state_cache = mamba_cache_params.intermediate_ssm
+
+        mamba_cache_indices = self._get_mamba_indices(forward_batch)
+        batch_size = mamba_cache_indices.shape[0]
+        intermediate_state_indices = torch.arange(
+            batch_size, dtype=torch.int32, device=mamba_cache_indices.device,
+        )
+
+        draft_token_num = forward_batch.spec_info.draft_token_num
+
+        # NOTE: when spec_info.topk == 1, the draft is a linear chain and
+        # retrieve_parent_token is unused (each token's only ancestor is
+        # the previous). Passing it as None lets the kernel skip the
+        # tree-reload branch entirely.
+        if forward_batch.spec_info.topk <= 1:
+            retrieve_parent_token = None
+
+        o = fused_recurrent_simple_gla_update(
+            q=q,
+            k=k,
+            v=v,
+            g_gamma=self.g_gamma,
+            scale=self.scale,
+            initial_state_source=ssm_states,
+            initial_state_indices=mamba_cache_indices,
+            cu_seqlens=query_start_loc,
+            disable_state_update=True,
+            intermediate_states_buffer=intermediate_state_cache,
+            intermediate_state_indices=intermediate_state_indices,
+            cache_steps=draft_token_num,
+            retrieve_parent_token=retrieve_parent_token,
+        )
+
+        return o.reshape(-1, num_heads * head_dim)
 
     def forward_decode(
         self,

@@ -719,3 +719,381 @@ def fused_recurrent_gated_delta_rule_update(
         retrieve_parent_token,
     )
     return o
+
+
+# =============================================================================
+# Simple GLA tree-verify update kernel (added for EAGLE3 on MiniCPM-SALA)
+# =============================================================================
+#
+# Adapted from `fused_recurrent_gated_delta_rule_update_fwd_kernel` above by
+# stripping:
+#   - delta-rule subtraction (`b_v -= sum(b_h * b_k[:, None], 0)`)
+#   - beta scaling (`b_v *= b_beta`, IS_BETA_HEADWISE branch)
+#   - in-kernel QK L2-norm (Simple GLA pre-normalizes via q_norm / k_norm)
+# and substituting the per-token gate `g[bos+t]` with a per-head log-decay
+# `g_gamma[i_h]` (the Simple GLA / Lightning Attention parameterization).
+#
+# Tree-verify scaffolding (USE_INITIAL_STATE, intermediate_states_buffer,
+# retrieve_parent_token, HAS_EAGLE_TREE_CUSTOM_ATTN_MASK) is preserved
+# unchanged — the snapshot-and-replay state-reload pattern is identical to
+# the GDR variant.
+# =============================================================================
+
+
+@triton.jit(do_not_specialize=["T"])
+def fused_recurrent_simple_gla_update_fwd_kernel(
+    q,
+    k,
+    v,
+    g_gamma,
+    o,
+    h0_source,
+    h0_indices,
+    cu_seqlens,
+    scale,
+    intermediate_states_buffer,
+    intermediate_state_indices,
+    cache_steps,
+    retrieve_parent_token_ptr,
+    stride_retrieve_parent_token_seq: tl.constexpr,
+    stride_retrieve_parent_token_token: tl.constexpr,
+    T,
+    NP2_T: tl.constexpr,
+    B: tl.constexpr,
+    H: tl.constexpr,
+    HV: tl.constexpr,
+    K: tl.constexpr,
+    V: tl.constexpr,
+    BK: tl.constexpr,
+    BV: tl.constexpr,
+    USE_INITIAL_STATE: tl.constexpr,
+    IS_VARLEN: tl.constexpr,
+    DISABLE_STATE_UPDATE: tl.constexpr,
+    DISABLE_OUTPUT_CALCULATION: tl.constexpr,
+    CACHE_INTERMEDIATE_STATES: tl.constexpr,
+    HAS_EAGLE_TREE_CUSTOM_ATTN_MASK: tl.constexpr,
+):
+    i_k, i_v, i_nh = tl.program_id(0), tl.program_id(1), tl.program_id(2)
+    i_n, i_hv = i_nh // HV, i_nh % HV
+    i_h = i_hv // (HV // H)
+    if IS_VARLEN:
+        bos, eos = tl.load(cu_seqlens + i_n).to(tl.int64), tl.load(
+            cu_seqlens + i_n + 1
+        ).to(tl.int64)
+        all = T
+        T = eos - bos
+    else:
+        bos, eos = i_n * T, i_n * T + T
+        all = B * T
+    o_k = i_k * BK + tl.arange(0, BK)
+    o_v = i_v * BV + tl.arange(0, BV)
+
+    p_q = q + (bos * H + i_h) * K + o_k
+    p_k = k + (bos * H + i_h) * K + o_k
+    p_v = v + (bos * HV + i_hv) * V + o_v
+    p_o = o + ((i_k * all + bos) * HV + i_hv) * V + o_v
+
+    # Simple GLA: per-head log-decay (constant over the sequence). Loading
+    # once outside the loop matches GDR's `b_g = load(p_g)` semantics but
+    # saves repeated loads since the value is loop-invariant.
+    b_g = tl.load(g_gamma + i_h).to(tl.float32)
+    b_decay = exp(b_g)
+
+    if HAS_EAGLE_TREE_CUSTOM_ATTN_MASK:
+        token_indices = tl.arange(0, NP2_T)
+        mask_retrieve = token_indices < T
+        retrieve_parent_token_base = (
+            retrieve_parent_token_ptr
+            + (i_n * stride_retrieve_parent_token_seq)
+            + token_indices * stride_retrieve_parent_token_token
+        )
+        parent_idx_tokens = tl.load(retrieve_parent_token_base, mask_retrieve)
+
+    mask_k = o_k < K
+    mask_v = o_v < V
+    mask_h = mask_k[:, None] & mask_v[None, :]
+
+    b_h = tl.zeros([BK, BV], dtype=tl.float32)
+    if USE_INITIAL_STATE:
+        idx = tl.load(h0_indices + i_n)
+        if idx >= 0:
+            p_h0 = (
+                h0_source
+                + idx * HV * K * V
+                + i_hv * K * V
+                + o_k[:, None] * V
+                + o_v[None, :]
+            )
+            b_h += tl.load(p_h0, mask=mask_h, other=0).to(tl.float32)
+
+    cache_idx = -1
+    if CACHE_INTERMEDIATE_STATES:
+        cache_idx = tl.load(intermediate_state_indices + i_n)
+
+    step_idx = 0
+    for _ in range(0, T):
+        if HAS_EAGLE_TREE_CUSTOM_ATTN_MASK:
+            # step_idx == 0 keeps the b_h from USE_INITIAL_STATE (request root).
+            # Non-root steps reload h from the parent token's cached state.
+            if step_idx != 0 and cache_idx >= 0:
+                parent_step_idx = tl.sum(
+                    tl.where(token_indices == step_idx, parent_idx_tokens, 0)
+                )
+                step_offset = parent_step_idx * HV * K * V
+                cache_ptr = (
+                    intermediate_states_buffer
+                    + cache_idx * cache_steps * HV * K * V
+                    + step_offset
+                    + i_hv * K * V
+                    + o_k[:, None] * V
+                    + o_v[None, :]
+                )
+                b_h = tl.load(cache_ptr, mask=mask_h, other=0).to(tl.float32)
+
+        b_q = tl.load(p_q, mask=mask_k, other=0).to(tl.float32)
+        b_k = tl.load(p_k, mask=mask_k, other=0).to(tl.float32)
+        b_v = tl.load(p_v, mask=mask_v, other=0).to(tl.float32)
+
+        b_q = b_q * scale
+
+        # Simple GLA recurrence: h <- decay * h + k * v^T
+        b_h = b_h * b_decay
+        b_h += b_k[:, None] * b_v[None, :]
+
+        if not DISABLE_OUTPUT_CALCULATION:
+            b_o = tl.sum(b_h * b_q[:, None], 0)
+            tl.store(p_o, b_o.to(p_o.dtype.element_ty), mask=mask_v)
+
+        if CACHE_INTERMEDIATE_STATES:
+            if cache_idx >= 0:
+                step_offset = step_idx * HV * K * V
+                cache_ptr = (
+                    intermediate_states_buffer
+                    + cache_idx * cache_steps * HV * K * V
+                    + step_offset
+                    + i_hv * K * V
+                    + o_k[:, None] * V
+                    + o_v[None, :]
+                )
+                tl.store(cache_ptr, b_h.to(cache_ptr.dtype.element_ty), mask=mask_h)
+
+        step_idx += 1
+
+        p_q += H * K
+        p_k += H * K
+        p_o += HV * V
+        p_v += HV * V
+
+    if not DISABLE_STATE_UPDATE:
+        idx = tl.load(h0_indices + i_n)
+        if idx >= 0:
+            p_h0 = (
+                h0_source
+                + idx * HV * K * V
+                + i_hv * K * V
+                + o_k[:, None] * V
+                + o_v[None, :]
+            )
+            tl.store(p_h0, b_h.to(p_h0.dtype.element_ty), mask=mask_h)
+
+
+def fused_recurrent_simple_gla_update_fwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    g_gamma: torch.Tensor,
+    scale: float,
+    initial_state_source: torch.Tensor,
+    initial_state_indices: torch.Tensor,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    disable_state_update: bool = False,
+    disable_output_calculation: bool = False,
+    intermediate_states_buffer: Optional[torch.Tensor] = None,
+    intermediate_state_indices: Optional[torch.Tensor] = None,
+    cache_steps: Optional[int] = None,
+    retrieve_parent_token: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    B, T, H, K, V = *k.shape, v.shape[-1]
+    HV = v.shape[2]
+    N = B if cu_seqlens is None else len(cu_seqlens) - 1
+    BK, BV = triton.next_power_of_2(K), min(triton.next_power_of_2(V), 8)
+    NK, NV = triton.cdiv(K, BK), triton.cdiv(V, BV)
+    assert NK == 1, "NK > 1 is not supported yet"
+    num_stages = 3
+    num_warps = 1
+
+    if disable_output_calculation:
+        o = q.new_empty(NK, 1, 1, 1, 1)
+    else:
+        o = q.new_empty(NK, *v.shape)
+
+    grid = (NK, NV, N * HV)
+
+    if retrieve_parent_token is not None:
+        stride_retrieve_parent_token_seq, stride_retrieve_parent_token_token = (
+            retrieve_parent_token.stride(0),
+            retrieve_parent_token.stride(1),
+        )
+    else:
+        stride_retrieve_parent_token_seq = stride_retrieve_parent_token_token = 0
+
+    NP2_T = triton.next_power_of_2(T)
+    fused_recurrent_simple_gla_update_fwd_kernel[grid](
+        q=q,
+        k=k,
+        v=v,
+        g_gamma=g_gamma,
+        o=o,
+        h0_source=initial_state_source,
+        h0_indices=initial_state_indices,
+        cu_seqlens=cu_seqlens,
+        scale=scale,
+        intermediate_states_buffer=intermediate_states_buffer,
+        intermediate_state_indices=intermediate_state_indices,
+        cache_steps=0 if cache_steps is None else cache_steps,
+        retrieve_parent_token_ptr=retrieve_parent_token,
+        stride_retrieve_parent_token_seq=stride_retrieve_parent_token_seq,
+        stride_retrieve_parent_token_token=stride_retrieve_parent_token_token,
+        T=T,
+        NP2_T=NP2_T,
+        B=B,
+        H=H,
+        HV=HV,
+        K=K,
+        V=V,
+        BK=BK,
+        BV=BV,
+        USE_INITIAL_STATE=initial_state_source is not None,
+        IS_VARLEN=cu_seqlens is not None,
+        CACHE_INTERMEDIATE_STATES=intermediate_states_buffer is not None,
+        HAS_EAGLE_TREE_CUSTOM_ATTN_MASK=retrieve_parent_token is not None,
+        DISABLE_STATE_UPDATE=disable_state_update,
+        DISABLE_OUTPUT_CALCULATION=disable_output_calculation,
+        num_warps=num_warps,
+        num_stages=num_stages,
+    )
+    o = o.squeeze(0)
+    return o
+
+
+class FusedRecurrentSimpleGLAUpdateFunction(torch.autograd.Function):
+
+    @staticmethod
+    @input_guard
+    def forward(
+        ctx,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        g_gamma: torch.Tensor,
+        scale: float,
+        initial_state_source: torch.Tensor,
+        initial_state_indices: torch.Tensor,
+        cu_seqlens: Optional[torch.LongTensor] = None,
+        disable_state_update: bool = False,
+        disable_output_calculation: bool = False,
+        intermediate_states_buffer: Optional[torch.Tensor] = None,
+        intermediate_state_indices: Optional[torch.Tensor] = None,
+        cache_steps: Optional[int] = None,
+        retrieve_parent_token: Optional[torch.Tensor] = None,
+    ):
+        return fused_recurrent_simple_gla_update_fwd(
+            q=q,
+            k=k,
+            v=v,
+            g_gamma=g_gamma,
+            scale=scale,
+            initial_state_source=initial_state_source,
+            initial_state_indices=initial_state_indices,
+            cu_seqlens=cu_seqlens,
+            disable_state_update=disable_state_update,
+            disable_output_calculation=disable_output_calculation,
+            intermediate_states_buffer=intermediate_states_buffer,
+            intermediate_state_indices=intermediate_state_indices,
+            cache_steps=cache_steps,
+            retrieve_parent_token=retrieve_parent_token,
+        )
+
+    @staticmethod
+    @input_guard
+    def backward(ctx, do):
+        raise NotImplementedError(
+            "Backward pass is not implemented for Simple GLA update; the verify "
+            "path is inference-only."
+        )
+
+
+def fused_recurrent_simple_gla_update(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    g_gamma: torch.Tensor,
+    scale: float = None,
+    initial_state_source: torch.Tensor = None,
+    initial_state_indices: torch.Tensor = None,
+    cu_seqlens: Optional[torch.LongTensor] = None,
+    disable_state_update: bool = False,
+    disable_output_calculation: bool = False,
+    intermediate_states_buffer: Optional[torch.Tensor] = None,
+    intermediate_state_indices: Optional[torch.Tensor] = None,
+    cache_steps: Optional[int] = None,
+    retrieve_parent_token: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Tree-verify variant of Simple GLA fused recurrent forward.
+
+    This is the snapshot-and-replay analogue of
+    ``fused_recurrent_gated_delta_rule_update`` for the Simple GLA
+    (Lightning Attention) recurrence ``h_t = exp(g_gamma[h]) * h_{t-1} +
+    k_t v_t^T``.
+
+    When ``retrieve_parent_token`` is provided (the EAGLE3 tree-verify
+    path), the kernel reloads the recurrent state from the parent token's
+    cached state at the start of every step beyond step 0, ensuring each
+    candidate token in the verify tree attends only to its ancestors.
+
+    When ``retrieve_parent_token`` is ``None``, this collapses to a
+    standard linear forward — equivalent to upstream
+    ``fla.ops.simple_gla.fused_recurrent.fused_recurrent_simple_gla``
+    except it uses the SGLang ``h0_source`` + ``h0_indices`` indirection
+    so multi-request packed batches share a single state pool.
+    """
+    if cu_seqlens is not None:
+        if q.shape[0] != 1:
+            raise ValueError(
+                f"The batch size is expected to be 1 rather than {q.shape[0]} when using `cu_seqlens`."
+                f" Please flatten variable-length inputs before processing."
+            )
+        if initial_state_source is not None:
+            if initial_state_indices.shape[0] != len(cu_seqlens) - 1:
+                raise ValueError(
+                    f"The number of initial states is expected to be equal to the number of input sequences, "
+                    f"i.e., {len(cu_seqlens) - 1} rather than {initial_state_indices.shape[0]}."
+                )
+            if (
+                intermediate_state_indices is not None
+                and initial_state_indices.shape[0] != intermediate_state_indices.shape[0]
+            ):
+                raise ValueError(
+                    f"The number of intermediate state indices is expected to be equal to the number of input sequences, "
+                    f"i.e., {initial_state_indices.shape[0]} != {intermediate_state_indices.shape[0]}."
+                )
+    if scale is None:
+        scale = k.shape[-1] ** -0.5
+    else:
+        assert scale > 0, "scale must be positive"
+    return FusedRecurrentSimpleGLAUpdateFunction.apply(
+        q,
+        k,
+        v,
+        g_gamma,
+        scale,
+        initial_state_source,
+        initial_state_indices,
+        cu_seqlens,
+        disable_state_update,
+        disable_output_calculation,
+        intermediate_states_buffer,
+        intermediate_state_indices,
+        cache_steps,
+        retrieve_parent_token,
+    )
