@@ -84,6 +84,21 @@ tick() {
     if git commit --no-verify -m "auto: watchdog snapshot ${stamp}
 
 ${summary}" >/dev/null 2>&1; then
+        # Sync with remote before push, otherwise origin advancing (other
+        # Claude session, other dev) yields a non-fast-forward reject and the
+        # commit stays trapped locally forever. Abort on conflict so the tree
+        # stays usable; we'll retry next tick. --no-edit keeps the rebase
+        # non-interactive. Skipping --autostash on purpose: working tree
+        # should be clean here (our git add + commit just landed everything
+        # in the whitelist), and stashing unrelated user changes risks an
+        # unstash conflict.
+        if ! git pull --rebase --no-edit 2>/tmp/.watchdog_push_err; then
+            git rebase --abort 2>/dev/null || true
+            local err
+            err="$(tail -2 /tmp/.watchdog_push_err | tr '\n' ' ')"
+            echo "[$(date '+%F %T')] committed but PULL --REBASE FAILED (aborted, will retry next tick): ${err}"
+            return
+        fi
         if git push 2>/tmp/.watchdog_push_err; then
             echo "[$(date '+%F %T')] committed + pushed: ${summary}"
         else
