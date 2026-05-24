@@ -1,0 +1,55 @@
+2026-05-24 21:25:57,540 - SGLANG_INFERENCE - INFO - mid truncation: max_out_len=65536, max_seq_len=262144, max_prompt_len=128000
+2026-05-24 21:25:58,210 - SGLANG_INFERENCE - INFO - SGLang sampling kwargs: {'temperature': 0.0, 'max_tokens': 65536, 'stop': ['</s>', '<|im_end|>']}
+Auto-detected model name: /root/autodl-fs/zyn/models/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk65k_safe-quantized
+API Base: http://127.0.0.1:31111
+Model Name: /root/autodl-fs/zyn/models/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk65k_safe-quantized
+Model Path: /root/autodl-fs/zyn/models/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk65k_safe-quantized
+Data Path: /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl
+Saving results to outputs/20260524_212554
+Testing with 30 samples.
+Initializing model client...
+Generating responses...
+  Sending 30 requests to SGLang API (concurrency=32)...
+Generating:   0%|          | 0/30 [00:00<?, ?it/s]2026-05-24 21:26:45,090 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,090 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+Generating:   3%|▎         | 1/30 [00:46<22:37, 46.80s/it]2026-05-24 21:26:45,091 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,091 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,091 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,091 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,091 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,091 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,092 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,092 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,092 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,092 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,092 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,092 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,092 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,093 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,093 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,093 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,093 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,093 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,093 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,093 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,093 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,094 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,094 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,094 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,094 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,094 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,094 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-05-24 21:26:45,095 - SGLANG_INFERENCE - ERROR - Request failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+Generating: 100%|██████████| 30/30 [00:46<00:00,  1.56s/it]
+2026-05-24 21:26:45,098 - SGLANG_INFERENCE - INFO - Processing time: 46.89s
+
+Generation completed in 47.58 seconds
+
+--- Evaluation Results ---
+
+Average Score: 0.00%
+Total Duration: 47.58 s
+Total Tokens: In=712568, Out=300
+Average Tokens/Sample: In=23752.3, Out=10.0
+Overall TPS (Output): 6.30 tokens/s
+Detailed results saved to outputs/20260524_212554/predictions.jsonl

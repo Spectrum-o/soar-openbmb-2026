@@ -1,0 +1,51 @@
+[prepare_model] using calibration from: /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl
+[prepare_model] quantize timeout: 90 min
+[prepare_model] DIAGNOSTIC: script dir contents
+total 20
+drwxr-xr-x  2 root root   192 May 24 18:39 .
+drwxr-xr-x 59 root root  4096 May 24 18:39 ..
+lrwxrwxrwx  1 root root   117 May 24 18:39 flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl -> ../submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k/flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl
+-rwxr-xr-x  1 root root 15971 May 24 18:39 prepare_env.sh
+lrwxrwxrwx  1 root root    74 May 24 18:39 prepare_model.sh -> ../submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k/prepare_model.sh
+lrwxrwxrwx  1 root root    85 May 24 18:39 quantize_gptqmodel_w4a16.py -> ../submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k/quantize_gptqmodel_w4a16.py
+lrwxrwxrwx  1 root root    64 May 24 18:39 sglang -> ../submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k/sglang
+[prepare_model] DIAGNOSTIC: input dir
+total 18515298
+drwxr-xr-x 2 root root       4096 May 17 11:48 .
+drwxr-xr-x 5 root root       4096 May 19 20:48 ..
+-rw-r--r-- 1 root root         43 May 11 22:17 .mdl
+-rw------- 1 root root       1110 May 11 22:52 .msc
+-rw-r--r-- 1 root root         36 May 11 22:52 .mv
+-rw-r--r-- 1 root root       9398 May 11 22:18 README.md
+-rw-r--r-- 1 root root       2397 May 11 22:18 config.json
+-rw-r--r-- 1 root root      11824 May 11 22:18 configuration_minicpm_sala.py
+-rw-r--r-- 1 root root        153 May 11 22:18 generation_config.json
+-rw-r--r-- 1 root root 4968143488 May 11 22:49 model-00001-of-00004.safetensors
+-rw-r--r-- 1 root root 4874002352 May 11 22:49 model-00002-of-00004.safetensors
+-rw-r--r-- 1 root root 4874002384 May 11 22:49 model-00003-of-00004.safetensors
+-rw-r--r-- 1 root root 4238305384 May 11 22:52 model-00004-of-00004.safetensors
+-rw-r--r-- 1 root root      32584 May 11 22:18 model.safetensors.index.json
+-rw-r--r-- 1 root root     132069 May 17 11:48 modeling_minicpm_sala.py
+-rw-r--r-- 1 root root     132102 May 17 11:48 modeling_minicpm_sala.py.bak_remove_head_first
+-rw-r--r-- 1 root root       3497 May 11 22:18 special_tokens_map.json
+-rw-r--r-- 1 root root    3676708 May 11 22:18 tokenizer.json
+-rw-r--r-- 1 root root    1181204 May 11 22:18 tokenizer.model
+[prepare_model] DIAGNOSTIC: calib jsonl path=/root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl
+[prepare_model] DIAGNOSTIC: calib jsonl size=23925601 bytes
+[prepare_model] DIAGNOSTIC: calib jsonl row count=150
+[prepare_model] DIAGNOSTIC: calib jsonl first row (first 200 chars):
+{"index": 121, "question": " Below is a numbered list of words. In these words, some appear more often than others. Memorize the ones that appear most often.\n1. elk 2. tragedy 3. elk 4. puppet 5. rep
+Traceback (most recent call last):
+  File "/root/autodl-tmp/zyn/sglang/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe/quantize_gptqmodel_w4a16.py", line 92, in <module>
+    _stub_transformers_for_gptqmodel_7()
+  File "/root/autodl-tmp/zyn/sglang/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe/quantize_gptqmodel_w4a16.py", line 82, in _stub_transformers_for_gptqmodel_7
+    import transformers
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/__init__.py", line 27, in <module>
+    from . import dependency_versions_check
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/dependency_versions_check.py", line 16, in <module>
+    from .utils.versions import require_version, require_version_core
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/utils/__init__.py", line 19, in <module>
+    from huggingface_hub import get_full_repo_name  # for backward compatibility
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'huggingface_hub'
+[prepare_model] quantize exited 1
