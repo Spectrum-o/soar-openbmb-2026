@@ -1526,6 +1526,9 @@ class SimpleGLAAttnBackend(MambaAttnBackendBase):
 
     def init_forward_metadata(self, forward_batch: ForwardBatch):
         metadata = self._forward_metadata(forward_batch)
+        self._fill_parent_token_if_target_verify(
+            metadata, forward_batch.spec_info, forward_batch.forward_mode,
+        )
         self.forward_metadata = metadata
 
     def init_forward_metadata_capture_cuda_graph(
@@ -1539,6 +1542,10 @@ class SimpleGLAAttnBackend(MambaAttnBackendBase):
         spec_info: Optional[SpecInput],
     ):
         metadata = self._capture_metadata(bs, req_pool_indices, forward_mode, spec_info)
+        # At capture time the tree edges (retrieve_next_token /
+        # retrieve_next_sibling) are not yet filled — the captured graph
+        # is laid out against the buffer shape only. Parent values are
+        # populated at replay time below.
         self.forward_metadata = metadata
 
     def init_forward_metadata_replay_cuda_graph(
@@ -1554,7 +1561,94 @@ class SimpleGLAAttnBackend(MambaAttnBackendBase):
         forward_batch: Optional[ForwardBatch] = None,
     ):
         metadata = self._replay_metadata(bs, req_pool_indices, forward_mode, spec_info, seq_lens_cpu)
+        # _replay_metadata copies the per-batch retrieve_next_token /
+        # retrieve_next_sibling from spec_info into the pre-allocated
+        # cuda-graph buffers; we now derive retrieve_parent_token from
+        # those (since SimpleGLA has no conv1d to fill it as a side
+        # effect — see ``_fill_retrieve_parent_token_inplace`` docstring).
+        self._fill_parent_token_if_target_verify(metadata, spec_info, forward_mode)
         self.forward_metadata = metadata
+
+    def _fill_parent_token_if_target_verify(
+        self,
+        metadata: "ForwardMetadata",
+        spec_info: Optional[SpecInput],
+        forward_mode: ForwardMode,
+    ) -> None:
+        """Fill ``metadata.retrieve_parent_token`` when running target-verify.
+
+        For GDN, the conv kernel (``causal_conv1d_update``) writes this
+        buffer as a side effect during forward. SALA's lightning layers
+        do not run any conv (the mixer_types are ``minicpm4`` / ``lightning``
+        only — no GDN, no Mamba), so the buffer would otherwise be
+        uninitialized memory.
+        """
+        if (
+            not forward_mode.is_target_verify()
+            or spec_info is None
+            or getattr(spec_info, "topk", 0) <= 1
+            or metadata.retrieve_parent_token is None
+            or metadata.retrieve_next_token is None
+            or metadata.retrieve_next_sibling is None
+        ):
+            return
+        self._fill_retrieve_parent_token_inplace(
+            metadata.retrieve_parent_token,
+            metadata.retrieve_next_token,
+            metadata.retrieve_next_sibling,
+        )
+
+    @staticmethod
+    def _fill_retrieve_parent_token_inplace(
+        parent_buf: torch.Tensor,
+        next_token: torch.Tensor,
+        next_sibling: torch.Tensor,
+    ) -> None:
+        """Derive ``parent_buf[i] = parent of node i in the draft tree`` in place.
+
+        Mirrors the parent-computation logic that
+        ``causal_conv1d_update`` performs as a side effect for
+        conv-bearing backends (see
+        ``layers/attention/mamba/causal_conv1d_triton.py:798-823``).
+        The recurrence is:
+
+            parent[next_token[t]]    = t                       if next_token[t]    != -1
+            parent[next_sibling[t]]  = parent[t]               if next_sibling[t]  != -1
+
+        iterated in increasing ``t``. A valid pre-order tree guarantees
+        that ``parent[t]`` is set before any iteration ``t' > t`` reads
+        it via the sibling rule.
+
+        Implementation is pure-torch (no Python sync points, no .item()
+        / .any() calls) so it stays on the GPU stream and composes with
+        cuda graph capture/replay.
+        """
+        # Shapes: parent_buf, next_token, next_sibling all (bs, N).
+        # Dtypes: cuda-graph path uses int32; non-graph allocation via
+        # ``torch.empty_like(retrieve_next_token)`` matches whatever
+        # spec_info uses (int64 in eagle_info.py). We respect parent_buf's
+        # dtype throughout so we never store an int64 into an int32 slot.
+        bs, N = next_token.shape
+        parent_buf.zero_()
+        dtype = parent_buf.dtype
+        for t in range(N):
+            # First-child rule: parent[next_token[t]] = t (when valid).
+            nt = next_token[:, t]
+            valid_nt = nt >= 0
+            idx_nt = nt.clamp(min=0).long().unsqueeze(1)
+            cur_at_nt = parent_buf.gather(1, idx_nt).squeeze(1)
+            t_filled = torch.full_like(nt, t, dtype=dtype)
+            new_at_nt = torch.where(valid_nt, t_filled, cur_at_nt)
+            parent_buf.scatter_(1, idx_nt, new_at_nt.unsqueeze(1))
+
+            # Sibling rule: parent[next_sibling[t]] = parent[t] (when valid).
+            ns = next_sibling[:, t]
+            valid_ns = ns >= 0
+            idx_ns = ns.clamp(min=0).long().unsqueeze(1)
+            cur_at_ns = parent_buf.gather(1, idx_ns).squeeze(1)
+            cur_parent_t = parent_buf[:, t]
+            new_at_ns = torch.where(valid_ns, cur_parent_t, cur_at_ns)
+            parent_buf.scatter_(1, idx_ns, new_at_ns.unsqueeze(1))
 
     def forward(
         self,

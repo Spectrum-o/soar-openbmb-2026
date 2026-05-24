@@ -319,5 +319,156 @@ class TestSimpleGLATreeVerify(unittest.TestCase):
         )
 
 
+class TestFillRetrieveParentToken(unittest.TestCase):
+    """CPU-friendly tests for the pure-torch parent-token fill helper.
+
+    GDN backends rely on ``causal_conv1d_update`` to populate the
+    ``retrieve_parent_token`` buffer as a side effect during forward.
+    SALA's lightning layers have no conv, so SimpleGLAAttnBackend
+    derives the buffer from ``retrieve_next_token`` / ``retrieve_next_sibling``
+    via ``_fill_retrieve_parent_token_inplace`` at metadata-init time.
+    These tests pin the helper's correctness against hand-computed
+    parent trees.
+
+    The helper itself is pure torch (no Triton, no CUDA), but importing
+    it goes through the SGLang package which has heavy dependencies
+    (tqdm, transformers, ...) that may not exist in a stripped local
+    dev mirror. Skip gracefully on ImportError; the tests still run on
+    AutoDL / CI where the full SGLang env is installed.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from sglang.srt.layers.attention.hybrid_linear_attn_backend import (
+                SimpleGLAAttnBackend,
+            )
+            cls._fill = SimpleGLAAttnBackend._fill_retrieve_parent_token_inplace
+        except ImportError as e:
+            raise unittest.SkipTest(
+                f"SGLang import unavailable in this env ({e}); helper "
+                f"tests will run on AutoDL/CI where deps are installed."
+            )
+
+    @staticmethod
+    def _reference_parent(next_token: torch.Tensor, next_sibling: torch.Tensor) -> torch.Tensor:
+        """Brute-force parent derivation, line-for-line from the conv kernel."""
+        bs, N = next_token.shape
+        parent = torch.zeros_like(next_token)
+        for b in range(bs):
+            for t in range(N):
+                nt = int(next_token[b, t].item())
+                if nt >= 0:
+                    parent[b, nt] = t
+                ns = int(next_sibling[b, t].item())
+                if ns >= 0:
+                    parent[b, ns] = parent[b, t]
+        return parent
+
+    def test_pyramid_tree(self):
+        """The 4-token pyramid:
+                  0
+                 / \\
+                1   2
+               /
+              3
+        next_token = [1, 3, -1, -1], next_sibling = [-1, 2, -1, -1]
+        expected: parent = [0, 0, 0, 1]  (parent[0] is "self" by convention).
+        """
+        nt = torch.tensor([[1, 3, -1, -1]], dtype=torch.int32)
+        ns = torch.tensor([[-1, 2, -1, -1]], dtype=torch.int32)
+        parent = torch.full((1, 4), -99, dtype=torch.int32)  # poisoned
+        self._fill(parent, nt, ns)
+        torch.testing.assert_close(
+            parent, torch.tensor([[0, 0, 0, 1]], dtype=torch.int32)
+        )
+
+    def test_linear_chain(self):
+        """4-token chain: 0 -> 1 -> 2 -> 3.
+
+        Each node has exactly one child, no siblings.
+        next_token = [1, 2, 3, -1], next_sibling = [-1, -1, -1, -1]
+        expected: parent = [0, 0, 1, 2]
+        """
+        nt = torch.tensor([[1, 2, 3, -1]], dtype=torch.int32)
+        ns = torch.tensor([[-1, -1, -1, -1]], dtype=torch.int32)
+        parent = torch.full((1, 4), -99, dtype=torch.int32)
+        self._fill(parent, nt, ns)
+        torch.testing.assert_close(
+            parent, torch.tensor([[0, 0, 1, 2]], dtype=torch.int32)
+        )
+
+    def test_full_binary_tree_depth2(self):
+        """7-token full binary tree of depth 2.
+
+                  0
+                 / \\
+                1   2
+               / \\ / \\
+              3  4 5  6
+        next_token   = [1, 3, 5, -1, -1, -1, -1]
+        next_sibling = [-1, 2, -1, 4, -1, 6, -1]
+        expected parent = [0, 0, 0, 1, 1, 2, 2]
+        """
+        nt = torch.tensor([[1, 3, 5, -1, -1, -1, -1]], dtype=torch.int32)
+        ns = torch.tensor([[-1, 2, -1, 4, -1, 6, -1]], dtype=torch.int32)
+        parent = torch.zeros(1, 7, dtype=torch.int32)
+        self._fill(parent, nt, ns)
+        torch.testing.assert_close(
+            parent, torch.tensor([[0, 0, 0, 1, 1, 2, 2]], dtype=torch.int32)
+        )
+
+    def test_batched_mixed_trees(self):
+        """Three batches with different topologies, run as one fill call."""
+        nt = torch.tensor(
+            [
+                [1, 3, -1, -1],   # pyramid
+                [1, 2, 3, -1],    # chain
+                [1, -1, -1, -1],  # depth-1 with single child
+            ],
+            dtype=torch.int32,
+        )
+        ns = torch.tensor(
+            [
+                [-1, 2, -1, -1],
+                [-1, -1, -1, -1],
+                [-1, -1, -1, -1],
+            ],
+            dtype=torch.int32,
+        )
+        parent = torch.full((3, 4), -99, dtype=torch.int32)
+        self._fill(parent, nt, ns)
+        expected = torch.tensor(
+            [
+                [0, 0, 0, 1],
+                [0, 0, 1, 2],
+                [0, 0, 0, 0],
+            ],
+            dtype=torch.int32,
+        )
+        torch.testing.assert_close(parent, expected)
+
+    def test_matches_brute_force_reference(self):
+        """Fuzz against a brute-force reference on hand-built valid trees."""
+        nt = torch.tensor(
+            [
+                [1, 4, -1, -1, 6, -1, -1, -1],
+                [1, 3, -1, 5, -1, -1, -1, -1],
+            ],
+            dtype=torch.int32,
+        )
+        ns = torch.tensor(
+            [
+                [-1, 2, 3, -1, 5, -1, 7, -1],
+                [-1, 2, -1, 4, -1, -1, -1, -1],
+            ],
+            dtype=torch.int32,
+        )
+        parent = torch.zeros(2, 8, dtype=torch.int32)
+        self._fill(parent, nt, ns)
+        expected = self._reference_parent(nt, ns)
+        torch.testing.assert_close(parent, expected)
+
+
 if __name__ == "__main__":
     unittest.main()
