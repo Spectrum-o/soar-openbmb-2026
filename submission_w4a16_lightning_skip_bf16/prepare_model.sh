@@ -1,0 +1,1 @@
+../submission_w4a16_lightning_skip/prepare_model.sh
