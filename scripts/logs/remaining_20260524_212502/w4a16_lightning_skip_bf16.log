@@ -1,0 +1,64 @@
+[local_eval] gptq_marlin + --dtype bfloat16 detected; SKIPPING fp16 sed-patch (mirrors v5j_dtype_bf16+ variants' prepare_env.sh behavior)
+==================================================
+ local_eval
+==================================================
+ variant:      submission_w4a16_lightning_skip_bf16
+ source model: /root/autodl-fs/models/OpenBMB/MiniCPM-SALA
+ quant cache:  /root/autodl-fs/zyn/models/submission_w4a16_lightning_skip_bf16-quantized
+ eval script:  /root/autodl-fs/zyn/soar_toolkit/eval_model.py
+ eval data:    /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl
+ samples:      30 (concurrency=32)
+ sglang args:  --disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --mem-fraction-static 0.80 --dtype bfloat16
+==================================================
+[1/3] quantize: running /root/autodl-tmp/zyn/sglang/submission_w4a16_lightning_skip_bf16/prepare_model.sh...
+[1/3] quantize FAILED. tail of log:
+GPT-QModel   : 7.0.0+0abe15188
+Transformers : 4.57.1
+Torch        : 2.9.1+cu128
+Triton       : 3.5.1
+[register] also added minicpm_sala to gptqmodel.models.auto.SUPPORTED_MODELS (len=114)
+[register] registered minicpm_sala/MiniCPMSALAForCausalLM -> MiniCPMSALAGPTQ in 1 MODEL_MAP(s)
+[make_quant_config] sym=True desc_act=False static_groups=False dampening_frac=(default)
+INFO  QuantizeConfig: offload_to_disk_path auto set to temporary dir `/tmp/gptqmodel_id1t1jhh`
+[quant_config] offload_to_disk=True
+[load] GPTQModel.load(...)  kwargs=['offload_to_disk', 'trust_remote_code']
+[patch] forced minicpm_sala._attn_implementation = flash_attention_2
+[patch] forced minicpm_sala._attn_implementation = flash_attention_2
+[patch] forced minicpm_sala._attn_implementation = flash_attention_2
+[patch] forced minicpm_sala._attn_implementation = flash_attention_2
+Defuser public API `replace_fused_blocks()` requires transformers>=5.3.0. Current version is 4.57.1. This call is unsupported and will be skipped.
+INFO  Loader: Auto dtype (native bfloat16): `torch.bfloat16`                   
+INFO  Estimated Quantization BPW (bits per weight): 4.2875 bpw, based on [bits: 4, group_size: 128]
+Model loading... █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░███| elapsed 0:00:00                                                                                Traceback (most recent call last):
+  File "/root/autodl-tmp/zyn/sglang/submission_w4a16_lightning_skip_bf16/quantize_gptqmodel_w4a16.py", line 1432, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/submission_w4a16_lightning_skip_bf16/quantize_gptqmodel_w4a16.py", line 1362, in main
+    model = load_model(
+            ^^^^^^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/submission_w4a16_lightning_skip_bf16/quantize_gptqmodel_w4a16.py", line 629, in load_model
+    return GPTQModel.load(input_dir, quant_config, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/lib/python3.12/site-packages/gptqmodel/models/auto.py", line 505, in load
+    m = cls.from_pretrained(
+        ^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/lib/python3.12/site-packages/gptqmodel/models/auto.py", line 572, in from_pretrained
+    return model_definition.from_pretrained(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/lib/python3.12/site-packages/gptqmodel/models/loader.py", line 623, in from_pretrained
+    model = build_shell_model(cls.loader, config=shell_config, **model_init_kwargs_without_internal)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/lib/python3.12/site-packages/gptqmodel/utils/hf.py", line 1483, in build_shell_model
+    shell = loader.from_config(
+            ^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/lib/python3.12/site-packages/transformers/models/auto/auto_factory.py", line 453, in from_config
+    return model_class._from_config(config, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/lib/python3.12/site-packages/transformers/modeling_utils.py", line 277, in _wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/zyn/sglang/sglang_minicpm_sala_env/lib/python3.12/site-packages/transformers/modeling_utils.py", line 2311, in _from_config
+    model = cls(config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^
+TypeError: MiniCPMSALAForCausalLM.__init__() got an unexpected keyword argument 'offload_to_disk'
+[prepare_model] FATAL: quantize_gptqmodel_w4a16.py exited 1
