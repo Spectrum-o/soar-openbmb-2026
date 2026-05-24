@@ -1,0 +1,10 @@
+Model: /root/autodl-fs/zyn/models/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_opfusion-quantized
+Data: /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl
+Original Accuracy: 82.67%
+Normalized Accuracy: 100%
+Num Samples: 30
+Total Duration: 748.01 s
+Total Output Tokens: 108974
+Average Input Tokens: 23752.3
+Average Output Tokens: 3632.5
+TPS: 145.69
