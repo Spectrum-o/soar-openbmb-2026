@@ -125,7 +125,8 @@ SGLANG_SERVER_ARGS="$(grep -E '^export SGLANG_SERVER_ARGS=' "${PREPARE_ENV}" \
 # the bottom of this script reverts the patch on exit, so subsequent baseline
 # (BF16) runs against the same venv stay unaffected.
 SED_PATCH_FILES=()
-if echo "${SGLANG_SERVER_ARGS}" | grep -q "gptq_marlin"; then
+if echo "${SGLANG_SERVER_ARGS}" | grep -q "gptq_marlin" \
+        && ! echo "${SGLANG_SERVER_ARGS}" | grep -qE -- "--dtype[ =]bfloat16"; then
     BACKEND_DIR="${REPO_ROOT}/python/sglang/srt/layers/attention"
     for pyfile in "${BACKEND_DIR}/minicpm_backend.py" \
                   "${BACKEND_DIR}/minicpm_sparse_utils.py"; do
@@ -137,6 +138,8 @@ if echo "${SGLANG_SERVER_ARGS}" | grep -q "gptq_marlin"; then
             echo "[local_eval] sed-patched $(basename "${pyfile}") for fp16 quant run"
         fi
     done
+elif echo "${SGLANG_SERVER_ARGS}" | grep -q "gptq_marlin"; then
+    echo "[local_eval] gptq_marlin + --dtype bfloat16 detected; SKIPPING fp16 sed-patch (mirrors v5j_dtype_bf16+ variants' prepare_env.sh behavior)"
 fi
 
 LOG_DIR="${REPO_ROOT}/scripts/logs"
