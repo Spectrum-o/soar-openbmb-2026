@@ -42,9 +42,16 @@ echo "log dir: $NAS_DIR"
 echo "============================================================"
 
 # Variants to smoke, in priority order. Each entry: VARIANT_DIR:DESCRIPTION
+#
+# Note 2026-05-24 evening: chunk32k_fp8kv DROPPED from default queue.
+# Code-level investigation found Path B patch (default scale=1.0 fallback)
+# is insufficient — there's a secondary dtype mismatch where q gets cast
+# to fp8 (line 935) but compressed_k stays bf16 (allocate_and_compress_keys
+# uses dtype=k.dtype from before cast). InfLLMv2 sparse kernel requires
+# q/k same dtype → mismatch. Need a deeper patch or different approach.
+# Re-enable manually if you've patched the compressed_k path too.
 VARIANTS=(
     "submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe:chunk32k+0.70 (the SAFEST option to validate today)"
-    "submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv:chunk32k+0.70+FP8 KV via Path B patch (highest EV, highest variance)"
     "submission_w4a16_lightning_skip_bf16:lightning_skip on bf16 path (acc-axis bet)"
     "submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_opfusion:chunk32k+op-fusion overlay (decode +5-10%)"
     "submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk65k_safe:chunk65k+0.70 (after chunk32k_safe validates)"
