@@ -43,15 +43,16 @@ echo "============================================================"
 
 # Variants to smoke, in priority order. Each entry: VARIANT_DIR:DESCRIPTION
 #
-# Note 2026-05-24 evening: chunk32k_fp8kv DROPPED from default queue.
-# Code-level investigation found Path B patch (default scale=1.0 fallback)
-# is insufficient — there's a secondary dtype mismatch where q gets cast
-# to fp8 (line 935) but compressed_k stays bf16 (allocate_and_compress_keys
-# uses dtype=k.dtype from before cast). InfLLMv2 sparse kernel requires
-# q/k same dtype → mismatch. Need a deeper patch or different approach.
-# Re-enable manually if you've patched the compressed_k path too.
+# 2026-05-24 v2: chunk32k_fp8kv RE-ADDED after SOAR official toolkit
+# guidance (soar.openbmb.cn/toolkit) confirmed FP8 KV is the canonical
+# recommended stack. Previous v1 (fp8_e4m3 + Path B minicpm_backend.py
+# patch) was wrong on dtype + wrong patch site. v2 uses:
+#   - fp8_e5m2 (official spec; ±57344 range vs e4m3's ±448)
+#   - Path D patch on gptq.py (3-line add RadixAttention → BaseKVCacheMethod)
+#   - --dense-as-sparse already in args → dense_len=0 → no compressed_k path
 VARIANTS=(
     "submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe:chunk32k+0.70 (the SAFEST option to validate today)"
+    "submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv:chunk32k+0.70+FP8 KV via Path D patch (official-recommended; highest EV)"
     "submission_w4a16_lightning_skip_bf16:lightning_skip on bf16 path (acc-axis bet)"
     "submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_opfusion:chunk32k+op-fusion overlay (decode +5-10%)"
     "submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk65k_safe:chunk65k+0.70 (after chunk32k_safe validates)"

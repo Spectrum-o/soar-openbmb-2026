@@ -343,33 +343,37 @@ export GPTQMODEL_MARLIN_USE_FP32="${GPTQMODEL_MARLIN_USE_FP32:-1}"
 
 
 # ----------------------------------------------------------------------
-# FP8 KV CACHE PATH B PATCH (2026-05-24 prep)
+# FP8 KV CACHE — PATH D PATCH (per SOAR official toolkit guidance)
 # ----------------------------------------------------------------------
-# Without this patch: --kv-cache-dtype fp8_e4m3 + --quantization gptq_marlin
-# crashes because gptq_marlin's quant_config doesn't attach a KV cache quant
-# method to RadixAttention (only handles LinearBase). RadixAttention.k_scale
-# stays None, but minicpm_backend.py still casts q to fp8 -> FlashAttention
-# rejects fp8 inputs without scales.
+# Official recommendation: "路径一：量化加速 — GPTQ W4A16 + Marlin Kernel + FP8 KV Cache"
+# Specifies: --kv-cache-dtype fp8_e5m2 (NOT fp8_e4m3 — e5m2 has 5 exp bits
+# giving ±57344 range, safer for SALA's scale_emb=12 KV magnitudes).
 #
-# Patch (from notes/fp8-kv-cache-investigation Path B): add a default
-# scale=1.0 fallback when layer.k_scale is None. Crude but works without
-# requiring fp8 weight quant or calibrated checkpoint.
+# Why we need a patch: SGLang's current GPTQMarlinConfig.get_quant_method
+# only handles LinearBase / FusedMoE, not RadixAttention. So
+# --quantization gptq_marlin + --kv-cache-dtype fp8_* leaves
+# layer.k_scale = None → FlashAttention rejects fp8 query without scales.
 #
-# Risk: scale=1.0 default may not match SALA's KV magnitude distribution.
-# If platform acc drops > 2pp vs chunk32k_safe baseline, this patch is
-# numerically inadequate and Path C (calibrated scales) is needed.
-TARGET_BACKEND="${SUBMISSION_DIR}/sglang/python/sglang/srt/layers/attention/minicpm_backend.py"
-PATCH_TOOL="${SUBMISSION_DIR}/apply_fp8_kv_fallback_patch.py"
-if [ -f "${TARGET_BACKEND}" ] && [ -f "${PATCH_TOOL}" ]; then
-    echo "[prepare_env] applying FP8 KV cache fallback patch (Path B)"
-    if ! python3 "${PATCH_TOOL}" "${TARGET_BACKEND}"; then
-        echo "[prepare_env] FATAL: FP8 KV patch failed" >&2
+# Path D fix (3 lines): extend GPTQMarlinConfig.get_quant_method to also
+# return BaseKVCacheMethod for RadixAttention. SGLang's standard
+# process_weights_after_loading then defaults k_scale to 1.0 when no
+# scales are in the checkpoint. Mirrors fp8.py:185-186 pattern.
+#
+# Compressed_k dtype issue (only triggers without --dense-as-sparse):
+# Our SGLANG_SERVER_ARGS includes --dense-as-sparse, which sets
+# dense_len=0 (minicpm_backend.py:230) → all sequences go through sparse
+# top-k path, never through allocate_and_compress_keys, so the
+# bf16↔fp8 compressed_k mismatch doesn't trigger.
+TARGET_GPTQ="${SUBMISSION_DIR}/sglang/python/sglang/srt/layers/quantization/gptq.py"
+PATCH_TOOL="${SUBMISSION_DIR}/apply_gptq_marlin_kv_method_patch.py"
+if [ -f "${TARGET_GPTQ}" ] && [ -f "${PATCH_TOOL}" ]; then
+    echo "[prepare_env] applying GPTQMarlin KV cache method patch (Path D)"
+    if ! python3 "${PATCH_TOOL}" "${TARGET_GPTQ}"; then
+        echo "[prepare_env] FATAL: gptq_marlin KV patch failed" >&2
         exit 1
     fi
 else
-    echo "[prepare_env] WARN: cannot apply FP8 KV patch — target or tool missing" >&2
-    [ -f "${TARGET_BACKEND}" ] || echo "  missing target: ${TARGET_BACKEND}" >&2
-    [ -f "${PATCH_TOOL}" ] || echo "  missing tool: ${PATCH_TOOL}" >&2
+    echo "[prepare_env] WARN: cannot apply gptq_marlin KV patch — target or tool missing" >&2
 fi
 
 # SGLang server args. NOTE: NO --kv-cache-dtype fp8_* (verified incompatible
@@ -396,7 +400,7 @@ fi
 # Marlin GEMM internally still outputs fp16; SGLang must cast that to bf16
 # for the sparse-backend boundary. If v5j gives partial result (50-70 acc),
 # this tests whether explicit --dtype bfloat16 fixes the remaining gap.
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashattn --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e4m3 --dtype bfloat16"
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashattn --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e5m2 --dtype bfloat16"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"
