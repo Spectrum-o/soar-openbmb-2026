@@ -391,7 +391,7 @@ fi
 # Marlin GEMM internally still outputs fp16; SGLang must cast that to bf16
 # for the sparse-backend boundary. If v5j gives partial result (50-70 acc),
 # this tests whether explicit --dtype bfloat16 fixes the remaining gap.
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.80 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype bfloat16"
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --dtype bfloat16"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"
