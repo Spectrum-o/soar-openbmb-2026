@@ -136,22 +136,6 @@ class FlashAttentionKernel(AttentionKernel):
         if params.fa_impl_ver != 3:
             kwargs["ver"] = params.fa_impl_ver
 
-        # PATH Y DEBUG: log the dtype combo when fp8 KV is in play, so we can
-        # see whether the upstream dequant landed before this call. Only logs
-        # for layer_id=0 on first call to avoid spam.
-        if not getattr(self, "_logged_dtypes", False):
-            import os
-            if os.environ.get("PATHY_DEBUG", "0") == "1":
-                print(
-                    f"[PATHY_DEBUG] FA call: q.dtype={params.q.dtype} "
-                    f"k_cache.dtype={params.k_cache.dtype} v_cache.dtype={params.v_cache.dtype} "
-                    f"k_descale={'set' if params.k_descale is not None else 'None'} "
-                    f"v_descale={'set' if params.v_descale is not None else 'None'} "
-                    f"fa_impl_ver={params.fa_impl_ver}",
-                    flush=True,
-                )
-                self._logged_dtypes = True
-
         return self.flash_attn_func(
             q=params.q,
             k_cache=params.k_cache,
