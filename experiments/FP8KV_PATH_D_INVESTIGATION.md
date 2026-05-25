@@ -200,3 +200,45 @@ Path X v2 fixes the JIT-time assertion. It does NOT prove FP8 KV will work end-t
 - SALA-specific paths (sparse stage-1 via `infllmv2_attn_stage1`) are NOT touched by the overlay. They read `q.dtype` for branching — if they assume q matches kv (fp8) they'll mis-dispatch. The existing memory `feedback_sala_hard_constraints.md` mentions a sparse-utils Q-dequant patch (`minicpm_sparse_utils.py:514`) that was tested on AutoDL but never landed in the tree. Path X v2 may need to be paired with that patch.
 
 If Path X v2 also fails, the next iteration would target the sparse path. If it succeeds, the source patch should be promoted out of overlay form (per `decide-angle` discussion — overlay-first, source-after-platform-pass).
+
+---
+
+## Path Y landed in source — 2026-05-26: codex verified end-to-end
+
+The "Path X v2 overlay" plan above was overtaken by parallel work on the server side. Codex (server-side claude) shipped the equivalent fix directly into the source tree — commit `203df1d59` "fp8kv flashinfer path-y verified" — and **verified it actually runs**: server starts past CUDA-graph capture, inference requests return 200 OK, long prompts pass. The overlay was deleted before any pack/platform run.
+
+### What landed in source (vs the overlay)
+
+| Site | Overlay plan (not shipped) | Source patch shipped |
+|---|---|---|
+| `minicpm_backend.py:933` / `:1153` | Wrap the `q = q.to(self.kv_cache_dtype)` block with `if attention_kernel_type != "flashinfer":` | Delete the cast block entirely; **also force `k_descale = v_descale = None`** so the legacy minicpm_flashattn dispatcher selects a bf16 FA path |
+| `minicpm_backend.py` after `get_kv_buffer` | (not addressed) | **Dequant `key_cache`/`value_cache` to `q.dtype` immediately** — KV pool storage stays fp8 (2× capacity vs bf16); only the read path materializes bf16 |
+| `minicpm_attention_kernels.py` `FlashInferKernel.forward` | (init-time field change only) | Read `q_data_type`/`kv_data_type` from `params.q.dtype`/`params.k_cache.dtype` at runtime; forward `k_scale_float`/`v_scale_float` to `wrapper.forward` |
+| `gptq.py` `GPTQMarlinConfig.get_quant_method` | (kept as prepare_env patch) | Promoted Path D's `RadixAttention → BaseKVCacheMethod` routing to source |
+
+The cleanest takeaway: **codex's Path Y is broader than the overlay**. The overlay only fixed the JIT-time assertion (Q dtype); Path Y also handles the KV dequant explicitly (so flashinfer never sees fp8 KV directly), which sidesteps the open risks I flagged in the "Caveat" section above. The price is one materialized bf16 copy of the per-batch KV working set at attention compute time — but storage stays fp8 in the pool, so the bandwidth win on cache *reads from DRAM* is preserved.
+
+### Server-side verification 2026-05-26
+
+- Server `python3 -m sglang.launch_server ... --attention-backend minicpm_flashinfer --kv-cache-dtype fp8_e5m2 ...` starts past CUDA-graph capture (no FA2 fp8_enabled assertion).
+- Inference endpoint returns 200 OK.
+- Long-prompt requests succeed.
+- `tools/local_fp8kv_smoke.py` (3-prompt OpenAI-endpoint check) clean.
+
+Formal acc evaluation + platform run still pending. The 4-outcome probability table from the "Path X v2" investigation collapses to: **(A) clean** confirmed at server-startup + endpoint level; **(B) calibration acc drop** still possible (default `k_scale = v_scale = 1.0` + SALA `scale_emb=12` may saturate fp8_e5m2 reads); **(C)/(D) ruled out** (forward-time CUDA error, missing kernel template).
+
+### What this means for the memory
+
+The 2026-05-26 morning memory entry `feedback_sala_hard_constraints.md` saying "FP8 KV on Blackwell + SALA is structurally infeasible" is now wrong. Path Y unblocks both attention backends:
+
+- `minicpm_flashattn` — works because k_descale/v_descale=None + KV dequant → bf16 FA dispatcher (no Hopper FP8 cubin needed).
+- `minicpm_flashinfer` — works because q stays bf16 + KV dequanted before wrapper.forward (no flashinfer FA2 fp8_enabled assertion).
+
+Updated memory entries land in this commit.
+
+### Open follow-ups
+
+- **Formal acc smoke** on the quantized model (≥30 samples, not just endpoint probe) — confirm `acc_ori ≥ 80`.
+- **Platform submission** of the `_fp8kv_flashinfer` variant — confirm S1/S8/Smax bandwidth win materializes (the whole point of FP8 KV).
+- **If acc drops below 80**: investigate calibration. Either set non-1.0 default `k_scale`/`v_scale` via a smoke-derived per-tensor calibration, or evaluate fp8_e4m3 vs fp8_e5m2 trade-off (e4m3 has narrower range but more precision; saturation is more likely with e5m2's wide range pushing values into mantissa noise).
+- **Lightning-attention layers** are NOT affected by FP8 KV (they use linear-state, not KV cache) — no special handling needed but worth a one-line confirmation on the platform log.
