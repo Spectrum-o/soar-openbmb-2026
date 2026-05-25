@@ -38,9 +38,11 @@ extend gptq_marlin's `get_quant_method` to also handle RadixAttention.
 
 2. `prepare_env.sh`:
    - Added GPTQMARLIN_KV_PATCH block (runs patch after install)
-   - `--attention-backend minicpm_flashinfer` → `minicpm_flashattn` (FA3
-     prefill path supports fp8; flashinfer's FA2 prefill doesn't)
-   - Added `--kv-cache-dtype fp8_e5m2` to SGLANG_SERVER_ARGS
+   - Use `--attention-backend minicpm_flashinfer`. The `minicpm_flashattn` / FA3
+     path still fails on Blackwell with `no kernel image`.
+   - Keep `--kv-cache-dtype fp8_e5m2` in SGLANG_SERVER_ARGS. KV pool storage
+     is FP8; the MiniCPM Path Y patch upcasts the read path to bf16 before
+     FlashInfer attention.
 
 ## Why compressed_k dtype mismatch is NOT a concern
 

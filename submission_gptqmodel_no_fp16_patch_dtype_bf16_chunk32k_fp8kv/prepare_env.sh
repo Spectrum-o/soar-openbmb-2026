@@ -376,8 +376,11 @@ else
     echo "[prepare_env] WARN: cannot apply gptq_marlin KV patch — target or tool missing" >&2
 fi
 
-# SGLang server args. NOTE: NO --kv-cache-dtype fp8_* (verified incompatible
-# with MiniCPM sparse backend in earlier submissions).
+# SGLang server args. FP8 KV is enabled.
+# Blackwell cannot run the MiniCPM FA3 path from sgl-kernel flash_ops here,
+# so use minicpm_flashinfer together with the Path Y read-side dequant in
+# minicpm_backend.py / minicpm_attention_kernels.py. KV pool storage stays FP8;
+# attention consumes bf16 tensors through FlashInfer.
 #
 # CHUNKED-PREFILL: kept at 8192 (the historical v17/v21/v22 value) for v23.
 # The +83% throughput config (chunked-prefill 65536 + max-prefill 65536 +
@@ -400,7 +403,7 @@ fi
 # Marlin GEMM internally still outputs fp16; SGLang must cast that to bf16
 # for the sparse-backend boundary. If v5j gives partial result (50-70 acc),
 # this tests whether explicit --dtype bfloat16 fixes the remaining gap.
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashattn --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e5m2 --dtype bfloat16"
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e5m2 --dtype bfloat16"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"

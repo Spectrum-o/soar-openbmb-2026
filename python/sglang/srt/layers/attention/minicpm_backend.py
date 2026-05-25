@@ -930,9 +930,11 @@ class MiniCPMSparseBackend(AttentionBackend):
                 descale_shape = (forward_batch.batch_size, layer.tp_k_head_num)
                 k_descale = layer.k_scale.expand(descale_shape)
                 v_descale = layer.v_scale.expand(descale_shape)
-            q = q.to(self.kv_cache_dtype)
-            q_rope = q_rope.to(self.kv_cache_dtype) if q_rope is not None else None
-            k_rope = k_rope.to(self.kv_cache_dtype) if k_rope is not None else None
+            # PATH Y BYPASS: skip Q to fp8 cast AND force k_descale/v_descale=None
+            # so sgl_kernel's flash_attn dispatcher selects the bf16 path (not the
+            # Hopper-only FP8 cubin which crashes on Blackwell SM 12.0). KV gets
+            # dequanted to q.dtype immediately after get_kv_buffer below.
+            k_descale, v_descale = None, None
         # MiniCPM backend does not support cross attention or encoder-only attention
         causal = True
 
@@ -1030,6 +1032,13 @@ class MiniCPMSparseBackend(AttentionBackend):
         key_cache, value_cache = forward_batch.token_to_kv_pool.get_kv_buffer(
             layer.layer_id
         )
+        # PATH Y BYPASS: dequant fp8 K/V to q.dtype so standard bf16 FA path
+        # runs end-to-end on Blackwell (no Hopper-only FP8 cubin needed).
+        # KV pool storage stays fp8 (2x capacity vs bf16); only the read-path
+        # gets up-cast.
+        if key_cache.dtype != q.dtype:
+            key_cache = key_cache.to(q.dtype)
+            value_cache = value_cache.to(q.dtype)
 
         key_cache = key_cache.view(
             -1, self.page_size, layer.tp_k_head_num // 2, layer.head_dim
@@ -1150,14 +1159,23 @@ class MiniCPMSparseBackend(AttentionBackend):
                 descale_shape = (forward_batch.batch_size, layer.tp_k_head_num)
                 k_descale = layer.k_scale.expand(descale_shape)
                 v_descale = layer.v_scale.expand(descale_shape)
-            q = q.to(self.kv_cache_dtype)
-            q_rope = q_rope.to(self.kv_cache_dtype) if q_rope is not None else None
-            k_rope = k_rope.to(self.kv_cache_dtype) if k_rope is not None else None
+            # PATH Y BYPASS: skip Q to fp8 cast AND force k_descale/v_descale=None
+            # so sgl_kernel's flash_attn dispatcher selects the bf16 path (not the
+            # Hopper-only FP8 cubin which crashes on Blackwell SM 12.0). KV gets
+            # dequanted to q.dtype immediately after get_kv_buffer below.
+            k_descale, v_descale = None, None
         # Do multi-head attention (without cross-attention or local attention support)
 
         key_cache, value_cache = forward_batch.token_to_kv_pool.get_kv_buffer(
             layer.layer_id
         )
+        # PATH Y BYPASS: dequant fp8 K/V to q.dtype so standard bf16 FA path
+        # runs end-to-end on Blackwell (no Hopper-only FP8 cubin needed).
+        # KV pool storage stays fp8 (2x capacity vs bf16); only the read-path
+        # gets up-cast.
+        if key_cache.dtype != q.dtype:
+            key_cache = key_cache.to(q.dtype)
+            value_cache = value_cache.to(q.dtype)
         key_cache = key_cache.view(
             -1, self.page_size, layer.tp_k_head_num, layer.head_dim
         )

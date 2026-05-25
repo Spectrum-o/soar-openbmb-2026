@@ -136,6 +136,22 @@ class FlashAttentionKernel(AttentionKernel):
         if params.fa_impl_ver != 3:
             kwargs["ver"] = params.fa_impl_ver
 
+        # PATH Y DEBUG: log the dtype combo when fp8 KV is in play, so we can
+        # see whether the upstream dequant landed before this call. Only logs
+        # for layer_id=0 on first call to avoid spam.
+        if not getattr(self, "_logged_dtypes", False):
+            import os
+            if os.environ.get("PATHY_DEBUG", "0") == "1":
+                print(
+                    f"[PATHY_DEBUG] FA call: q.dtype={params.q.dtype} "
+                    f"k_cache.dtype={params.k_cache.dtype} v_cache.dtype={params.v_cache.dtype} "
+                    f"k_descale={'set' if params.k_descale is not None else 'None'} "
+                    f"v_descale={'set' if params.v_descale is not None else 'None'} "
+                    f"fa_impl_ver={params.fa_impl_ver}",
+                    flush=True,
+                )
+                self._logged_dtypes = True
+
         return self.flash_attn_func(
             q=params.q,
             k_cache=params.k_cache,
@@ -321,6 +337,8 @@ class FlashInferKernel(AttentionKernel):
         """Perform attention computation using flashinfer."""
         # Determine if this is prefill or decode based on max_seqlen_q
         is_prefill = params.max_seqlen_q > 1
+        q_data_type = params.q.dtype
+        kv_data_type = params.k_cache.dtype
 
         # CUDA graph mode: use the pre-configured wrapper from params
         if params.decode_wrapper is not None and not is_prefill:
@@ -436,8 +454,8 @@ class FlashInferKernel(AttentionKernel):
                         self.num_kv_heads,
                         self.head_dim,
                         self.page_size,
-                        q_data_type=self.q_data_type,
-                        kv_data_type=self.data_type,
+                        q_data_type=q_data_type,
+                        kv_data_type=kv_data_type,
                         non_blocking=True,
                         causal=params.causal,
                     )
@@ -452,14 +470,19 @@ class FlashInferKernel(AttentionKernel):
                         self.num_kv_heads,
                         self.head_dim,
                         self.page_size,
-                        q_data_type=self.q_data_type,
-                        kv_data_type=self.data_type,
+                        q_data_type=q_data_type,
+                        kv_data_type=kv_data_type,
                         non_blocking=True,
                     )
 
         # Perform attention
         q_data = params.q
         k_data = (params.k_cache, params.v_cache)
+        scale_kwargs = {}
+        if getattr(layer, "k_scale_float", None) is not None:
+            scale_kwargs["k_scale"] = layer.k_scale_float
+        if getattr(layer, "v_scale_float", None) is not None:
+            scale_kwargs["v_scale"] = layer.v_scale_float
 
         if is_prefill:
             # Prefill mode: use prefill wrapper
@@ -473,6 +496,7 @@ class FlashInferKernel(AttentionKernel):
                     params.window_size[0] if params.window_size[0] != -1 else -1
                 ),
                 logits_soft_cap=params.softcap if params.softcap > 0 else None,
+                **scale_kwargs,
             )
         else:
             # Decode mode: use decode wrapper
@@ -481,6 +505,7 @@ class FlashInferKernel(AttentionKernel):
                 k_data,
                 sm_scale=params.softmax_scale,
                 logits_soft_cap=params.softcap if params.softcap > 0 else None,
+                **scale_kwargs,
             )
 
         return o

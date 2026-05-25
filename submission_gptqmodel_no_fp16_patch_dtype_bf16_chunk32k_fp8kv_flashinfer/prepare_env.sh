@@ -438,18 +438,12 @@ if [ -d "${HOME}/.cache/flashinfer" ]; then
 fi
 echo "[prepare_env] ENABLE_SM120=${ENABLE_SM120} FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST}"
 
-# SGLang server args. NOTE: NO --kv-cache-dtype fp8_* (verified incompatible
-# with MiniCPM sparse backend in earlier submissions).
+# SGLang server args. FP8 KV is enabled.
+# Path X overlay keeps Q in bf16 for FlashInfer while KV pool storage stays FP8.
 #
-# CHUNKED-PREFILL: kept at 8192 (the historical v17/v21/v22 value) for v23.
-# The +83% throughput config (chunked-prefill 65536 + max-prefill 65536 +
-# mem-fraction-static 0.80) measured on config/chunked-prefill-tuned is REAL
-# and is in `run_sala.sh` for local benchmarking, but was DELIBERATELY left
-# OUT of v23's submission tarball on 2026-05-22 to isolate variables: v23
-# differs from v22 in EXACTLY ONE thing — the hardened fix_qzeros_for_marlin.
-# If v23 passes, we add chunked-prefill 65K in v24 to compound the perf win.
-# Reverting this back to 65K (and the two companion flags) is a one-line
-# change once v23's acc is known.
+# CHUNKED-PREFILL: kept at 32768 to match the current bf16 chunk32k baseline.
+# Larger chunk settings can be tested separately; this package keeps the FP8 KV
+# experiment scoped to cache storage and attention backend changes.
 # MEM-FRACTION EXPLICIT (2026-05-23 added):
 # Setting 0.80 explicitly to match 1849's verified-safe config on 84GB platform.
 # W4A16 model (5GB) + 0.80 × 84 KV (67GB) + 0.7GB buffer (8K chunked-prefill)
