@@ -87,3 +87,51 @@ Commit history of attempts:
 - `136c4ec3c` Path D added (insufficient; this doc supersedes)
 - `1a96283d7` Phase 3 orchestrator including Path E v1
 - 2026-05-25 ~00:10 Path E v2/v3/v4 manual debugging — all reverted, no commit
+
+---
+
+## Path X update — 2026-05-26: platform run confirms dead end, corrects the root cause
+
+The 2026-05-25 conclusion above ("Blackwell SM 12.0 binary missing in sgl_kernel") was a **single-source inference from one CUDA-error string** (`/hopper/flash_fwd_launch_template.h`). That conclusion was wrong about the layer, right about the verdict. Path X (commit `f02334285`, variant `submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv_flashinfer`) tested the hypothesis "rebuild flashinfer with `FLASHINFER_CUDA_ARCH_LIST=12.0f` + switch attention backend to `minicpm_flashinfer`". Platform 2026-05-25 23:46 → 2026-05-26 00:07 (~21 min). Result: **FAILED at CUDA-graph capture**, but with a different error than the local `/hopper/` smoke.
+
+### New platform error (the real root cause)
+
+```
+File ".../flashinfer/jit/attention/modules.py", line 978, in gen_batch_prefill_module
+    assert not fp8_enabled, "fp8 tensor core is not supported in fa2 backend"
+AssertionError: fp8 tensor core is not supported in fa2 backend
+```
+
+Backtrace path: `minicpm_backend.init_forward_metadata_capture_cuda_graph` → `flashinfer_wrapper.begin_forward` → `plan` → `get_batch_prefill_module` → `gen_batch_prefill_module(backend="fa2", ...)`. The assertion fires at flashinfer's **JIT module-generation step**, BEFORE any cubin is loaded — i.e. before SM 12.0 vs. SM 9.0 matters. The `FLASHINFER_CUDA_ARCH_LIST=12.0f` rebuild was irrelevant; the FA2 backend categorically refuses FP8 regardless of GPU arch.
+
+### What this corrects in the prior claim
+
+| Claim (2026-05-25 doc) | What Path X showed |
+|---|---|
+| "sgl_kernel's FA FP8 kernel only ships Hopper binary" | True for `minicpm_flashattn` route (sgl_kernel FA), but `minicpm_flashinfer` route doesn't even reach the cubin level — flashinfer FA2 has no FP8 path at all |
+| "Need to recompile sgl_kernel for Blackwell" | Would fix the `/hopper/` route but not flashinfer; FA2 has no FP8 path on any arch |
+| "Wait for upstream Blackwell FP8 FA" | Refined: need flashinfer **FA3** backend for sm_120. FA3 has FP8 support but is currently Hopper-only (`/hopper/` dir in flashinfer too) |
+
+### Both attention backends for SALA reject FP8 on Blackwell
+
+| Backend (`--attention-backend`) | Internal kernel | Result on SOAR (Blackwell SM 12.0) |
+|---|---|---|
+| `minicpm_flashattn` | sgl_kernel FA (Hopper FA3 dir) | CUDA "no kernel image" — binary missing |
+| `minicpm_flashinfer` | flashinfer FA2 (this run) | Python assertion — FP8 not supported in FA2 |
+
+There is no third SALA-compatible attention backend in this codebase. **FP8 KV is structurally infeasible on Blackwell + SALA absent upstream flashinfer FA3 sm_120 support** (not yet present as of 2026-05-26).
+
+### Single open unknown
+
+Does upstream flashinfer FA3 compile for sm_120? If a future flashinfer release lands FA3-on-Blackwell, Path X becomes "switch backend selector to FA3" (one-line change in flashinfer's backend chooser) plus the existing SM120 build steps. Until then, FP8 KV stays parked.
+
+### Memory updates needed
+
+- `feedback_sala_hard_constraints.md` — "FP8 KV needs flashinfer SM 12.0 build" is wrong; the SM120 build doesn't help. Correct rule: "FP8 KV blocked on Blackwell+SALA — neither minicpm_flashattn (sgl_kernel FA hopper-only) nor minicpm_flashinfer (FA2 no FP8) works".
+- `reference_kv_quant_path_guide.md` — Path A (SM120 rebuild) tested and failed; the remaining live option is upstream flashinfer FA3 sm_120 work (track flashinfer-ai PRs, not in-tree work).
+
+### Bottom line (revised)
+
+FP8 KV on SALA stays dead. The earlier conclusion was right; the reasoning is now corrected. **Stop spending time on flashinfer rebuilds or sgl_kernel SM 12.0 attempts** — both attention backends used by SALA refuse FP8 for independent reasons. Resume the non-FP8-KV throughput agenda (op-fusion v2 platform retest, full-attn W4A16 retry under fix stack, Marlin tile tuning, speculative decoding).
+
+Platform log artefact: this submission's entrypoint log includes the full traceback; key 12 lines are reproduced above.
