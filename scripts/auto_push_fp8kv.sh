@@ -9,6 +9,7 @@ cd "$REPO_ROOT"
 
 VARIANT="submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv_flashinfer"
 BRANCH="quant/w4a16"
+PUSH_REMOTE="${PUSH_REMOTE:-git@github.com:Spectrum-o/soar-openbmb-2026.git}"
 DO_PUSH=0
 DO_PACK=0
 RUN_SMOKE=1
@@ -22,6 +23,7 @@ while [ "$#" -gt 0 ]; do
         --no-smoke) RUN_SMOKE=0 ;;
         --dry-run) DRY_RUN=1 ;;
         --variant) VARIANT="$2"; shift ;;
+        --remote) PUSH_REMOTE="$2"; shift ;;
         --message|-m) MSG="$2"; shift ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
@@ -121,9 +123,9 @@ save_unpushed_patch() {
 }
 
 if [ "$DO_PUSH" = 1 ]; then
-    echo "push requested: rebasing then pushing origin/$BRANCH"
+    echo "push requested: rebasing then pushing $PUSH_REMOTE $BRANCH"
     set +e
-    git pull --rebase --no-edit origin "$BRANCH"
+    env GIT_CONFIG_GLOBAL=/dev/null git pull --rebase --no-edit "$PUSH_REMOTE" "$BRANCH"
     pull_rc=$?
     set -e
     if [ "$pull_rc" -ne 0 ]; then
@@ -134,7 +136,7 @@ if [ "$DO_PUSH" = 1 ]; then
     fi
 
     set +e
-    git push origin "$BRANCH"
+    env GIT_CONFIG_GLOBAL=/dev/null git push "$PUSH_REMOTE" "$BRANCH"
     push_rc=$?
     set -e
     if [ "$push_rc" -ne 0 ]; then
@@ -142,7 +144,7 @@ if [ "$DO_PUSH" = 1 ]; then
         save_unpushed_patch
         exit "$push_rc"
     fi
-    echo "push OK: origin/$BRANCH"
+    echo "push OK: $PUSH_REMOTE $BRANCH"
 else
     echo "push skipped. Run: bash scripts/auto_push_fp8kv.sh --push"
 fi
