@@ -145,23 +145,60 @@ def _read_or_empty(path: Path) -> str:
 # ============================================================================
 
 def _check_no_fp8_kv(variant_dir: Path, mode: Mode) -> Result:
-    """SUBMISSIONS.md row 38: FP8 KV cache incompatible with MiniCPM sparse backend."""
+    """SUBMISSIONS.md row 38: FP8 KV cache incompatible with MiniCPM sparse backend.
+
+    UPDATED 2026-05-25: Earlier "incompatible" verdict was a misread of a single
+    crash log path (`.../hopper/...`). 周冠军笔记 05 (智算一队 — Blackwell
+    semifinal champion) confirms they shipped FP8 KV Cache as basic optimization.
+    The actual blocker is hardware-binary routing, and there are two unlock paths:
+
+      - Path X: --attention-backend minicpm_flashinfer + ENABLE_SM120=1 so
+                flashinfer JITs the SM 12.0 FP8 attention cubin.
+      - Path Y: bypass FA fp8 kernel — dequant fp8 K/V to bf16 after fetch from
+                the paged pool, attention runs bf16 (variant marker file
+                `.fp8kv_dequant_bypass` declares opt-in).
+
+    Variants that opt into one of these paths are exempt (N/A). All other
+    variants still get FAIL on fp8_* in args.
+    """
     env = _read_or_empty(variant_dir / "prepare_env.sh")
     sglang_args = _extract_sglang_server_args(env)
-    if re.search(r"--kv-cache-dtype\s+fp8", sglang_args):
+    if not re.search(r"--kv-cache-dtype\s+fp8", sglang_args):
         return Result(
             "C_no_fp8_kv",
             "no --kv-cache-dtype fp8_*",
-            Status.FAIL,
-            "SGLANG_SERVER_ARGS contains --kv-cache-dtype fp8_*; verified incompatible with MiniCPM sparse backend (FlashAttention rejects FP8). Remove this flag.",
+            Status.PASS,
+            "no FP8 KV flag in SGLANG_SERVER_ARGS",
             "SUBMISSIONS.md row 38",
+        )
+    # FP8 KV present — check for explicit unlock declarations.
+    path_x_ok = (
+        "ENABLE_SM120" in env
+        and "minicpm_flashinfer" in sglang_args
+    )
+    path_y_ok = (variant_dir / ".fp8kv_dequant_bypass").exists()
+    if path_x_ok:
+        return Result(
+            "C_no_fp8_kv",
+            "no --kv-cache-dtype fp8_*",
+            Status.NA,
+            "FP8 KV via Path X (FlashInfer SM12.0): ENABLE_SM120 + minicpm_flashinfer detected — exempt",
+            "SUBMISSIONS.md row 38 + KV_QUANT_PATH_GUIDE.md",
+        )
+    if path_y_ok:
+        return Result(
+            "C_no_fp8_kv",
+            "no --kv-cache-dtype fp8_*",
+            Status.NA,
+            "FP8 KV via Path Y (dequant bypass): .fp8kv_dequant_bypass marker file present — exempt",
+            "SUBMISSIONS.md row 38 + KV_QUANT_PATH_GUIDE.md",
         )
     return Result(
         "C_no_fp8_kv",
         "no --kv-cache-dtype fp8_*",
-        Status.PASS,
-        "no FP8 KV flag in SGLANG_SERVER_ARGS",
-        "SUBMISSIONS.md row 38",
+        Status.FAIL,
+        "SGLANG_SERVER_ARGS contains --kv-cache-dtype fp8_*; neither Path X (ENABLE_SM120 + minicpm_flashinfer) nor Path Y (.fp8kv_dequant_bypass marker) declared. Add the unlock or remove the flag.",
+        "SUBMISSIONS.md row 38 + KV_QUANT_PATH_GUIDE.md",
     )
 
 
@@ -681,21 +718,33 @@ def _check_sglang_server_args_present(variant_dir: Path, mode: Mode) -> Result:
 
 
 def _check_attention_backend_minicpm(variant_dir: Path, mode: Mode) -> Result:
-    """SALA needs --attention-backend minicpm_flashinfer."""
+    """SALA needs a minicpm_* backend; both flashinfer and flashattn dispatch
+    through MiniCPMSparseBackend (attention_registry.py:180-197). The kernel
+    underneath differs (flash_attn vs flashinfer), but either gets SALA's
+    sparse path. Path Y dequant-bypass intentionally uses minicpm_flashattn
+    so this check accepts both."""
     env = _read_or_empty(variant_dir / "prepare_env.sh")
     if "--attention-backend minicpm_flashinfer" in env:
         return Result(
             "C_attention_backend",
-            "--attention-backend minicpm_flashinfer",
+            "--attention-backend minicpm_flash{attn,infer}",
             Status.PASS,
             "uses minicpm_flashinfer backend",
             "(SALA architecture requirement)",
         )
+    if "--attention-backend minicpm_flashattn" in env:
+        return Result(
+            "C_attention_backend",
+            "--attention-backend minicpm_flash{attn,infer}",
+            Status.PASS,
+            "uses minicpm_flashattn backend (sparse path same; FA kernel under the hood)",
+            "(SALA architecture requirement)",
+        )
     return Result(
         "C_attention_backend",
-        "--attention-backend minicpm_flashinfer",
+        "--attention-backend minicpm_flash{attn,infer}",
         Status.FAIL,
-        "SGLANG_SERVER_ARGS doesn't have --attention-backend minicpm_flashinfer. SALA hybrid attention won't dispatch correctly.",
+        "SGLANG_SERVER_ARGS doesn't have a minicpm_* attention backend. SALA hybrid attention won't dispatch correctly.",
         "(SALA architecture requirement)",
     )
 
