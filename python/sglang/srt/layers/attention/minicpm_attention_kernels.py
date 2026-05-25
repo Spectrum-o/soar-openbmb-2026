@@ -201,8 +201,15 @@ class FlashInferKernel(AttentionKernel):
             get_tensor_model_parallel_world_size()
         )
         self.head_dim = model_runner.model_config.head_dim
-        # Query data type (same as KV cache dtype, but flashinfer uses separate parameters)
-        self.q_data_type = self.kv_cache_dtype
+        # Q dtype follows model dtype (not KV cache dtype). flashinfer's
+        # fp8_enabled gate is derived purely from dtype_q; if we leave this
+        # as self.kv_cache_dtype, then under --kv-cache-dtype fp8_* the
+        # cuda graph capture path (minicpm_backend.py:1656/1815) reads this
+        # attribute and triggers "fp8 tensor core is not supported in fa2
+        # backend" at flashinfer/jit/attention/modules.py:978. The runtime
+        # forward path already reads params.q.dtype locally, but capture
+        # path reads self.attention_kernel.q_data_type directly.
+        self.q_data_type = model_runner.dtype
 
         # Create workspace buffers for flashinfer
         workspace_size = envs.SGLANG_FLASHINFER_WORKSPACE_SIZE.get()
