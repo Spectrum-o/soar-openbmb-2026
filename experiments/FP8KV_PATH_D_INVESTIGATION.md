@@ -135,3 +135,68 @@ Does upstream flashinfer FA3 compile for sm_120? If a future flashinfer release 
 FP8 KV on SALA stays dead. The earlier conclusion was right; the reasoning is now corrected. **Stop spending time on flashinfer rebuilds or sgl_kernel SM 12.0 attempts** — both attention backends used by SALA refuse FP8 for independent reasons. Resume the non-FP8-KV throughput agenda (op-fusion v2 platform retest, full-attn W4A16 retry under fix stack, Marlin tile tuning, speculative decoding).
 
 Platform log artefact: this submission's entrypoint log includes the full traceback; key 12 lines are reproduced above.
+
+---
+
+## Path X v2 update — 2026-05-26: the real fix, prepared as overlay
+
+The Path X v1 platform run gave a precise enough error to point at the actual bug — and on closer reading of flashinfer's own source, the bug is on OUR side, not flashinfer's.
+
+### What flashinfer's gen_batch_prefill_module actually says
+
+From the upstream comment + assertion at `flashinfer/jit/attention/modules.py:978`:
+
+> `fp8_enabled = dtype_q in [torch.float8_e4m3fn, torch.float8_e5m2]`
+>
+> [comment] *KV-only quantization is independent of the `fp8_enabled` flag, meaning KV-quantized paths can still flow through FA2 even though tensor-core FP8 compute cannot.*
+
+So flashinfer FA2 **does support fp8 KV cache** — it just doesn't support fp8 *tensor cores* (which require Hopper FA3). The blocker only fires when `dtype_q` is fp8. Pass bf16 Q + fp8 KV and FA2 is happy: it dequants KV internally during the attention compute.
+
+### Where SALA pollutes dtype_q with fp8
+
+Two sites in this fork's MiniCPM backend incorrectly propagate the KV cache dtype into Q:
+
+1. **`python/sglang/srt/layers/attention/minicpm_attention_kernels.py:189`**
+   ```python
+   self.q_data_type = self.kv_cache_dtype          # bug
+   ```
+   Upstream's stock flashinfer backend at `python/sglang/srt/layers/attention/flashinfer_backend.py:911`:
+   ```python
+   self.q_data_type = model_runner.dtype           # correct — bf16 from model config
+   ```
+
+2. **`python/sglang/srt/layers/attention/minicpm_backend.py:933` and `:1153`**
+   ```python
+   q = q.to(self.kv_cache_dtype)                   # cast to fp8 before kernel dispatch
+   q_rope = q_rope.to(self.kv_cache_dtype) if q_rope is not None else None
+   k_rope = k_rope.to(self.kv_cache_dtype) if k_rope is not None else None
+   ```
+   The accompanying comment block says this is for the **sgl_kernel FA3** path which expects `q.dtype == kv.dtype`. For the **flashinfer FA2** path the cast is harmful — flashinfer FA2 wants bf16 Q with fp8 KV, and casting Q to fp8 trips the `fp8_enabled` assertion at module-gen time.
+
+### The overlay fix
+
+`submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv_flashinfer/apply_pathx_q_bf16_overlay.py` — applied during `prepare_env.sh`, idempotent, marker-based:
+
+| Site | Patch |
+|---|---|
+| `minicpm_attention_kernels.py:189` | `self.q_data_type = self.kv_cache_dtype` → `self.q_data_type = model_runner.dtype` |
+| `minicpm_backend.py:933` and `:1153` | wrap the 3-line cast block with `if getattr(self, 'attention_kernel_type', None) != 'flashinfer':` |
+
+The sgl_kernel FA3 path (`minicpm_flashattn`) is untouched — it still gets the q→fp8 cast it expects. Only `minicpm_flashinfer` skips the cast and passes bf16 Q + fp8 KV to flashinfer.
+
+### Status
+
+- Overlay script written + locally smoke-tested on file copies (correct text replacement at both sites, idempotent re-run is a no-op).
+- `bash scripts/full_preflight.sh --variant submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv_flashinfer` → 14/14 hard constraints PASS, latent-assertion lint OK, pack-check OK.
+- **AutoDL smoke required next**: confirm overlay applies on the actual bundled sglang, server starts past CUDA-graph capture, 5-sample eval gives acc_ori > 70.
+- **Only then platform submit** — burning a 5h slot before AutoDL smoke is the failure mode the SUBMISSIONS.md hard-constraints memory warns against.
+
+### Caveat — what could still go wrong
+
+Path X v2 fixes the JIT-time assertion. It does NOT prove FP8 KV will work end-to-end. Open risks:
+
+- flashinfer FA2's internal KV-dequant kernel may have its own dtype assumptions that surface only at forward-time, not plan-time.
+- Even if FA2 runs, accuracy may degrade beyond the 80-gate (no scale factors → defaults to 1.0; SALA's `scale_emb=12` may push KV magnitudes into fp8 saturation, especially for fp8_e5m2's ±57344 range).
+- SALA-specific paths (sparse stage-1 via `infllmv2_attn_stage1`) are NOT touched by the overlay. They read `q.dtype` for branching — if they assume q matches kv (fp8) they'll mis-dispatch. The existing memory `feedback_sala_hard_constraints.md` mentions a sparse-utils Q-dequant patch (`minicpm_sparse_utils.py:514`) that was tested on AutoDL but never landed in the tree. Path X v2 may need to be paired with that patch.
+
+If Path X v2 also fails, the next iteration would target the sparse path. If it succeeds, the source patch should be promoted out of overlay form (per `decide-angle` discussion — overlay-first, source-after-platform-pass).

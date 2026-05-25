@@ -377,6 +377,38 @@ else
 fi
 
 # ----------------------------------------------------------------------
+# PATH X — KEEP Q IN BF16 EVEN WHEN KV IS FP8 (the real fix, 2026-05-26)
+# ----------------------------------------------------------------------
+# 2026-05-25 23:46 platform run crashed at CUDA-graph capture with:
+#   flashinfer/jit/attention/modules.py:978
+#   AssertionError: fp8 tensor core is not supported in fa2 backend
+#
+# Root cause analysis (post-mortem in experiments/FP8KV_PATH_D_INVESTIGATION.md
+# "Path X update" section): flashinfer's fp8_enabled gate is derived PURELY
+# from dtype_q — KV-only quantization is fully supported in FA2 (per the
+# flashinfer source comment on gen_batch_prefill_module). Two SALA-fork
+# sites incorrectly propagate fp8 into Q:
+#   - minicpm_attention_kernels.py:189 — q_data_type = kv_cache_dtype
+#     (upstream flashinfer_backend.py:911 uses model_runner.dtype = bf16)
+#   - minicpm_backend.py:933, 1153 — q = q.to(kv_cache_dtype) before kernel
+#     dispatch; needed for sgl_kernel FA3 path, harmful for flashinfer FA2
+#
+# Overlay restores upstream behavior on the flashinfer path while leaving
+# the sgl_kernel FA3 path unchanged (in case minicpm_flashattn ever wants
+# fp8 KV when sgl_kernel Blackwell builds land).
+PATHX_TARGET_DIR="${SUBMISSION_DIR}/sglang/python/sglang/srt/layers/attention"
+PATHX_TOOL="${SUBMISSION_DIR}/apply_pathx_q_bf16_overlay.py"
+if [ -d "${PATHX_TARGET_DIR}" ] && [ -f "${PATHX_TOOL}" ]; then
+    echo "[prepare_env] applying Path X Q-bf16 overlay"
+    if ! python3 "${PATHX_TOOL}" "${PATHX_TARGET_DIR}"; then
+        echo "[prepare_env] FATAL: Path X Q-bf16 overlay failed" >&2
+        exit 1
+    fi
+else
+    echo "[prepare_env] WARN: cannot apply Path X overlay — target dir or tool missing" >&2
+fi
+
+# ----------------------------------------------------------------------
 # PATH X — UNLOCK FLASHINFER SM 12.0 FP8 KERNELS (Blackwell)
 # ----------------------------------------------------------------------
 # The earlier fp8kv variant used --attention-backend minicpm_flashattn,
