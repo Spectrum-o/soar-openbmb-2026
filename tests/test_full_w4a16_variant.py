@@ -111,6 +111,23 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn("Answer: {answer}", self.quant_src)
         self.assertIn("list-valued", self.quant_src)
 
+    def test_group_size_and_dynamic_are_passed_to_gptqmodel(self):
+        self.assertNotIn("inspect.signature(ConfigClass)", self.quant_src)
+        self.assertIn('"group_size": group_size', self.quant_src)
+        self.assertIn('"dynamic": dynamic', self.quant_src)
+        self.assertIn("actual_group_size != group_size", self.quant_src)
+        self.assertIn("OPTIONAL_SALA_DYNAMIC_SKIPS", self.quant_src)
+        self.assertIn('"-:.*o_gate$": {}', self.quant_src)
+
+    def test_mixed_sensitive_layer_skip_entrypoints(self):
+        self.assertIn("--mixed-skip-layers", self.quant_src)
+        self.assertIn("--mixed-skip-modules", self.quant_src)
+        self.assertIn("def build_dynamic_config", self.quant_src)
+        self.assertIn('MIXED_SKIP_LAYERS="${MIXED_SKIP_LAYERS:-}"', self.prepare_model_src)
+        self.assertIn('MIXED_SKIP_MODULES="${MIXED_SKIP_MODULES:-all}"', self.prepare_model_src)
+        self.assertIn("--mixed-skip-layers", self.prepare_model_src)
+        self.assertIn("FULL W4A16 mixed skip layers", self.prepare_model_src)
+
     def test_gptq_marlin_loader_supports_group64(self):
         marlin_utils = REPO / "python" / "sglang" / "srt" / "layers" / "quantization" / "marlin_utils.py"
         src = marlin_utils.read_text(encoding="utf-8")

@@ -108,6 +108,11 @@ fi
 QUANT_TIMEOUT_MIN="${QUANT_TIMEOUT_MIN:-120}"
 GROUP_SIZE="${GROUP_SIZE:-64}"
 FULL_QUANT_PROFILE="${FULL_QUANT_PROFILE:-platform_acc}"
+MIXED_SKIP_LAYERS="${MIXED_SKIP_LAYERS:-}"
+MIXED_SKIP_MODULES="${MIXED_SKIP_MODULES:-all}"
+if [ -n "${MIXED_SKIP_LAYERS}" ]; then
+    EXTRA_ARGS+=(--mixed-skip-layers "${MIXED_SKIP_LAYERS}" --mixed-skip-modules "${MIXED_SKIP_MODULES}")
+fi
 
 # Disk offload during quantization is slow on this workload — RTX PRO
 # 6000 has 96GB VRAM, which fits the 18GB BF16 model + Hessian
@@ -124,6 +129,8 @@ EXTRA_ARGS+=(--no-offload-disk --group-size "${GROUP_SIZE}")
 echo "[prepare_model] FULL W4A16 quantize timeout: ${QUANT_TIMEOUT_MIN} min"
 echo "[prepare_model] FULL W4A16 profile: ${FULL_QUANT_PROFILE}"
 echo "[prepare_model] FULL W4A16 group size: ${GROUP_SIZE}"
+echo "[prepare_model] FULL W4A16 mixed skip layers: ${MIXED_SKIP_LAYERS:-none}"
+echo "[prepare_model] FULL W4A16 mixed skip modules: ${MIXED_SKIP_MODULES}"
 echo "[prepare_model] FULL W4A16 calibration: NUM_CALIB=${NUM_CALIB} MAX_CALIB_LEN=${MAX_CALIB_LEN} CALIB_WINDOW_MODE=${CALIB_WINDOW_MODE} MAX_CALIB_WINDOWS=${MAX_CALIB_WINDOWS}"
 echo "[prepare_model] python bin: ${PYTHON_BIN}"
 

@@ -54,7 +54,6 @@ import argparse
 import gc
 import importlib
 import importlib.metadata as metadata
-import inspect
 import json
 import os
 import random
@@ -65,6 +64,35 @@ from typing import Any
 
 
 CalibPrompt = dict[str, str | None]
+
+
+OPTIONAL_SALA_DYNAMIC_SKIPS: dict[str, dict[str, Any]] = {
+    "-:.*o_gate$": {},  # MiniCPM dense-attn output gate (only some layers have it)
+    "-:.*z_proj$": {},  # Lightning Mixer output gate (only some layers have it)
+    "-:.*o_norm$": {},  # Lightning output RMSNorm (defensive)
+    "-:.*q_norm$": {},  # Lightning Q RMSNorm (defensive; RMSNorm is not Linear anyway)
+    "-:.*k_norm$": {},  # Lightning K RMSNorm (defensive)
+}
+
+MIXED_SKIP_MODULE_ALIASES: dict[str, str] = {
+    "all": r"(?:self_attn\.(?:q_proj|k_proj|v_proj|o_proj)|mlp\.(?:gate_proj|up_proj|down_proj))",
+    "attn": r"self_attn\.(?:q_proj|k_proj|v_proj|o_proj)",
+    "self_attn": r"self_attn\.(?:q_proj|k_proj|v_proj|o_proj)",
+    "qkv": r"self_attn\.(?:q_proj|k_proj|v_proj)",
+    "q": r"self_attn\.q_proj",
+    "k": r"self_attn\.k_proj",
+    "v": r"self_attn\.v_proj",
+    "o": r"self_attn\.o_proj",
+    "attn_o": r"self_attn\.o_proj",
+    "self_attn.o_proj": r"self_attn\.o_proj",
+    "mlp": r"mlp\.(?:gate_proj|up_proj|down_proj)",
+    "gate": r"mlp\.gate_proj",
+    "up": r"mlp\.up_proj",
+    "down": r"mlp\.down_proj",
+    "mlp.gate_proj": r"mlp\.gate_proj",
+    "mlp.up_proj": r"mlp\.up_proj",
+    "mlp.down_proj": r"mlp\.down_proj",
+}
 
 
 def _stub_transformers_for_gptqmodel_7() -> None:
@@ -104,6 +132,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True, help="Quantized model output directory")
     parser.add_argument("--bits", type=int, default=4)
     parser.add_argument("--group-size", type=int, default=64)
+    parser.add_argument(
+        "--mixed-skip-layers",
+        default=os.environ.get("MIXED_SKIP_LAYERS", ""),
+        help="Comma-separated decoder layer indices/ranges to keep in BF16 "
+             "for mixed sensitive-layer runs, e.g. '0,1,30,31' or '0-1,30-31'. "
+             "Default empty keeps the full uniform W4A16 behavior.",
+    )
+    parser.add_argument(
+        "--mixed-skip-modules",
+        default=os.environ.get("MIXED_SKIP_MODULES", "all"),
+        help="Comma-separated module groups to skip inside --mixed-skip-layers. "
+             "Aliases: all, attn, qkv, q, k, v, o, mlp, gate, up, down. "
+             "Default all skips q/k/v/o and MLP projections for selected layers.",
+    )
     parser.add_argument(
         "--calib-jsonl",
         default="",
@@ -555,7 +597,74 @@ def validate_gptq_wrapper(model: Any) -> None:
 # ---------------------------------------------------------------------------
 # Quantize-config builder + GPTQModel loader
 # ---------------------------------------------------------------------------
-def make_quant_config(bits: int, group_size: int):
+def parse_layer_indices(spec: str) -> list[int]:
+    """Parse comma-separated layer indices/ranges into a sorted unique list."""
+    layers: set[int] = set()
+    cleaned = spec.strip()
+    if not cleaned:
+        return []
+    for part in cleaned.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_s, end_s = part.split("-", 1)
+            start = int(start_s.strip())
+            end = int(end_s.strip())
+            if start > end:
+                start, end = end, start
+            layers.update(range(start, end + 1))
+        else:
+            layers.add(int(part))
+    bad = sorted(layer for layer in layers if layer < 0)
+    if bad:
+        raise ValueError(f"layer indices must be non-negative, got {bad}")
+    return sorted(layers)
+
+
+def resolve_mixed_skip_module_regex(spec: str) -> str:
+    """Resolve mixed skip module aliases into one regex fragment."""
+    aliases = [part.strip().lower() for part in spec.split(",") if part.strip()]
+    if not aliases:
+        aliases = ["all"]
+
+    regex_parts: list[str] = []
+    unknown: list[str] = []
+    for alias in aliases:
+        regex = MIXED_SKIP_MODULE_ALIASES.get(alias)
+        if regex is None:
+            unknown.append(alias)
+        else:
+            regex_parts.append(regex)
+    if unknown:
+        known = ", ".join(sorted(MIXED_SKIP_MODULE_ALIASES))
+        raise ValueError(
+            f"unknown --mixed-skip-modules alias(es): {unknown}; known: {known}"
+        )
+    if len(regex_parts) == 1:
+        return regex_parts[0]
+    return "(?:" + "|".join(regex_parts) + ")"
+
+
+def build_dynamic_config(
+    mixed_skip_layers: str = "",
+    mixed_skip_modules: str = "all",
+) -> dict[str, dict[str, Any]]:
+    """Build one dynamic map shared by GPTQModel quantization and SGLang load."""
+    dynamic = dict(OPTIONAL_SALA_DYNAMIC_SKIPS)
+    layers = parse_layer_indices(mixed_skip_layers)
+    if layers:
+        layer_alt = "|".join(str(layer) for layer in layers)
+        module_regex = resolve_mixed_skip_module_regex(mixed_skip_modules)
+        dynamic[f"-:.*\\.layers\\.({layer_alt})\\.{module_regex}$"] = {}
+    return dynamic
+
+
+def make_quant_config(
+    bits: int,
+    group_size: int,
+    dynamic: dict[str, dict[str, Any]] | None = None,
+):
     """Construct a GPTQModel-compatible QuantizeConfig.
 
     For SGLang gptq_marlin we need:
@@ -588,9 +697,9 @@ def make_quant_config(bits: int, group_size: int):
                                                   llm-compressor / AutoGPTQ
                                                   recipe with desc_act.
 
-    Skip-layers knobs are NOT here — they're applied in the dynamic dict in
-    write_sglang_compatible_quant_config to keep quant-time and load-time
-    skip lists in sync (the v14-style alignment pitfall).
+    The same dynamic dict must be passed to GPTQModel and written into the
+    saved SGLang config. If those diverge, SGLang may look for BF16 weights
+    where GPTQModel saved qweight tensors, or the reverse.
     """
     try:
         from gptqmodel import QuantizeConfig as ConfigClass  # type: ignore
@@ -611,20 +720,39 @@ def make_quant_config(bits: int, group_size: int):
         "sym": sym_val,
         "lm_head": False,
     }
-    if "GPTQ_DAMPENING_FRAC" in os.environ:
+    if dynamic:
+        desired["dynamic"] = dynamic
+    if "GPTQ_DAMP_PERCENT" in os.environ:
         try:
-            desired["dampening_frac"] = float(os.environ["GPTQ_DAMPENING_FRAC"])
+            desired["damp_percent"] = float(os.environ["GPTQ_DAMP_PERCENT"])
+        except ValueError:
+            pass
+    elif "GPTQ_DAMPENING_FRAC" in os.environ:
+        try:
+            desired["damp_percent"] = float(os.environ["GPTQ_DAMPENING_FRAC"])
         except ValueError:
             pass
     print(
         f"[make_quant_config] sym={sym_val} desc_act={desc_act_val} "
         f"static_groups={static_groups_val} "
-        f"dampening_frac={desired.get('dampening_frac', '(default)')}",
+        f"damp_percent={desired.get('damp_percent', '(default)')}",
         flush=True,
     )
-    sig = inspect.signature(ConfigClass)
-    kwargs = {k: v for k, v in desired.items() if k in sig.parameters}
-    return ConfigClass(**kwargs)
+    if dynamic:
+        print(f"[make_quant_config] dynamic={json.dumps(dynamic, sort_keys=True)}",
+              flush=True)
+    cfg = ConfigClass(**desired)
+    actual_group_size = getattr(cfg, "group_size", None)
+    if actual_group_size != group_size:
+        raise RuntimeError(
+            f"QuantizeConfig ignored group_size={group_size}; actual={actual_group_size}"
+        )
+    actual_dynamic = getattr(cfg, "dynamic", None)
+    if dynamic and actual_dynamic != dynamic:
+        raise RuntimeError(
+            f"QuantizeConfig dynamic mismatch: expected {dynamic}, got {actual_dynamic}"
+        )
+    return cfg
 
 
 def set_quant_config_disk_offload(quant_config: Any, enabled: bool) -> None:
@@ -941,7 +1069,11 @@ def print_runtime_versions() -> None:
 # Output post-processing (Marlin compatibility)
 # ---------------------------------------------------------------------------
 def write_sglang_compatible_quant_config(
-    output_dir: Path, input_dir: Path, bits: int, group_size: int
+    output_dir: Path,
+    input_dir: Path,
+    bits: int,
+    group_size: int,
+    dynamic: dict[str, dict[str, Any]],
 ) -> None:
     """Build a config.json + quantize_config.json that SGLang gptq_marlin
     + MiniCPM-SALA sparse backend can load.
@@ -976,28 +1108,15 @@ def write_sglang_compatible_quant_config(
         "desc_act": os.environ.get("GPTQ_DESC_ACT", "False").strip().lower() in ("true", "1", "yes"),
         "sym": os.environ.get("GPTQ_SYM", "True").strip().lower() in ("true", "1", "yes"),
         "lm_head": False,
-        # FULL W4A16: q/k/v/o and MLP projections are quantized. Dynamic
-        # skips only cover optional gates/norms that are omitted from
-        # `layer_modules` and may not exist on every SALA layer.
+        # FULL W4A16: q/k/v/o and MLP projections are quantized by default.
+        # Dynamic skips always cover optional gates/norms that are omitted
+        # from `layer_modules` and may not exist on every SALA layer. Mixed
+        # sensitive-layer BF16 skips are appended here when requested.
         #
         # Patterns use `re.match` semantics (auto-anchored at start),
         # per get_dynamic_override in sglang/srt/layers/quantization/
         # utils.py:248. `-:<regex>` means "skip".
-        #
-        # NOTE on adding per-layer-index MLP skip (e.g. first-2 + last-2):
-        # both QUANT-TIME (GPTQModel) and LOAD-TIME (SGLang) skip lists must
-        # match exactly. Otherwise GPTQModel writes .qweight for a layer that
-        # SGLang then tries to load as BF16 .weight → v14-style KeyError.
-        # Implementing per-layer skip requires verifying QuantizeConfig.dynamic
-        # support in gptqmodel 7.0.0 — has to be validated on a GPU box.
-        # See experiments/UNATTENDED_5H_PLAN.md TODO_F for the experiment design.
-        "dynamic": {
-            "-:.*o_gate$": True,    # MiniCPM dense-attn output gate (only some layers have it)
-            "-:.*z_proj$": True,    # Lightning Mixer output gate (only some layers have it)
-            "-:.*o_norm$": True,    # Lightning output RMSNorm (defensive)
-            "-:.*q_norm$": True,    # Lightning Q RMSNorm (defensive; RMSNorm is not Linear anyway)
-            "-:.*k_norm$": True,    # Lightning K RMSNorm (defensive)
-        },
+        "dynamic": dynamic,
     }
 
     # Standalone quantize_config.json (some loaders prefer this over
@@ -1376,6 +1495,8 @@ def dry_run(args: argparse.Namespace, prompts: list[CalibPrompt]) -> int:
     print(f"  --output           {args.output}")
     print(f"  --bits             {args.bits}")
     print(f"  --group-size       {args.group_size}")
+    print(f"  --mixed-skip-layers  {args.mixed_skip_layers or '(none)'}")
+    print(f"  --mixed-skip-modules {args.mixed_skip_modules}")
     print(f"  --num-calib        {args.num_calib} (loaded {len(prompts)})")
     print(f"  --max-calib-len    {args.max_calib_len}")
     print(f"  --calib-window-mode {args.calib_window_mode}")
@@ -1446,7 +1567,15 @@ def main() -> int:
     # instantiation time (BEFORE we can do anything else).
     force_flash_attention_2_for_sala()
     register_minicpm_sala_with_gptqmodel()
-    quant_config = make_quant_config(args.bits, args.group_size)
+    dynamic = build_dynamic_config(args.mixed_skip_layers, args.mixed_skip_modules)
+    print(
+        "[dynamic] "
+        f"mixed_skip_layers={args.mixed_skip_layers or '(none)'} "
+        f"mixed_skip_modules={args.mixed_skip_modules} "
+        f"rules={json.dumps(dynamic, sort_keys=True)}",
+        flush=True,
+    )
+    quant_config = make_quant_config(args.bits, args.group_size, dynamic)
     set_quant_config_disk_offload(quant_config, enabled=not args.no_offload_disk)
 
     model = load_model(
@@ -1513,7 +1642,13 @@ def main() -> int:
         pass
 
     copy_runtime_assets(Path(args.input), output_dir)
-    write_sglang_compatible_quant_config(output_dir, Path(args.input), args.bits, args.group_size)
+    write_sglang_compatible_quant_config(
+        output_dir,
+        Path(args.input),
+        args.bits,
+        args.group_size,
+        dynamic,
+    )
     fix_qzeros_for_marlin(output_dir)
     print("[quantize] done.", flush=True)
     return 0
