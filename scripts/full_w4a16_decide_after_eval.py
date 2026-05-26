@@ -27,6 +27,7 @@ import statistics
 import subprocess
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -35,6 +36,19 @@ DEFAULT_VARIANT = "submission_gptqmodel_full_w4a16"
 DEFAULT_QUANT_OUT = "/root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized"
 KNOWN_FULL_PLATFORM_BASELINE_ACC_ORI = 78.27
 KNOWN_FULL_PLATFORM_BASELINE_FINAL_SCORE = 22.85
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+GPTQ_LOSS_RE = re.compile(
+    r"\|\s*gptq\s*\|\s*(?P<layer>\d+)\s*\|\s*"
+    r"(?P<module>[A-Za-z0-9_.]+)\s*\|.*?\|\s*"
+    r"(?P<loss>[0-9]+(?:\.[0-9]+)?)\s*\|"
+)
+
+
+@dataclass(frozen=True)
+class QuantLossRow:
+    layer: int
+    module: str
+    loss: float
 
 
 def _float(value: str | None) -> float | None:
@@ -139,6 +153,88 @@ def load_predictions(path: Path) -> list[dict]:
     return rows
 
 
+def parse_quant_losses(log_path: Path) -> list[QuantLossRow]:
+    if not log_path.is_file():
+        return []
+    rows: list[QuantLossRow] = []
+    for raw_line in log_path.read_text(errors="replace").splitlines():
+        line = ANSI_RE.sub("", raw_line)
+        match = GPTQ_LOSS_RE.search(line)
+        if not match:
+            continue
+        rows.append(
+            QuantLossRow(
+                layer=int(match.group("layer")),
+                module=match.group("module"),
+                loss=float(match.group("loss")),
+            )
+        )
+    return rows
+
+
+def aggregate_loss_by_layer(rows: list[QuantLossRow]) -> list[tuple[int, float, int]]:
+    by_layer: dict[int, list[float]] = defaultdict(list)
+    for row in rows:
+        by_layer[row.layer].append(row.loss)
+    return sorted(
+        (
+            (layer, statistics.mean(losses), len(losses))
+            for layer, losses in by_layer.items()
+        ),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+
+
+def pick_sensitive_layers(
+    rows: list[QuantLossRow],
+    top_layers: int,
+) -> list[int]:
+    layer_scores = aggregate_loss_by_layer(rows)
+    selected = [layer for layer, _score, _count in layer_scores[:top_layers]]
+    return sorted(selected)
+
+
+def latest_quant_log(log_dir: Path, variant: str) -> Path | None:
+    logs = sorted(
+        log_dir.glob(f"sharded_quant_{variant}_*.log"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return logs[0] if logs else None
+
+
+def print_sensitive_layer_plan(
+    rows: list[QuantLossRow],
+    *,
+    top_modules: int,
+    top_layers: int,
+) -> None:
+    if not rows:
+        print("\nSensitive-layer plan: no GPTQ loss rows found yet")
+        return
+
+    print("\nTop GPTQ loss modules:")
+    for row in sorted(rows, key=lambda item: item.loss, reverse=True)[:top_modules]:
+        print(f"  layer={row.layer:>2} module={row.module:<18} loss={row.loss:.10f}")
+
+    print("\nTop GPTQ loss layers:")
+    for layer, mean_loss, count in aggregate_loss_by_layer(rows)[:top_layers]:
+        print(f"  layer={layer:>2} mean_loss={mean_loss:.10f} modules={count}")
+
+    layers = pick_sensitive_layers(rows, top_layers)
+    if not layers:
+        return
+    layer_spec = ",".join(str(layer) for layer in layers)
+    print("\nMixed BF16 skip candidate if full-g64 accuracy is still low:")
+    print("```bash")
+    print(
+        f"MIXED_SKIP_LAYERS={layer_spec} MIXED_SKIP_MODULES=all "
+        "GROUP_SIZE=64 bash scripts/run_full_w4a16_py310_local.sh"
+    )
+    print("```")
+
+
 def summarize_predictions(rows: list[dict]) -> str:
     by_task: dict[str, list[float]] = defaultdict(list)
     for row in rows:
@@ -211,6 +307,10 @@ def print_next_experiments() -> None:
         "GPTQ_DESC_ACT=True GPTQ_STATIC_GROUPS=True GROUP_SIZE=64 NUM_CALIB=150 "
         "CALIB_WINDOW_MODE=multi-adaptive bash scripts/run_full_w4a16_platform_acc_now.sh"
     )
+    print(
+        "MIXED_SKIP_LAYERS=0,31 MIXED_SKIP_MODULES=attn,down GROUP_SIZE=64 "
+        "bash scripts/run_full_w4a16_py310_local.sh"
+    )
     print("```")
 
 
@@ -240,6 +340,13 @@ def main() -> int:
         ),
     )
     parser.add_argument("--top-failures", type=int, default=2)
+    parser.add_argument(
+        "--quant-log",
+        default="",
+        help="Optional GPTQ quantization log. Defaults to the latest sharded full-W4A16 quant log.",
+    )
+    parser.add_argument("--top-loss-modules", type=int, default=10)
+    parser.add_argument("--top-loss-layers", type=int, default=4)
     parser.add_argument(
         "--pack-output",
         default="soar_gptqmodel_full_w4a16_platform_acc.tar.gz",
@@ -290,6 +397,20 @@ def main() -> int:
         run_analysis(predictions, args.top_failures)
     else:
         print("\npredictions: not found from eval log; skipping per-task analysis")
+
+    quant_log = Path(args.quant_log) if args.quant_log else latest_quant_log(
+        REPO / "scripts" / "logs",
+        args.variant,
+    )
+    if quant_log is not None and not quant_log.is_absolute():
+        quant_log = REPO / quant_log
+    if quant_log is not None:
+        print(f"\nquant log: {quant_log}")
+        print_sensitive_layer_plan(
+            parse_quant_losses(quant_log),
+            top_modules=args.top_loss_modules,
+            top_layers=args.top_loss_layers,
+        )
 
     print(
         "\nReference: full-g128 platform baseline "

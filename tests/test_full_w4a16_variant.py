@@ -254,6 +254,9 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn("eval_shards.csv", self.decide_script_src)
         self.assertIn("Decision: PARTIAL", self.decide_script_src)
         self.assertIn("acc_ori >= threshold", self.decide_script_src)
+        self.assertIn("parse_quant_losses", self.decide_script_src)
+        self.assertIn("MIXED_SKIP_LAYERS", self.decide_script_src)
+        self.assertIn("--quant-log", self.decide_script_src)
         self.assertIn("full_preflight.sh", self.decide_script_src)
         self.assertIn("GPTQ_DESC_ACT=True GPTQ_STATIC_GROUPS=True", self.decide_script_src)
         self.assertNotIn("nvidia-smi", self.decide_script_src)
@@ -384,6 +387,88 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn("60/150 samples evaluated", result.stdout)
         self.assertIn("Current cumulative acc 82.00", result.stdout)
         self.assertNotIn("Next: pack for platform", result.stdout)
+
+    def test_decision_helper_prints_sensitive_layer_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shards_csv = Path(tmp) / "eval_shards.csv"
+            quant_log = Path(tmp) / "quant.log"
+            with shards_csv.open("w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        "timestamp",
+                        "variant",
+                        "quant_model",
+                        "shard_index",
+                        "shard_start",
+                        "shard_end",
+                        "shard_samples",
+                        "cumulative_samples",
+                        "concurrency",
+                        "shard_acc",
+                        "cumulative_acc",
+                        "shard_duration_s",
+                        "total_duration_s",
+                        "server_log",
+                        "eval_log",
+                        "predictions_path",
+                    ]
+                )
+                writer.writerow(
+                    [
+                        "2026-05-26 00:30:00",
+                        "submission_gptqmodel_full_w4a16",
+                        "/tmp/model",
+                        "4",
+                        "120",
+                        "149",
+                        "30",
+                        "150",
+                        "32",
+                        "75.0",
+                        "77.0",
+                        "10",
+                        "50",
+                        "",
+                        "",
+                        "",
+                    ]
+                )
+            quant_log.write_text(
+                "\n".join(
+                    [
+                        "| gptq | 0 | self_attn.q_proj | 4096, 4096 | bf16 | 0.0000010000 |",
+                        "| gptq | 1 | mlp.down_proj    | 16384, 4096 | bf16 | 0.0000090000 |",
+                        "| gptq | 2 | self_attn.o_proj | 4096, 4096 | bf16 | 0.0000040000 |",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(DECIDE_SCRIPT),
+                    "--csv",
+                    str(Path(tmp) / "missing_eval_results.csv"),
+                    "--shards-csv",
+                    str(shards_csv),
+                    "--quant-log",
+                    str(quant_log),
+                    "--top-loss-layers",
+                    "2",
+                ],
+                cwd=str(REPO),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Top GPTQ loss modules", result.stdout)
+        self.assertIn("layer= 1 module=mlp.down_proj", result.stdout)
+        self.assertIn("Mixed BF16 skip candidate", result.stdout)
+        self.assertIn("MIXED_SKIP_LAYERS=1,2", result.stdout)
 
     def test_prepare_env_uses_verified_bf16_runtime_stack(self):
         self.assertIn('TRANSFORMERS_PIN="${TRANSFORMERS_PIN:-4.57.1}"', self.prepare_env_src)
