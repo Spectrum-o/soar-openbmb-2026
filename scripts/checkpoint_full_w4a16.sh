@@ -67,10 +67,10 @@ git add \
     tools/hard_constraints_lint.py \
     tools/pack_submission.py
 
-# Stage the flash-attn wheel symlink replacement explicitly. The target file is
-# large but lives outside the repo; git records only the symlink path.
-git add -A -- \
-    submission_gptqmodel_full_w4a16/flash_attn-*.whl
+# Stage the flash-attn wheel symlink replacement explicitly. Use the variant
+# directory path rather than a shell glob so deletions of old wheel symlinks
+# are included even after the file no longer exists.
+git add -A -- submission_gptqmodel_full_w4a16
 
 # Partial eval evidence is useful during long runs. These globs may not exist.
 git add -f scripts/eval_shards.csv 2>/dev/null || true
