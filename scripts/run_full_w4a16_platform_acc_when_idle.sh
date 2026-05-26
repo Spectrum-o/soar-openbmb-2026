@@ -20,6 +20,8 @@ PORT="${PORT:-31111}"
 IDLE_MEM_MIB="${IDLE_MEM_MIB:-2000}"
 POLL_SECONDS="${POLL_SECONDS:-60}"
 MAX_WAIT_MIN="${MAX_WAIT_MIN:-0}"  # 0 = wait forever
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+export PYTHON_BIN
 
 export FULL_QUANT_PROFILE="${FULL_QUANT_PROFILE:-platform_acc}"
 export GROUP_SIZE="${GROUP_SIZE:-64}"
@@ -50,6 +52,7 @@ echo "concurrency:   ${CONCURRENCY}"
 echo "idle_mem_mib:  ${IDLE_MEM_MIB}"
 echo "poll_seconds:  ${POLL_SECONDS}"
 echo "max_wait_min:  ${MAX_WAIT_MIN}"
+echo "python_bin:    ${PYTHON_BIN}"
 echo "profile:       ${FULL_QUANT_PROFILE}"
 echo "group_size:    ${GROUP_SIZE}"
 echo "num_calib:     ${NUM_CALIB}"
@@ -59,7 +62,7 @@ echo "max_windows:   ${MAX_CALIB_WINDOWS}"
 echo "============================================================"
 
 port_is_free() {
-    python3 - "${PORT}" <<'PY'
+    "${PYTHON_BIN}" - "${PORT}" <<'PY'
 import socket
 import sys
 

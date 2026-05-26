@@ -15,6 +15,7 @@ BRANCH="${BRANCH:-exp/full-w4a16}"
 MESSAGE="${MESSAGE:-checkpoint full w4a16 accuracy pass}"
 RUN_CHECKS="${RUN_CHECKS:-1}"
 PUSH="${PUSH:-1}"
+CHECK_PYTHON_BIN="${CHECK_PYTHON_BIN:-${PYTHON_BIN:-python3}}"
 
 echo "============================================================"
 echo " checkpoint_full_w4a16"
@@ -24,11 +25,12 @@ echo "branch:     ${BRANCH}"
 echo "message:    ${MESSAGE}"
 echo "run checks: ${RUN_CHECKS}"
 echo "push:       ${PUSH}"
+echo "check py:   ${CHECK_PYTHON_BIN}"
 echo "============================================================"
 
 if [ "${RUN_CHECKS}" = "1" ]; then
     echo "[1/4] lightweight checks"
-    python3 -m py_compile \
+    "${CHECK_PYTHON_BIN}" -m py_compile \
         submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py \
         tools/calib_set_preview.py \
         scripts/full_w4a16_decide_after_eval.py \

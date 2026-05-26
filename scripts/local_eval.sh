@@ -45,6 +45,8 @@ NUM_SAMPLES="${NUM_SAMPLES:-200}"
 CONCURRENCY="${CONCURRENCY:-32}"
 LOCAL_ACC_TARGET="${LOCAL_ACC_TARGET:-80}"
 STARTUP_TIMEOUT=240
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+export PYTHON_BIN
 FORCE_REQUANT=0
 SKIP_QUANT=0
 NO_EVAL=0
@@ -159,6 +161,7 @@ echo " quant cache:  ${QUANT_OUT}"
 echo " eval script:  ${EVAL_SCRIPT}"
 echo " eval data:    ${EVAL_DATA}"
 echo " samples:      ${NUM_SAMPLES} (concurrency=${CONCURRENCY})"
+echo " python bin:   ${PYTHON_BIN}"
 echo " sglang args:  ${SGLANG_SERVER_ARGS}"
 echo "=================================================="
 
@@ -184,7 +187,7 @@ else
         }
     else
         echo "[1/3] quantize: running ${QUANT_SCRIPT}..."
-        python3 "${QUANT_SCRIPT}" \
+        "${PYTHON_BIN}" "${QUANT_SCRIPT}" \
             --input "${MODEL_PATH}" \
             --output "${QUANT_OUT}" \
             > "${QUANT_LOG}" 2>&1 || {
@@ -221,7 +224,7 @@ fi
 # --- Step 3: Launch SGLang ---
 echo "[3/3] launching sglang server..."
 # shellcheck disable=SC2086
-python3 -m sglang.launch_server \
+"${PYTHON_BIN}" -m sglang.launch_server \
     --model-path "${QUANT_OUT}" \
     --trust-remote-code \
     --port "${PORT}" \
@@ -296,7 +299,7 @@ if [ "${NUM_SAMPLES}" -gt 0 ]; then
     EVAL_ARGS+=(--num_samples "${NUM_SAMPLES}")
 fi
 
-python3 "${EVAL_SCRIPT}" "${EVAL_ARGS[@]}" 2>&1 | tee "${EVAL_LOG}"
+"${PYTHON_BIN}" "${EVAL_SCRIPT}" "${EVAL_ARGS[@]}" 2>&1 | tee "${EVAL_LOG}"
 EVAL_EXIT=${PIPESTATUS[0]}
 
 if [ "${EVAL_EXIT}" -ne 0 ]; then
@@ -326,7 +329,7 @@ echo "   parsed overall accuracy:   ${ACC_OVERALL}"
 echo "   total wall clock:          ${DURATION}s"
 echo "=================================================="
 echo " >> Meets local accuracy target? "
-if [ "${ACC_ORI}" != "?" ] && python3 -c "import sys; sys.exit(0 if float('${ACC_ORI}') >= float('${LOCAL_ACC_TARGET}') else 1)"; then
+if [ "${ACC_ORI}" != "?" ] && "${PYTHON_BIN}" -c "import sys; sys.exit(0 if float('${ACC_ORI}') >= float('${LOCAL_ACC_TARGET}') else 1)"; then
     echo "    ✅ YES (acc_ori >= ${LOCAL_ACC_TARGET}) — candidate for variant-specific submit decision"
 else
     echo "    ❌ NO (acc_ori < ${LOCAL_ACC_TARGET}) — compare against the variant baseline before submitting"

@@ -1,0 +1,73 @@
+[prepare_model] using calibration from: /root/autodl-tmp/zyn/sglang_full_w4a16/submission_gptqmodel_full_w4a16/perf_public_set.jsonl
+[prepare_model] FULL W4A16 quantize timeout: 120 min
+[prepare_model] FULL W4A16 profile: platform_acc
+[prepare_model] FULL W4A16 group size: 64
+[prepare_model] FULL W4A16 calibration: NUM_CALIB=150 MAX_CALIB_LEN=8192 CALIB_WINDOW_MODE=multi-adaptive MAX_CALIB_WINDOWS=4
+[prepare_model] DIAGNOSTIC: script dir contents
+total 108
+drwxr-xr-x  3 root root  4096 May 26 20:10 .
+drwxr-xr-x 60 root root  4096 May 26 19:11 ..
+-rw-r--r--  1 root root 10760 May 26 21:15 README_SUBMISSION.md
+drwxr-xr-x  2 root root    62 May 26 21:17 __pycache__
+lrwxrwxrwx  1 root root    86 May 26 20:10 flash_attn-2.8.3+cu128sm120-cp310-cp310-linux_x86_64.whl -> /autodl-fs/data/ziqian/wheels/flash_attn-2.8.3+cu128sm120-cp310-cp310-linux_x86_64.whl
+lrwxrwxrwx  1 root root    57 May 26 19:11 perf_public_set.jsonl -> ../submission_gptqmodel_calib_w4a16/perf_public_set.jsonl
+-rwxr-xr-x  1 root root 14700 May 26 20:31 prepare_env.sh
+-rwxr-xr-x  1 root root  7906 May 26 20:41 prepare_model.sh
+-rwxr-xr-x  1 root root 64129 May 26 20:42 quantize_gptqmodel_w4a16.py
+lrwxrwxrwx  1 root root    42 May 26 19:11 sglang -> ../submission_gptqmodel_calib_w4a16/sglang
+[prepare_model] DIAGNOSTIC: input dir
+total 18515298
+drwxr-xr-x 2 root root       4096 May 17 11:48 .
+drwxr-xr-x 5 root root       4096 May 19 20:48 ..
+-rw-r--r-- 1 root root         43 May 11 22:17 .mdl
+-rw------- 1 root root       1110 May 11 22:52 .msc
+-rw-r--r-- 1 root root         36 May 11 22:52 .mv
+-rw-r--r-- 1 root root       9398 May 11 22:18 README.md
+-rw-r--r-- 1 root root       2397 May 11 22:18 config.json
+-rw-r--r-- 1 root root      11824 May 11 22:18 configuration_minicpm_sala.py
+-rw-r--r-- 1 root root        153 May 11 22:18 generation_config.json
+-rw-r--r-- 1 root root 4968143488 May 11 22:49 model-00001-of-00004.safetensors
+-rw-r--r-- 1 root root 4874002352 May 11 22:49 model-00002-of-00004.safetensors
+-rw-r--r-- 1 root root 4874002384 May 11 22:49 model-00003-of-00004.safetensors
+-rw-r--r-- 1 root root 4238305384 May 11 22:52 model-00004-of-00004.safetensors
+-rw-r--r-- 1 root root      32584 May 11 22:18 model.safetensors.index.json
+-rw-r--r-- 1 root root     132069 May 17 11:48 modeling_minicpm_sala.py
+-rw-r--r-- 1 root root     132102 May 17 11:48 modeling_minicpm_sala.py.bak_remove_head_first
+-rw-r--r-- 1 root root       3497 May 11 22:18 special_tokens_map.json
+-rw-r--r-- 1 root root    3676708 May 11 22:18 tokenizer.json
+-rw-r--r-- 1 root root    1181204 May 11 22:18 tokenizer.model
+[prepare_model] DIAGNOSTIC: calib jsonl path=/root/autodl-tmp/zyn/sglang_full_w4a16/submission_gptqmodel_full_w4a16/perf_public_set.jsonl
+[prepare_model] DIAGNOSTIC: calib jsonl size=57 bytes
+[prepare_model] DIAGNOSTIC: calib jsonl row count=150
+[prepare_model] DIAGNOSTIC: calib jsonl first row (first 200 chars):
+{"index": 121, "question": " Below is a numbered list of words. In these words, some appear more often than others. Memorize the ones that appear most often.\n1. elk 2. tragedy 3. elk 4. puppet 5. rep
+[calib] loaded 150 prompts from /root/autodl-tmp/zyn/sglang_full_w4a16/submission_gptqmodel_full_w4a16/perf_public_set.jsonl
+[calib] task distribution: {'niah': 30, 'qa': 30, 'cwe': 30, 'fwe': 30, 'mcq': 30}
+[calib] answer continuations: 150/150 (chat-template path renders them as assistant turns)
+[versions] python=3.12.4
+[versions] torch=2.8.0+cu128
+[versions] transformers=4.57.1
+[versions] gptqmodel=NOT_INSTALLED
+[versions] flash-attn=NOT_INSTALLED
+[versions] flash-linear-attention=NOT_INSTALLED
+[versions] tokenizers=NOT_INSTALLED
+[versions] huggingface-hub=NOT_INSTALLED
+[versions] accelerate=NOT_INSTALLED
+[versions] ninja=NOT_INSTALLED
+Traceback (most recent call last):
+  File "/root/autodl-tmp/zyn/sglang_full_w4a16/submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py", line 1523, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/autodl-tmp/zyn/sglang_full_w4a16/submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py", line 1441, in main
+    _stub_transformers_for_gptqmodel_7()
+  File "/root/autodl-tmp/zyn/sglang_full_w4a16/submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py", line 86, in _stub_transformers_for_gptqmodel_7
+    import transformers
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/__init__.py", line 27, in <module>
+    from . import dependency_versions_check
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/dependency_versions_check.py", line 16, in <module>
+    from .utils.versions import require_version, require_version_core
+  File "/root/miniconda3/lib/python3.12/site-packages/transformers/utils/__init__.py", line 19, in <module>
+    from huggingface_hub import get_full_repo_name  # for backward compatibility
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'huggingface_hub'
+[prepare_model] quantize exited 1

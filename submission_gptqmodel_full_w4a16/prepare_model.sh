@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 INPUT_DIR=""
 OUTPUT_DIR=""
@@ -124,6 +125,7 @@ echo "[prepare_model] FULL W4A16 quantize timeout: ${QUANT_TIMEOUT_MIN} min"
 echo "[prepare_model] FULL W4A16 profile: ${FULL_QUANT_PROFILE}"
 echo "[prepare_model] FULL W4A16 group size: ${GROUP_SIZE}"
 echo "[prepare_model] FULL W4A16 calibration: NUM_CALIB=${NUM_CALIB} MAX_CALIB_LEN=${MAX_CALIB_LEN} CALIB_WINDOW_MODE=${CALIB_WINDOW_MODE} MAX_CALIB_WINDOWS=${MAX_CALIB_WINDOWS}"
+echo "[prepare_model] python bin: ${PYTHON_BIN}"
 
 # Diagnostic snapshot BEFORE quantize so platform logs show what we have.
 # v21/v22 both scored 0 on the platform with no remote signal of why;
@@ -144,7 +146,7 @@ if [ -n "${CALIB_JSONL}" ] && [ -f "${CALIB_JSONL}" ]; then
 fi
 
 set +e
-timeout "${QUANT_TIMEOUT_MIN}m" python3 "${SCRIPT_DIR}/quantize_gptqmodel_w4a16.py" \
+timeout "${QUANT_TIMEOUT_MIN}m" "${PYTHON_BIN}" "${SCRIPT_DIR}/quantize_gptqmodel_w4a16.py" \
     --input "${INPUT_DIR}" \
     --output "${OUTPUT_DIR}" \
     "${CALIB_ARGS[@]}" \

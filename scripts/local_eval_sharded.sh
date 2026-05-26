@@ -28,6 +28,8 @@ CONCURRENCY="${CONCURRENCY:-32}"
 STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-240}"
 CHECKPOINT_AFTER_SHARD="${CHECKPOINT_AFTER_SHARD:-1}"
 CHECKPOINT_SCRIPT="${CHECKPOINT_SCRIPT:-${REPO_ROOT}/scripts/checkpoint_full_w4a16.sh}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+export PYTHON_BIN
 FORCE_REQUANT=0
 SKIP_QUANT=0
 
@@ -139,6 +141,7 @@ echo " max samples:   ${MAX_SAMPLES}"
 echo " shard size:    ${SHARD_SIZE}"
 echo " concurrency:   ${CONCURRENCY}"
 echo " checkpoint:    ${CHECKPOINT_AFTER_SHARD}"
+echo " python bin:    ${PYTHON_BIN}"
 echo " sglang args:   ${SGLANG_SERVER_ARGS}"
 echo " shard csv:     ${RESULTS_CSV}"
 echo "=================================================="
@@ -164,7 +167,7 @@ else
         }
     else
         echo "[1/4] quantize: running ${QUANT_SCRIPT}..."
-        python3 "${QUANT_SCRIPT}" \
+        "${PYTHON_BIN}" "${QUANT_SCRIPT}" \
             --input "${MODEL_PATH}" \
             --output "${QUANT_OUT}" \
             > "${QUANT_LOG}" 2>&1 || {
@@ -190,7 +193,7 @@ fi
 
 echo "[2/4] writing non-overlapping eval shards..."
 mapfile -t SHARDS < <(
-    python3 - "${EVAL_DATA}" "${SHARD_DIR}" "${MAX_SAMPLES}" "${SHARD_SIZE}" <<'PY'
+    "${PYTHON_BIN}" - "${EVAL_DATA}" "${SHARD_DIR}" "${MAX_SAMPLES}" "${SHARD_SIZE}" <<'PY'
 import sys
 from pathlib import Path
 
@@ -219,7 +222,7 @@ echo "  wrote ${#SHARDS[@]} shard(s) under ${SHARD_DIR}"
 
 echo "[3/4] launching sglang server..."
 # shellcheck disable=SC2086
-python3 -m sglang.launch_server \
+"${PYTHON_BIN}" -m sglang.launch_server \
     --model-path "${QUANT_OUT}" \
     --trust-remote-code \
     --port "${PORT}" \
@@ -283,7 +286,7 @@ for shard in "${SHARDS[@]}"; do
     echo "[shard ${SHARD_INDEX}/${#SHARDS[@]}] rows ${SHARD_START}-${SHARD_END} (${SHARD_COUNT} samples)"
 
     set +e
-    python3 "${EVAL_SCRIPT}" \
+    "${PYTHON_BIN}" "${EVAL_SCRIPT}" \
         --api_base "http://127.0.0.1:${PORT}" \
         --model_path "${QUANT_OUT}" \
         --data_path "${SHARD_PATH}" \
@@ -299,7 +302,7 @@ for shard in "${SHARDS[@]}"; do
     fi
 
     METRICS="$(
-        python3 - "${REPO_ROOT}" "${EVAL_LOG}" <<'PY'
+        "${PYTHON_BIN}" - "${REPO_ROOT}" "${EVAL_LOG}" <<'PY'
 import json
 import re
 import sys
@@ -338,13 +341,13 @@ PY
     ARCHIVED_PRED="${LOG_DIR}/sharded_predictions_${VARIANT_NAME}_${STAMP}_${SHARD_INDEX}.jsonl"
     cp "${PRED_PATH}" "${ARCHIVED_PRED}"
     PRED_PATH="${ARCHIVED_PRED}"
-    CUM_SCORE="$(python3 - "${CUM_SCORE}" "${SCORE_SUM}" <<'PY'
+    CUM_SCORE="$("${PYTHON_BIN}" - "${CUM_SCORE}" "${SCORE_SUM}" <<'PY'
 import sys
 print(f"{float(sys.argv[1]) + float(sys.argv[2]):.8f}")
 PY
 )"
     CUM_COUNT=$((CUM_COUNT + SCORE_COUNT))
-    CUM_ACC="$(python3 - "${CUM_SCORE}" "${CUM_COUNT}" <<'PY'
+    CUM_ACC="$("${PYTHON_BIN}" - "${CUM_SCORE}" "${CUM_COUNT}" <<'PY'
 import sys
 score = float(sys.argv[1])
 count = int(sys.argv[2])

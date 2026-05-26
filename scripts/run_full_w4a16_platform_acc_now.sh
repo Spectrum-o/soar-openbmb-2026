@@ -17,6 +17,8 @@ SHARDED_EVAL="${SHARDED_EVAL:-1}"
 CONCURRENCY="${CONCURRENCY:-32}"
 PORT="${PORT:-31111}"
 IDLE_MEM_MIB="${IDLE_MEM_MIB:-2000}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+export PYTHON_BIN
 
 export FULL_QUANT_PROFILE="${FULL_QUANT_PROFILE:-platform_acc}"
 export GROUP_SIZE="${GROUP_SIZE:-64}"
@@ -36,7 +38,7 @@ gpu_mem_used_mib() {
 }
 
 port_is_free() {
-    python3 - "${PORT}" <<'PY'
+    "${PYTHON_BIN}" - "${PORT}" <<'PY'
 import socket
 import sys
 
@@ -52,6 +54,7 @@ PY
 
 used="$(gpu_mem_used_mib)"
 echo "[full-now] GPU memory used: ${used} MiB (threshold ${IDLE_MEM_MIB})"
+echo "[full-now] python bin: ${PYTHON_BIN}"
 if [ "${used}" -gt "${IDLE_MEM_MIB}" ]; then
     echo "[full-now] GPU is not idle; refusing to start full-W4A16" >&2
     exit 124
