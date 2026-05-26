@@ -41,9 +41,11 @@ if [ "${RUN_CHECKS}" = "1" ]; then
         submission_gptqmodel_full_w4a16/prepare_model.sh \
         scripts/local_eval.sh \
         scripts/local_eval_sharded.sh \
+        scripts/fix_sparse_kernel_sm120_local.sh \
         scripts/run_full_w4a16_platform_acc_now.sh \
         scripts/run_full_w4a16_platform_acc_when_idle.sh \
         scripts/run_full_w4a16_py310_local.sh \
+        scripts/run_full_w4a16_skip30_31_down_quant_local.sh \
         scripts/full_preflight.sh \
         scripts/checkpoint_full_w4a16.sh
     git diff --check
@@ -55,9 +57,11 @@ git add \
     scripts/local_eval.sh \
     scripts/local_eval_sharded.sh \
     scripts/full_w4a16_decide_after_eval.py \
+    scripts/fix_sparse_kernel_sm120_local.sh \
     scripts/run_full_w4a16_platform_acc_now.sh \
     scripts/run_full_w4a16_platform_acc_when_idle.sh \
     scripts/run_full_w4a16_py310_local.sh \
+    scripts/run_full_w4a16_skip30_31_down_quant_local.sh \
     scripts/checkpoint_full_w4a16.sh \
     submission_gptqmodel_full_w4a16/README_SUBMISSION.md \
     submission_gptqmodel_full_w4a16/prepare_env.sh \

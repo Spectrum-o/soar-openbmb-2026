@@ -31,6 +31,8 @@ NOW_SCRIPT = REPO / "scripts" / "run_full_w4a16_platform_acc_now.sh"
 DECIDE_SCRIPT = REPO / "scripts" / "full_w4a16_decide_after_eval.py"
 SHARDED_SCRIPT = REPO / "scripts" / "local_eval_sharded.sh"
 CHECKPOINT_SCRIPT = REPO / "scripts" / "checkpoint_full_w4a16.sh"
+SKIP_DOWN_QUANT_SCRIPT = REPO / "scripts" / "run_full_w4a16_skip30_31_down_quant_local.sh"
+SPARSE_SM120_SCRIPT = REPO / "scripts" / "fix_sparse_kernel_sm120_local.sh"
 
 
 class TestFullW4A16Variant(unittest.TestCase):
@@ -44,6 +46,8 @@ class TestFullW4A16Variant(unittest.TestCase):
         cls.decide_script_src = DECIDE_SCRIPT.read_text(encoding="utf-8")
         cls.sharded_script_src = SHARDED_SCRIPT.read_text(encoding="utf-8")
         cls.checkpoint_script_src = CHECKPOINT_SCRIPT.read_text(encoding="utf-8")
+        cls.skip_down_quant_script_src = SKIP_DOWN_QUANT_SCRIPT.read_text(encoding="utf-8")
+        cls.sparse_sm120_script_src = SPARSE_SM120_SCRIPT.read_text(encoding="utf-8")
 
     def _argparse_default(self, arg_name: str):
         tree = ast.parse(self.quant_src)
@@ -242,7 +246,31 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn("git add -A -- submission_gptqmodel_full_w4a16", self.checkpoint_script_src)
         self.assertIn("scripts/eval_shards.csv", self.checkpoint_script_src)
         self.assertIn("scripts/logs/sharded_predictions_*.jsonl", self.checkpoint_script_src)
+        self.assertIn("scripts/fix_sparse_kernel_sm120_local.sh", self.checkpoint_script_src)
         self.assertNotIn("git add .", self.checkpoint_script_src)
+
+    def test_skip30_31_down_quant_helper_is_local_only(self):
+        self.assertTrue(SKIP_DOWN_QUANT_SCRIPT.exists())
+        self.assertTrue(SKIP_DOWN_QUANT_SCRIPT.stat().st_mode & 0o111)
+        self.assertIn('MIXED_SKIP_LAYERS="${MIXED_SKIP_LAYERS:-30,31}"', self.skip_down_quant_script_src)
+        self.assertIn('MIXED_SKIP_MODULES="${MIXED_SKIP_MODULES:-down}"', self.skip_down_quant_script_src)
+        self.assertIn("platform_acc_skip30_31_down", self.skip_down_quant_script_src)
+        self.assertIn("submission_gptqmodel_full_w4a16_g64_skip30_31_down-quantized", self.skip_down_quant_script_src)
+        self.assertIn("/root/miniconda3/lib", self.skip_down_quant_script_src)
+        self.assertIn("prepare_model.sh", self.skip_down_quant_script_src)
+        self.assertNotIn("bash submission_gptqmodel_full_w4a16/prepare_env.sh", self.skip_down_quant_script_src)
+        self.assertNotIn("--disable-cuda-graph", self.skip_down_quant_script_src)
+
+    def test_sparse_sm120_local_fix_documents_blackwell_kernel_issue(self):
+        self.assertTrue(SPARSE_SM120_SCRIPT.exists())
+        self.assertTrue(SPARSE_SM120_SCRIPT.stat().st_mode & 0o111)
+        self.assertIn("sparse_kernel_extension", self.sparse_sm120_script_src)
+        self.assertIn("sm_120", self.sparse_sm120_script_src)
+        self.assertIn("no kernel image is available", self.sparse_sm120_script_src)
+        self.assertIn("/usr/local/cuda-12.8", self.sparse_sm120_script_src)
+        self.assertIn("cuobjdump", self.sparse_sm120_script_src)
+        self.assertIn("import torch", self.sparse_sm120_script_src)
+        self.assertNotIn("--disable-cuda-graph", self.sparse_sm120_script_src)
 
     def test_decision_helper_is_cpu_only_and_full_scoped(self):
         self.assertTrue(DECIDE_SCRIPT.exists())
@@ -520,6 +548,7 @@ class TestFullW4A16Variant(unittest.TestCase):
             r'--max-prefill-tokens 32768[^"]*--mem-fraction-static 0\.70[^"]*'
             r'--quantization gptq_marlin[^"]*--dtype bfloat16',
         )
+        self.assertNotIn("--disable-cuda-graph", self.prepare_env_src)
 
     def test_dry_run_does_not_import_transformers_at_module_load(self):
         # The compatibility shim imports transformers internally, but it must

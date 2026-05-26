@@ -71,6 +71,8 @@ via environment variables:
 | `MAX_CALIB_WINDOWS` | `4` | cap per-prompt windows for super-long rows; set `3` to reproduce the earlier draft |
 | `DISABLE_CHAT_TEMPLATE` | `0` | set `1` to calibrate raw `question\nAnswer: ...` text without chat template |
 | `GROUP_SIZE` | `64` | set `128` to reproduce the 2026-05-26 full-g128 platform baseline |
+| `MIXED_SKIP_LAYERS` | empty | optional sensitive-layer BF16 skip list for mixed runs |
+| `MIXED_SKIP_MODULES` | `all` | module aliases inside skipped layers: `down`, `up`, `gate`, `mlp`, `attn`, etc. |
 | `QUANT_TIMEOUT_MIN` | `120` | hard wall-time cap for quantization |
 | `FULL_QUANT_PROFILE` | `platform_acc` | log-only profile name for the full high-accuracy submission path |
 | `GPTQMODEL_PIN` | `7.0.0` | keep exact unless deliberately testing a new GPTQModel |
@@ -99,6 +101,9 @@ Important interface constraints:
 - `--attention-backend minicpm_flashinfer` matches the current chunk32k-safe
   BF16-KV runtime path. If testing Blackwell FA3 kernel issues, do that in a
   separate FP8KV variant.
+- Do not add `--disable-cuda-graph` to this platform path. The 2026-05-26
+  full-W4A16 platform success ran with CUDA graph enabled; disabling it was
+  only a local Blackwell diagnostic and is too slow for the final runtime.
 - Use OpenAI-compatible HTTP requests against `/v1/chat/completions` after
   launch. When testing locally in this environment, use `curl --noproxy '*'` or
   set `no_proxy=localhost,127.0.0.1`; otherwise the proxy can return `502`.
@@ -161,9 +166,20 @@ full-layer speed benefit.
 If g64 loads and serves but accuracy is still poor, test one variable at a time:
 
 ```bash
+MIXED_SKIP_LAYERS=30,31 MIXED_SKIP_MODULES=down GROUP_SIZE=64 ...
 GROUP_SIZE=64 NUM_CALIB=256 CALIB_WINDOW_MODE=multi-adaptive MAX_CALIB_LEN=8192 MAX_CALIB_WINDOWS=3 ...
 GROUP_SIZE=64 NUM_CALIB=150 CALIB_WINDOW_MODE=multi-adaptive MAX_CALIB_LEN=16384 MAX_CALIB_WINDOWS=3 ...
 GPTQ_DESC_ACT=True GPTQ_STATIC_GROUPS=True GROUP_SIZE=64 NUM_CALIB=150 CALIB_WINDOW_MODE=multi-adaptive ...
+```
+
+The narrow mixed candidate above keeps almost all attention/MLP projections in
+W4A16 and only leaves the two highest-loss `mlp.down_proj` modules (`layers
+30,31`) in BF16. It requires a new quantized artifact because the weight set
+and `quantization_config.dynamic` differ from the uniform full-W4A16 artifact.
+For local AutoDL reproduction use:
+
+```bash
+bash scripts/run_full_w4a16_skip30_31_down_quant_local.sh
 ```
 
 If full-g64 clears the accuracy target, the next experiment is full-g64 plus

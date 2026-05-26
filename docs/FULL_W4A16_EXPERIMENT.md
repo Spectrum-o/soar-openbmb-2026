@@ -29,6 +29,10 @@ python3 submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py   --input /r
 - Local OpenAI smoke requests should use `/v1/chat/completions` and bypass local
   proxy with `curl --noproxy '*'` or `no_proxy=localhost,127.0.0.1`.
 - Do not mix FP8KV into this branch until full W4A16 alone is measured.
+- Do not add `--disable-cuda-graph` to the platform full-W4A16 serving path.
+  The platform `SUCCESS` result for the full layer run used CUDA graph; the
+  local Blackwell `sm_120` CUDA graph failure is a kernel compatibility issue,
+  not evidence that the final platform should disable graph capture.
 - Current full accuracy pass uses `GROUP_SIZE=64`, all 150 public calibration
   rows, multi-adaptive windows capped by `MAX_CALIB_WINDOWS=4`, and
   answer-aware calibration. With chat template enabled, compact `gold` answers
@@ -52,6 +56,16 @@ python3 submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py   --input /r
   `python3 scripts/full_w4a16_decide_after_eval.py` to summarize the latest
   result, inspect per-task failures, and choose either pack-for-platform or the
   next single-variable accuracy knob.
+- Current narrow mixed-sensitive candidate:
+
+  ```bash
+  bash scripts/run_full_w4a16_skip30_31_down_quant_local.sh
+  ```
+
+  This sets `MIXED_SKIP_LAYERS=30,31` and `MIXED_SKIP_MODULES=down`, keeping
+  only the two highest-loss `mlp.down_proj` modules in BF16 while the rest of
+  the full attention/MLP stack remains W4A16 g64. It must be re-quantized
+  because the artifact differs from the uniform full-W4A16 baseline.
 
 ## Push Notes
 
