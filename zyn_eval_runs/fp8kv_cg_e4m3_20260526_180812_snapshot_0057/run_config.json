@@ -1,0 +1,13 @@
+{
+  "model_path": "/autodl-fs/data/zyn/models/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe-quantized",
+  "api_base": "http://127.0.0.1:31111",
+  "model_name": "/autodl-fs/data/zyn/models/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe-quantized",
+  "data_path": "/autodl-fs/data/zyn/soar_toolkit/perf_public_set.jsonl",
+  "max_seq_len": 262144,
+  "max_out_len": 65536,
+  "concurrency": 32,
+  "part_size": 30,
+  "start_index": 0,
+  "end_index": 150,
+  "started_at": "2026-05-26 18:08:15"
+}
