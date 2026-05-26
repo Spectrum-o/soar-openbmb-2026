@@ -6,9 +6,9 @@ The full experiment has two accuracy reference points:
   - known full-g128 platform baseline: acc_ori=78.27, final_score=22.85
   - preferred target for the next full submission: acc_ori >= 80
 
-This script reads scripts/eval_results.csv, finds the latest full-W4A16 row,
-locates the predictions.jsonl path from the eval log, prints per-task analysis,
-and emits the next command:
+This script reads scripts/eval_results.csv and scripts/eval_shards.csv, finds
+the latest full-W4A16 row, locates the predictions.jsonl path from the eval log,
+prints per-task analysis when available, and emits the next command:
 
   - acc_ori >= threshold: pack the current full package for platform upload
   - baseline <= acc_ori < threshold: candidate only; usually keep iterating
@@ -46,12 +46,71 @@ def _float(value: str | None) -> float | None:
         return None
 
 
+def _int(value: str | None) -> int | None:
+    if value is None or value == "" or value == "?":
+        return None
+    try:
+        return int(float(value))
+    except ValueError:
+        return None
+
+
 def load_latest_result(csv_path: Path, variant: str) -> dict[str, str] | None:
     if not csv_path.is_file():
         return None
     rows = list(csv.DictReader(csv_path.open(newline="")))
     matches = [r for r in rows if r.get("variant") == variant]
-    return matches[-1] if matches else None
+    if not matches:
+        return None
+    result = matches[-1]
+    result["_source"] = "eval_results.csv"
+    return result
+
+
+def load_latest_shard_result(csv_path: Path, variant: str) -> dict[str, str] | None:
+    """Load the latest cumulative row from local_eval_sharded.sh output."""
+    if not csv_path.is_file():
+        return None
+    rows = list(csv.DictReader(csv_path.open(newline="")))
+    matches = [r for r in rows if r.get("variant") == variant]
+    if not matches:
+        return None
+    row = matches[-1]
+    return {
+        "_source": "eval_shards.csv",
+        "timestamp": row.get("timestamp", ""),
+        "variant": row.get("variant", ""),
+        "quant_model": row.get("quant_model", ""),
+        "num_samples": row.get("cumulative_samples", ""),
+        "concurrency": row.get("concurrency", ""),
+        "acc_ori": row.get("cumulative_acc", ""),
+        "acc_overall": row.get("cumulative_acc", ""),
+        "duration_s": row.get("total_duration_s", ""),
+        "server_log": row.get("server_log", ""),
+        "eval_log": row.get("eval_log", ""),
+        "predictions_path": row.get("predictions_path", ""),
+        "shard_index": row.get("shard_index", ""),
+        "shard_acc": row.get("shard_acc", ""),
+        "shard_samples": row.get("shard_samples", ""),
+    }
+
+
+def pick_latest_result(
+    standard: dict[str, str] | None,
+    sharded: dict[str, str] | None,
+) -> dict[str, str] | None:
+    if standard is None:
+        return sharded
+    if sharded is None:
+        return standard
+    # CSV timestamps are written as YYYY-MM-DD HH:MM:SS, so lexical ordering
+    # is chronological. If either timestamp is missing, prefer the sharded row
+    # because it carries the most recent partial-progress signal.
+    s_ts = standard.get("timestamp", "")
+    h_ts = sharded.get("timestamp", "")
+    if not s_ts or not h_ts:
+        return sharded
+    return sharded if h_ts >= s_ts else standard
 
 
 def find_predictions(eval_log: Path) -> Path | None:
@@ -158,8 +217,19 @@ def print_next_experiments() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", default=str(REPO / "scripts" / "eval_results.csv"))
+    parser.add_argument(
+        "--shards-csv",
+        default=str(REPO / "scripts" / "eval_shards.csv"),
+        help="CSV produced by scripts/local_eval_sharded.sh",
+    )
     parser.add_argument("--variant", default=DEFAULT_VARIANT)
     parser.add_argument("--threshold", type=float, default=80.0)
+    parser.add_argument(
+        "--min-pack-samples",
+        type=int,
+        default=150,
+        help="Do not emit a platform pack command until at least this many local samples are evaluated",
+    )
     parser.add_argument(
         "--baseline-acc-ori",
         type=float,
@@ -176,9 +246,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    result = load_latest_result(Path(args.csv), args.variant)
+    standard_result = load_latest_result(Path(args.csv), args.variant)
+    sharded_result = load_latest_shard_result(Path(args.shards_csv), args.variant)
+    result = pick_latest_result(standard_result, sharded_result)
     if result is None:
-        print(f"No eval_results.csv row found for variant={args.variant!r}")
+        print(
+            f"No eval_results.csv or eval_shards.csv row found for "
+            f"variant={args.variant!r}"
+        )
         print("Run the local eval first:")
         print()
         print("```bash")
@@ -187,13 +262,29 @@ def main() -> int:
         return 1
 
     acc = _float(result.get("acc_ori"))
+    num_samples = _int(result.get("num_samples"))
+    is_partial = (
+        result.get("_source") == "eval_shards.csv"
+        and (num_samples is None or num_samples < args.min_pack_samples)
+    )
     print("Latest full-W4A16 local eval row:")
-    for key in ("timestamp", "variant", "quant_model", "num_samples", "concurrency", "acc_ori", "duration_s"):
+    for key in ("_source", "timestamp", "variant", "quant_model", "num_samples", "concurrency", "acc_ori", "duration_s"):
         print(f"  {key:<12} {result.get(key, '')}")
+    if result.get("_source") == "eval_shards.csv":
+        print(
+            f"  shard_index {result.get('shard_index', '')} "
+            f"(last shard acc={result.get('shard_acc', '')}, "
+            f"samples={result.get('shard_samples', '')})"
+        )
 
-    eval_log_value = result.get("eval_log", "")
-    eval_log = Path(eval_log_value)
-    predictions = find_predictions(eval_log) if eval_log_value else None
+    pred_value = result.get("predictions_path", "")
+    predictions = Path(pred_value) if pred_value else None
+    if predictions is not None and not predictions.is_absolute():
+        predictions = REPO / predictions
+    if predictions is None or not predictions.is_file():
+        eval_log_value = result.get("eval_log", "")
+        eval_log = Path(eval_log_value)
+        predictions = find_predictions(eval_log) if eval_log_value else None
     if predictions is not None:
         print(f"\npredictions: {predictions}")
         run_analysis(predictions, args.top_failures)
@@ -206,6 +297,25 @@ def main() -> int:
         f"final_score={KNOWN_FULL_PLATFORM_BASELINE_FINAL_SCORE:.2f}; "
         f"preferred target={args.threshold:.2f}"
     )
+
+    if is_partial:
+        print(
+            f"\nDecision: PARTIAL ({num_samples or 0}/{args.min_pack_samples} "
+            "samples evaluated); keep the sharded eval running before packing"
+        )
+        if acc is not None and acc < args.baseline_acc_ori:
+            print(
+                f"Current cumulative acc {acc:.2f} is below the full baseline "
+                f"{args.baseline_acc_ori:.2f}; consider stopping early if the "
+                "next shard does not recover."
+            )
+        elif acc is not None:
+            print(
+                f"Current cumulative acc {acc:.2f}; continue to the full "
+                f"{args.min_pack_samples}-sample gate."
+            )
+        print_next_experiments()
+        return 1
 
     if acc is not None and acc >= args.threshold:
         print(f"\nDecision: PASS local gate ({acc:.2f} >= {args.threshold:.2f})")

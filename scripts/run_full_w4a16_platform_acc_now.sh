@@ -12,6 +12,8 @@ cd "${REPO_ROOT}"
 VARIANT="${VARIANT:-submission_gptqmodel_full_w4a16}"
 QUANT_OUT="${QUANT_OUT:-/root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized}"
 NUM_SAMPLES="${NUM_SAMPLES:-150}"
+SHARD_SIZE="${SHARD_SIZE:-30}"
+SHARDED_EVAL="${SHARDED_EVAL:-1}"
 CONCURRENCY="${CONCURRENCY:-32}"
 PORT="${PORT:-31111}"
 IDLE_MEM_MIB="${IDLE_MEM_MIB:-2000}"
@@ -58,6 +60,18 @@ fi
 if ! port_is_free; then
     echo "[full-now] port ${PORT} is busy; refusing to start full-W4A16" >&2
     exit 124
+fi
+
+if [ "${SHARDED_EVAL}" = "1" ]; then
+    echo "[full-now] starting full-W4A16 platform_acc sharded local eval"
+    exec bash scripts/local_eval_sharded.sh \
+        --variant "${VARIANT}" \
+        --quant-out "${QUANT_OUT}" \
+        --max-samples "${NUM_SAMPLES}" \
+        --shard-size "${SHARD_SIZE}" \
+        --concurrency "${CONCURRENCY}" \
+        --port "${PORT}" \
+        --force-requant
 fi
 
 echo "[full-now] starting full-W4A16 platform_acc local eval"

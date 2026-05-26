@@ -13,6 +13,8 @@ cd "${REPO_ROOT}"
 VARIANT="${VARIANT:-submission_gptqmodel_full_w4a16}"
 QUANT_OUT="${QUANT_OUT:-/root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized}"
 NUM_SAMPLES="${NUM_SAMPLES:-150}"
+SHARD_SIZE="${SHARD_SIZE:-30}"
+SHARDED_EVAL="${SHARDED_EVAL:-1}"
 CONCURRENCY="${CONCURRENCY:-32}"
 PORT="${PORT:-31111}"
 IDLE_MEM_MIB="${IDLE_MEM_MIB:-2000}"
@@ -42,6 +44,8 @@ echo "============================================================"
 echo "variant:       ${VARIANT}"
 echo "quant_out:     ${QUANT_OUT}"
 echo "samples:       ${NUM_SAMPLES}"
+echo "sharded_eval:  ${SHARDED_EVAL}"
+echo "shard_size:    ${SHARD_SIZE}"
 echo "concurrency:   ${CONCURRENCY}"
 echo "idle_mem_mib:  ${IDLE_MEM_MIB}"
 echo "poll_seconds:  ${POLL_SECONDS}"
@@ -91,6 +95,17 @@ while true; do
     fi
     sleep "${POLL_SECONDS}"
 done
+
+if [ "${SHARDED_EVAL}" = "1" ]; then
+    exec bash scripts/local_eval_sharded.sh \
+        --variant "${VARIANT}" \
+        --quant-out "${QUANT_OUT}" \
+        --max-samples "${NUM_SAMPLES}" \
+        --shard-size "${SHARD_SIZE}" \
+        --concurrency "${CONCURRENCY}" \
+        --port "${PORT}" \
+        --force-requant
+fi
 
 exec bash scripts/local_eval.sh \
     --variant "${VARIANT}" \

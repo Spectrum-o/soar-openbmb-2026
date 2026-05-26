@@ -29,6 +29,8 @@ PREPARE_ENV = VARIANT / "prepare_env.sh"
 WAIT_SCRIPT = REPO / "scripts" / "run_full_w4a16_platform_acc_when_idle.sh"
 NOW_SCRIPT = REPO / "scripts" / "run_full_w4a16_platform_acc_now.sh"
 DECIDE_SCRIPT = REPO / "scripts" / "full_w4a16_decide_after_eval.py"
+SHARDED_SCRIPT = REPO / "scripts" / "local_eval_sharded.sh"
+CHECKPOINT_SCRIPT = REPO / "scripts" / "checkpoint_full_w4a16.sh"
 
 
 class TestFullW4A16Variant(unittest.TestCase):
@@ -40,6 +42,8 @@ class TestFullW4A16Variant(unittest.TestCase):
         cls.wait_script_src = WAIT_SCRIPT.read_text(encoding="utf-8")
         cls.now_script_src = NOW_SCRIPT.read_text(encoding="utf-8")
         cls.decide_script_src = DECIDE_SCRIPT.read_text(encoding="utf-8")
+        cls.sharded_script_src = SHARDED_SCRIPT.read_text(encoding="utf-8")
+        cls.checkpoint_script_src = CHECKPOINT_SCRIPT.read_text(encoding="utf-8")
 
     def _argparse_default(self, arg_name: str):
         tree = ast.parse(self.quant_src)
@@ -170,6 +174,9 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn('FULL_QUANT_PROFILE="${FULL_QUANT_PROFILE:-platform_acc}"', self.wait_script_src)
         self.assertIn('CALIB_WINDOW_MODE="${CALIB_WINDOW_MODE:-multi-adaptive}"', self.wait_script_src)
         self.assertIn('MAX_CALIB_WINDOWS="${MAX_CALIB_WINDOWS:-4}"', self.wait_script_src)
+        self.assertIn('SHARDED_EVAL="${SHARDED_EVAL:-1}"', self.wait_script_src)
+        self.assertIn('SHARD_SIZE="${SHARD_SIZE:-30}"', self.wait_script_src)
+        self.assertIn("scripts/local_eval_sharded.sh", self.wait_script_src)
         self.assertIn("--force-requant", self.wait_script_src)
         tokens = shlex.split(self.wait_script_src, comments=True)
         self.assertNotIn("kill", tokens)
@@ -183,6 +190,9 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn('GROUP_SIZE="${GROUP_SIZE:-64}"', self.now_script_src)
         self.assertIn('CALIB_WINDOW_MODE="${CALIB_WINDOW_MODE:-multi-adaptive}"', self.now_script_src)
         self.assertIn('MAX_CALIB_WINDOWS="${MAX_CALIB_WINDOWS:-4}"', self.now_script_src)
+        self.assertIn('SHARDED_EVAL="${SHARDED_EVAL:-1}"', self.now_script_src)
+        self.assertIn('SHARD_SIZE="${SHARD_SIZE:-30}"', self.now_script_src)
+        self.assertIn("scripts/local_eval_sharded.sh", self.now_script_src)
         self.assertIn("--force-requant", self.now_script_src)
         self.assertNotRegex(self.now_script_src, r"\bsleep\b")
         tokens = shlex.split(self.now_script_src, comments=True)
@@ -190,12 +200,34 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertNotIn("pkill", tokens)
         self.assertNotIn("killall", tokens)
 
+    def test_sharded_eval_writes_incremental_results(self):
+        self.assertTrue(SHARDED_SCRIPT.exists())
+        self.assertTrue(SHARDED_SCRIPT.stat().st_mode & 0o111)
+        self.assertIn('RESULTS_CSV="${REPO_ROOT}/scripts/eval_shards.csv"', self.sharded_script_src)
+        self.assertIn("cumulative_acc", self.sharded_script_src)
+        self.assertIn("--max-samples", self.sharded_script_src)
+        self.assertIn("--shard-size", self.sharded_script_src)
+        self.assertIn("shard_acc=${SHARD_ACC} cumulative_acc=${CUM_ACC}", self.sharded_script_src)
+        self.assertIn("shard_{shard_idx:03d}_{start:03d}_{end:03d}.jsonl", self.sharded_script_src)
+
+    def test_checkpoint_script_pushes_scoped_full_checkpoint(self):
+        self.assertTrue(CHECKPOINT_SCRIPT.exists())
+        self.assertTrue(CHECKPOINT_SCRIPT.stat().st_mode & 0o111)
+        self.assertIn('BRANCH="${BRANCH:-exp/full-w4a16}"', self.checkpoint_script_src)
+        self.assertIn('"HEAD:refs/heads/${BRANCH}"', self.checkpoint_script_src)
+        self.assertIn("git add -A -- submission_gptqmodel_full_w4a16", self.checkpoint_script_src)
+        self.assertIn("scripts/eval_shards.csv", self.checkpoint_script_src)
+        self.assertNotIn("git add .", self.checkpoint_script_src)
+
     def test_decision_helper_is_cpu_only_and_full_scoped(self):
         self.assertTrue(DECIDE_SCRIPT.exists())
         self.assertTrue(DECIDE_SCRIPT.stat().st_mode & 0o111)
         self.assertIn('DEFAULT_VARIANT = "submission_gptqmodel_full_w4a16"', self.decide_script_src)
         self.assertIn("KNOWN_FULL_PLATFORM_BASELINE_ACC_ORI = 78.27", self.decide_script_src)
         self.assertIn("--baseline-acc-ori", self.decide_script_src)
+        self.assertIn("--shards-csv", self.decide_script_src)
+        self.assertIn("eval_shards.csv", self.decide_script_src)
+        self.assertIn("Decision: PARTIAL", self.decide_script_src)
         self.assertIn("acc_ori >= threshold", self.decide_script_src)
         self.assertIn("full_preflight.sh", self.decide_script_src)
         self.assertIn("GPTQ_DESC_ACT=True GPTQ_STATIC_GROUPS=True", self.decide_script_src)
@@ -246,6 +278,8 @@ class TestFullW4A16Variant(unittest.TestCase):
                     str(DECIDE_SCRIPT),
                     "--csv",
                     str(csv_path),
+                    "--shards-csv",
+                    str(Path(tmp) / "missing_eval_shards.csv"),
                 ],
                 cwd=str(REPO),
                 capture_output=True,
@@ -258,6 +292,73 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn("full-g128 platform baseline acc_ori=78.27", result.stdout)
         self.assertIn("Candidate pack command", result.stdout)
         self.assertNotIn("BELOW FULL BASELINE", result.stdout)
+
+    def test_decision_helper_treats_incomplete_shards_as_partial(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shards_csv = Path(tmp) / "eval_shards.csv"
+            with shards_csv.open("w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        "timestamp",
+                        "variant",
+                        "quant_model",
+                        "shard_index",
+                        "shard_start",
+                        "shard_end",
+                        "shard_samples",
+                        "cumulative_samples",
+                        "concurrency",
+                        "shard_acc",
+                        "cumulative_acc",
+                        "shard_duration_s",
+                        "total_duration_s",
+                        "server_log",
+                        "eval_log",
+                        "predictions_path",
+                    ]
+                )
+                writer.writerow(
+                    [
+                        "2026-05-26 00:30:00",
+                        "submission_gptqmodel_full_w4a16",
+                        "/tmp/model",
+                        "2",
+                        "30",
+                        "59",
+                        "30",
+                        "60",
+                        "32",
+                        "81.0",
+                        "82.0",
+                        "10",
+                        "20",
+                        "",
+                        "",
+                        "",
+                    ]
+                )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(DECIDE_SCRIPT),
+                    "--csv",
+                    str(Path(tmp) / "missing_eval_results.csv"),
+                    "--shards-csv",
+                    str(shards_csv),
+                ],
+                cwd=str(REPO),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Decision: PARTIAL", result.stdout)
+        self.assertIn("60/150 samples evaluated", result.stdout)
+        self.assertIn("Current cumulative acc 82.00", result.stdout)
+        self.assertNotIn("Next: pack for platform", result.stdout)
 
     def test_prepare_env_uses_verified_bf16_runtime_stack(self):
         self.assertIn('TRANSFORMERS_PIN="${TRANSFORMERS_PIN:-4.57.1}"', self.prepare_env_src)
