@@ -1,0 +1,25 @@
+2026-05-26 23:54:43,564 - SGLANG_INFERENCE - INFO - mid truncation: max_out_len=65536, max_seq_len=262144, max_prompt_len=128000
+2026-05-26 23:54:44,307 - SGLANG_INFERENCE - INFO - SGLang sampling kwargs: {'temperature': 0.0, 'max_tokens': 65536, 'stop': ['<|im_end|>', '</s>']}
+Auto-detected model name: /root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized
+API Base: http://127.0.0.1:31111
+Model Name: /root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized
+Model Path: /root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized
+Data Path: /root/autodl-tmp/zyn/sglang_full_w4a16/scripts/logs/shards_submission_gptqmodel_full_w4a16_1779810852/shard_001_000_029.jsonl
+Saving results to outputs/20260526_235440
+Testing with 30 samples.
+Initializing model client...
+Generating responses...
+  Sending 30 requests to SGLang API (concurrency=32)...
+Generating:   0%|          | 0/30 [00:00<?, ?it/s]Generating:   3%|▎         | 1/30 [02:17<1:06:33, 137.71s/it]Generating:  10%|█         | 3/30 [02:17<16:05, 35.76s/it]   Generating:  17%|█▋        | 5/30 [02:18<07:15, 17.44s/it]Generating:  23%|██▎       | 7/30 [02:19<03:59, 10.41s/it]Generating:  27%|██▋       | 8/30 [02:20<03:01,  8.23s/it]Generating:  30%|███       | 9/30 [02:21<02:11,  6.27s/it]Generating:  37%|███▋      | 11/30 [02:22<01:16,  4.01s/it]Generating:  40%|████      | 12/30 [02:23<00:59,  3.29s/it]Generating:  47%|████▋     | 14/30 [02:23<00:32,  2.02s/it]Generating:  50%|█████     | 15/30 [02:24<00:24,  1.61s/it]Generating:  53%|█████▎    | 16/30 [02:24<00:18,  1.30s/it]Generating:  57%|█████▋    | 17/30 [02:25<00:16,  1.27s/it]Generating:  60%|██████    | 18/30 [02:25<00:12,  1.01s/it]Generating:  63%|██████▎   | 19/30 [02:26<00:09,  1.20it/s]Generating:  67%|██████▋   | 20/30 [02:26<00:07,  1.34it/s]Generating:  70%|███████   | 21/30 [02:26<00:05,  1.65it/s]Generating:  73%|███████▎  | 22/30 [02:50<00:59,  7.42s/it]Generating:  77%|███████▋  | 23/30 [02:58<00:52,  7.53s/it]Generating:  80%|████████  | 24/30 [03:02<00:37,  6.26s/it]Generating:  83%|████████▎ | 25/30 [03:02<00:22,  4.55s/it]Generating:  87%|████████▋ | 26/30 [03:10<00:21,  5.43s/it]Generating:  90%|█████████ | 27/30 [03:57<00:53, 17.89s/it]Generating:  93%|█████████▎| 28/30 [12:40<05:38, 169.03s/it]Generating: 100%|██████████| 30/30 [12:40<00:00, 25.36s/it] 
+2026-05-27 00:07:25,038 - SGLANG_INFERENCE - INFO - Processing time: 760.73s
+
+Generation completed in 761.51 seconds
+
+--- Evaluation Results ---
+
+Average Score: 81.33%
+Total Duration: 761.51 s
+Total Tokens: In=712568, Out=235361
+Average Tokens/Sample: In=23752.3, Out=7845.4
+Overall TPS (Output): 309.07 tokens/s
+Detailed results saved to outputs/20260526_235440/predictions.jsonl
