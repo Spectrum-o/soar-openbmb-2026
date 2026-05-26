@@ -472,7 +472,7 @@ echo "[prepare_env] SGLANG_ENABLE_DEGENERATE_STOP=${SGLANG_ENABLE_DEGENERATE_STO
 # Marlin GEMM internally still outputs fp16; SGLang must cast that to bf16
 # for the sparse-backend boundary. If v5j gives partial result (50-70 acc),
 # this tests whether explicit --dtype bfloat16 fixes the remaining gap.
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e4m3 --dtype bfloat16 --cuda-graph-bs 1 2 4 8 12 16 24 32"
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --max-running-requests 32 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e4m3 --dtype bfloat16 --cuda-graph-bs 1 2 4 8 12 16 24 32"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"

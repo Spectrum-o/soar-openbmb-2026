@@ -151,5 +151,6 @@ Runtime settings mirrored here:
 --chunked-prefill-size 32768 \
 --max-prefill-tokens 32768 \
 --mem-fraction-static 0.70 \
+--max-running-requests 32 \
 --cuda-graph-bs 1 2 4 8 12 16 24 32
 ```
