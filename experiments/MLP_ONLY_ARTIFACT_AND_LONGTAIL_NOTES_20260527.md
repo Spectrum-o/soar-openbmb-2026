@@ -71,6 +71,29 @@ multi_adaptive: n=28 acc=80.0 out=35694 avg_out=1274.8 max_out=7374
   qa: n=6 acc=50.0 wrong=[14, 19, 29] avg_out=97.0
 ```
 
+## v25_g64 load failure
+
+Candidate:
+
+`/autodl-fs/data/zyn/models/submission_gptqmodel_calib_w4a16_v25_g64-quantized`
+
+Serving config matched the baseline except for the model artifact. The artifact
+did not reach evaluation: SGLang failed while loading checkpoint shard 1 with a
+Marlin parameter shape assertion:
+
+```text
+python/sglang/srt/layers/parameter.py:172
+assert param_data.shape == loaded_weight.shape
+```
+
+The failure happened in `load_merged_column_weight()` for a fused column-linear
+weight. The artifact uses `group_size=64`; the current MiniCPM-SALA Marlin load
+path has only been verified with the runnable `group_size=128` artifacts. Treat
+this candidate as incompatible with the current serving stack unless the loader
+layout is explicitly fixed and smoke-tested.
+
+Conclusion: do not submit or expand `v25_g64`.
+
 ## Long-tail interpretation
 
 Long outputs mainly hurt runtime first. They do not automatically imply a wrong
@@ -107,6 +130,53 @@ This is not safe to fix with an arbitrary repetition stop rule unless that rule
 is explicitly accepted, because it can change benchmark behavior and may be
 considered an output heuristic rather than a quantization improvement.
 
+## MR=8 diagnostic
+
+One low-concurrency diagnostic was run on the current best artifact:
+
+- model: `submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe-quantized`
+- KV dtype: `fp8_e4m3`
+- CUDA graph: enabled, bs `1 2 4 8`
+- server `MAX_RUNNING_REQUESTS=8`
+- client concurrency `8`
+- run dir: `/root/autodl-tmp/zyn/eval_runs/safe_e4m3_mr8_first30_20260527`
+
+The run was stopped at 29 completed samples because it is not a final serving
+strategy. Same-index comparison against the normal first-30 baseline:
+
+```text
+safe_e4m3: n=30 acc=85.67 out=103782 avg_out=3459.4 max_out=65546
+  cwe: n=6 acc=95.0 wrong=[10, 15, 20] avg_out=11558.3
+  fwe: n=6 acc=100.0 wrong=[] avg_out=746.7
+  mcq: n=6 acc=66.67 wrong=[7, 27] avg_out=4441.8
+  niah: n=6 acc=100.0 wrong=[] avg_out=445.5
+  qa: n=6 acc=66.67 wrong=[19, 29] avg_out=104.7
+mr8: n=29 acc=84.83 out=38666 avg_out=1333.3 max_out=7192
+  cwe: n=5 acc=92.0 wrong=[5, 15, 20] avg_out=716.6
+  fwe: n=6 acc=100.0 wrong=[] avg_out=749.0
+  mcq: n=6 acc=83.33 wrong=[27] avg_out=4499.7
+  niah: n=6 acc=100.0 wrong=[] avg_out=490.2
+  qa: n=6 acc=50.0 wrong=[14, 19, 29] avg_out=108.3
+```
+
+The useful signal is attribution only: some samples are sensitive to batching
+pressure and output tail behavior. It is not a submission strategy because
+lowering max-running requests would hurt benchmark duration and final score.
+Keep CUDA graph and normal concurrency for candidate selection.
+
+## Platform tail-risk note
+
+The live fp8-KV submission was reported still running at about 4 hours on
+2026-05-27, while earlier successful submissions usually finished within about
+2.5 hours. Without platform stage logs this is not enough to infer accuracy.
+If the platform is already in `INFERENCING`, the most likely explanation is a
+small number of requests decoding to the output cap; if it is still in
+`PREPARING`, inspect dependency installation and quantization/setup time.
+
+This does not justify arbitrary stop rules or answer parsing. The next aligned
+optimization is to improve the MLP-only artifact under the normal serving
+configuration so fewer samples enter unstable long-output tails.
+
 ## Next action
 
 Do not continue `v25_multi_adaptive`.
@@ -119,3 +189,6 @@ Reasonable next actions are:
    and setup time instead.
 3. Only test another MLP-only artifact if it can be screened on first-30 and
    rejected early when its best possible score drops below `85.67`.
+4. Next MLP-only GPTQ quality candidate should be quantized from the BF16 base
+   `/root/autodl-fs/models/OpenBMB/MiniCPM-SALA`, not from the compressed
+   `/autodl-fs/data/zyn/models/MiniCPM-SALA-W4A16` directory.
