@@ -30,6 +30,10 @@ CHECKPOINT_AFTER_SHARD="${CHECKPOINT_AFTER_SHARD:-1}"
 CHECKPOINT_SCRIPT="${CHECKPOINT_SCRIPT:-${REPO_ROOT}/scripts/checkpoint_full_w4a16.sh}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 export PYTHON_BIN
+PYTHON_BIN_DIR="$(cd "$(dirname "${PYTHON_BIN}")" >/dev/null 2>&1 && pwd || true)"
+if [ -n "${PYTHON_BIN_DIR}" ] && [ -x "${PYTHON_BIN_DIR}/ninja" ]; then
+    export PATH="${PYTHON_BIN_DIR}:${PATH}"
+fi
 FORCE_REQUANT=0
 SKIP_QUANT=0
 
