@@ -22,13 +22,11 @@ but reverts LIGHTNING layers' MLPs to BF16, by:
      in the quantized output directory
   3. Updating model.safetensors.index.json so SGLang loader finds .weight
      at the lightning-layer-mlp paths
-  4. Updating quantize_config.json's dynamic field to mark lightning MLPs
+  4. Physically removing old lightning-layer MLP quant tensors from their
+     safetensors shards, because SGLang iterates physical shard keys rather
+     than only index.json entries
+  5. Updating quantize_config.json's dynamic field to mark lightning MLPs
      as "skip quantization" (load as BF16 / UnquantizedLinearMethod)
-
-The original .qweight/.qzeros/.scales tensors for lightning MLPs remain in
-the shard files (wasted disk space, ~30% of MLP portion) but they're never
-read because SGLang's dynamic skip routes those modules through
-UnquantizedLinearMethod which looks for .weight.
 
 ALIGNMENT GUARANTEE
 -------------------
@@ -165,9 +163,11 @@ def remove_quantized_lightning_tensors_from_index(
     """Remove the quantized tensor entries for lightning MLPs from
     model.safetensors.index.json. Returns the set of removed tensor names.
 
-    The actual tensors stay in the safetensors files (we don't rewrite
-    shards) — they just become unreferenced dead data. SGLang load uses
-    only the index, so it won't see them.
+    The caller must also remove these names from the physical safetensors
+    shards. SGLang filters shard files via model.safetensors.index.json, but
+    once a shard is selected it iterates every physical key in that shard.
+    Leaving orphan .qweight/.qzeros/.scales tensors behind will still surface
+    them to MiniCPM.load_weights and can trigger KeyError.
 
     Handles BOTH formats:
       - gptq_marlin: .qweight, .qzeros, .scales, .g_idx
@@ -227,6 +227,60 @@ def remove_quantized_lightning_tensors_from_index(
         sample = sorted(removed)[:6]
         print(f"[index] sample removed: {sample}", flush=True)
     return removed
+
+
+def rewrite_safetensors_without_tensors(
+    quantized_dir: Path, tensor_names: set[str]
+) -> dict[str, int]:
+    """Physically remove tensor_names from all safetensors shards.
+
+    SGLang's safetensors iterator opens each selected shard and yields f.keys()
+    directly. Editing only model.safetensors.index.json is therefore not
+    enough: orphan quant tensors remain visible if they still exist inside the
+    shard file. This rewrites each affected shard in place, one file at a time.
+    """
+    if not tensor_names:
+        print("[rewrite] no tensor names to remove from physical shards", flush=True)
+        return {}
+
+    from safetensors import safe_open
+    from safetensors.torch import save_file
+
+    removed_by_shard: dict[str, int] = {}
+    for shard_path in sorted(quantized_dir.glob("*.safetensors")):
+        with safe_open(str(shard_path), framework="pt", device="cpu") as f:
+            keys = list(f.keys())
+            to_remove = [name for name in keys if name in tensor_names]
+            if not to_remove:
+                continue
+            kept = {
+                name: f.get_tensor(name).contiguous()
+                for name in keys
+                if name not in tensor_names
+            }
+            metadata = f.metadata()
+
+        tmp_path = shard_path.with_name(shard_path.name + ".tmp")
+        if tmp_path.exists():
+            tmp_path.unlink()
+        save_file(kept, str(tmp_path), metadata=metadata)
+        tmp_path.replace(shard_path)
+
+        removed_by_shard[shard_path.name] = len(to_remove)
+        print(
+            f"[rewrite] {shard_path.name}: physically removed {len(to_remove)} tensor(s)",
+            flush=True,
+        )
+
+    # We intentionally do not fail if a removed index entry was already absent
+    # from physical shards; idempotent reruns can reach that state.
+    total_removed = sum(removed_by_shard.values())
+    if total_removed == 0:
+        print(
+            "[rewrite] no matching physical tensors found; assuming they were already removed",
+            flush=True,
+        )
+    return removed_by_shard
 
 
 def write_overlay_shard(
@@ -368,7 +422,8 @@ def main() -> int:
         est_bytes = n_tensors * 4096 * 4096 * 2  # rough BF16 estimate per MLP proj
         print(f"\n[dry-run] would write ~{n_tensors} tensors (~{est_bytes / 1e9:.1f} GB total)")
         print(f"[dry-run] would remove .qweight/.qzeros/.scales for layers {lightning_indices}")
-        print(f"[dry-run] would add {len(lightning_indices) * 3} dynamic skip rules")
+        print("[dry-run] would physically rewrite affected safetensors shards")
+        print(f"[dry-run] would add {len(lightning_indices) * 2} dynamic skip rules")
         return 0
 
     # Late imports (torch + safetensors only needed for actual work)
@@ -383,10 +438,12 @@ def main() -> int:
     print(f"\n[2/5] collecting BF16 lightning MLP tensors from {bdir.name}", flush=True)
     tensors = collect_lightning_mlp_tensors(bdir, lightning_indices)
 
-    # 3. Remove quantized lightning MLP entries from index (frees the
-    #    safetensors namespace for our BF16 versions)
-    print(f"\n[3/5] removing quantized entries for lightning MLPs from index", flush=True)
-    remove_quantized_lightning_tensors_from_index(qdir, lightning_indices)
+    # 3. Remove quantized lightning MLP entries from index and from the physical
+    #    safetensors shards. SGLang iterates physical shard keys after file-level
+    #    filtering, so both steps are required.
+    print(f"\n[3/5] removing quantized entries for lightning MLPs", flush=True)
+    removed = remove_quantized_lightning_tensors_from_index(qdir, lightning_indices)
+    rewrite_safetensors_without_tensors(qdir, removed)
 
     # 4. Write overlay shard containing BF16 lightning MLP tensors
     print(f"\n[4/5] writing overlay shard with {len(tensors)} BF16 tensors", flush=True)

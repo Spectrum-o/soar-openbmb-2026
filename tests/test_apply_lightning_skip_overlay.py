@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Unit tests for tools/apply_lightning_skip_overlay.py — pure-JSON / no GPU.
+"""Unit tests for tools/apply_lightning_skip_overlay.py — no GPU.
 
-Tests the index / config manipulation logic. Doesn't exercise safetensors
-I/O (which needs torch + GPU memory). The risky parts of the tool that
-benefit from automated testing are:
+Tests the index / config manipulation logic plus a tiny safetensors rewrite
+fixture. The risky parts of the tool that benefit from automated testing are:
   - find_lightning_layer_indices() — config parsing
   - remove_quantized_lightning_tensors_from_index() — index surgery
+  - rewrite_safetensors_without_tensors() — physical shard cleanup for SGLang
   - update_quantize_config_dynamic() — config patch
 
 Validates them with synthetic test fixtures: tmp config.json,
-model.safetensors.index.json, quantize_config.json.
+model.safetensors.index.json, quantize_config.json, and tiny safetensors files.
 
 Run:
     python3 -m unittest tests.test_apply_lightning_skip_overlay
@@ -232,6 +232,67 @@ class TestRemoveQuantizedLightningFromIndex(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(RuntimeError):
                 overlay.remove_quantized_lightning_tensors_from_index(Path(tmp), [1, 2])
+
+
+class TestRewriteSafetensorsWithoutTensors(unittest.TestCase):
+    def test_physically_removes_orphan_quant_tensors(self):
+        try:
+            import torch
+            from safetensors import safe_open
+            from safetensors.torch import save_file
+        except ImportError as exc:
+            self.skipTest(f"torch/safetensors unavailable: {exc}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            shard = qdir / "model-00001-of-00001.safetensors"
+            removed_name = "model.layers.1.mlp.down_proj.qweight"
+            keep_quant_name = "model.layers.0.mlp.down_proj.qweight"
+            keep_dense_name = "model.layers.1.input_layernorm.weight"
+            save_file(
+                {
+                    removed_name: torch.ones((2, 2), dtype=torch.int32),
+                    "model.layers.1.mlp.down_proj.qzeros": torch.ones(
+                        (2, 2), dtype=torch.int32
+                    ),
+                    keep_quant_name: torch.zeros((2, 2), dtype=torch.int32),
+                    keep_dense_name: torch.zeros((2,), dtype=torch.float32),
+                },
+                str(shard),
+                metadata={"format": "pt"},
+            )
+
+            removed = {removed_name, "model.layers.1.mlp.down_proj.qzeros"}
+            by_shard = overlay.rewrite_safetensors_without_tensors(qdir, removed)
+
+            self.assertEqual(by_shard, {"model-00001-of-00001.safetensors": 2})
+            with safe_open(str(shard), framework="pt", device="cpu") as f:
+                keys = set(f.keys())
+                self.assertNotIn(removed_name, keys)
+                self.assertNotIn("model.layers.1.mlp.down_proj.qzeros", keys)
+                self.assertIn(keep_quant_name, keys)
+                self.assertIn(keep_dense_name, keys)
+                self.assertEqual(f.metadata(), {"format": "pt"})
+
+    def test_rewrite_is_idempotent_when_physical_keys_are_already_absent(self):
+        try:
+            import torch
+            from safetensors.torch import save_file
+        except ImportError as exc:
+            self.skipTest(f"torch/safetensors unavailable: {exc}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            save_file(
+                {"model.layers.0.input_layernorm.weight": torch.zeros((2,))},
+                str(qdir / "model-00001-of-00001.safetensors"),
+            )
+
+            by_shard = overlay.rewrite_safetensors_without_tensors(
+                qdir, {"model.layers.1.mlp.down_proj.qweight"}
+            )
+
+            self.assertEqual(by_shard, {})
 
 
 class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
