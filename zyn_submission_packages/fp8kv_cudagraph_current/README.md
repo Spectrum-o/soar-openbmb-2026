@@ -49,6 +49,7 @@ Current pushed eval snapshots:
 
 - `zyn_eval_runs/fp8kv_cg_e4m3_20260526_180812_snapshot_0057`
 - `zyn_eval_runs/fp8kv_cg_e4m3_20260526_180812_snapshot_0059`
+- `zyn_eval_runs/fp8kv_cg_e4m3_20260526_180812_snapshot_0060`
 
 The live logs confirm:
 

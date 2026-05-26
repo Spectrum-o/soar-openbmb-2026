@@ -1,0 +1,8 @@
+{
+  "completed": 60,
+  "ori_accuracy": 81.83,
+  "overall_accuracy": 100,
+  "total_output_tokens": 235839,
+  "duration": 1603.03,
+  "tps": 147.12
+}
