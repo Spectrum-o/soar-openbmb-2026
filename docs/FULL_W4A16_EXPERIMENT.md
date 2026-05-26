@@ -41,6 +41,9 @@ python3 submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py   --input /r
   memory and the target port are already free and otherwise exits without
   waiting. The runner defaults to sharded local eval: 30 rows per shard, with
   cumulative accuracy appended to `scripts/eval_shards.csv` after every shard.
+  Each shard's predictions are copied to
+  `scripts/logs/sharded_predictions_*.jsonl` so failures can be inspected from
+  git history instead of only from the transient SOAR `outputs/` directory.
   `scripts/local_eval_sharded.sh` also runs `scripts/checkpoint_full_w4a16.sh`
   after each shard by default, so partial logs and CSV rows are committed and
   pushed while the long evaluation continues. Use `--no-checkpoint` only for

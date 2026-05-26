@@ -334,6 +334,9 @@ print(f"{pred}\t{count}\t{score_sum:.8f}\t{acc:.2f}")
 PY
     )"
     IFS=$'\t' read -r PRED_PATH SCORE_COUNT SCORE_SUM SHARD_ACC <<<"${METRICS}"
+    ARCHIVED_PRED="${LOG_DIR}/sharded_predictions_${VARIANT_NAME}_${STAMP}_${SHARD_INDEX}.jsonl"
+    cp "${PRED_PATH}" "${ARCHIVED_PRED}"
+    PRED_PATH="${ARCHIVED_PRED}"
     CUM_SCORE="$(python3 - "${CUM_SCORE}" "${SCORE_SUM}" <<'PY'
 import sys
 print(f"{float(sys.argv[1]) + float(sys.argv[2]):.8f}")

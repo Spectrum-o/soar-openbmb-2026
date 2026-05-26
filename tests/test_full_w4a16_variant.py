@@ -212,6 +212,8 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn("--max-samples", self.sharded_script_src)
         self.assertIn("--shard-size", self.sharded_script_src)
         self.assertIn("shard_acc=${SHARD_ACC} cumulative_acc=${CUM_ACC}", self.sharded_script_src)
+        self.assertIn("sharded_predictions_${VARIANT_NAME}_${STAMP}_${SHARD_INDEX}.jsonl", self.sharded_script_src)
+        self.assertIn('cp "${PRED_PATH}" "${ARCHIVED_PRED}"', self.sharded_script_src)
         self.assertIn("shard_{shard_idx:03d}_{start:03d}_{end:03d}.jsonl", self.sharded_script_src)
 
     def test_checkpoint_script_pushes_scoped_full_checkpoint(self):
@@ -221,6 +223,7 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn('"HEAD:refs/heads/${BRANCH}"', self.checkpoint_script_src)
         self.assertIn("git add -A -- submission_gptqmodel_full_w4a16", self.checkpoint_script_src)
         self.assertIn("scripts/eval_shards.csv", self.checkpoint_script_src)
+        self.assertIn("scripts/logs/sharded_predictions_*.jsonl", self.checkpoint_script_src)
         self.assertNotIn("git add .", self.checkpoint_script_src)
 
     def test_decision_helper_is_cpu_only_and_full_scoped(self):

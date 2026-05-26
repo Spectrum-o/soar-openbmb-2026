@@ -75,6 +75,7 @@ git add -A -- submission_gptqmodel_full_w4a16
 # Partial eval evidence is useful during long runs. These globs may not exist.
 git add -f scripts/eval_shards.csv 2>/dev/null || true
 git add -f scripts/logs/sharded_*.log 2>/dev/null || true
+git add -f scripts/logs/sharded_predictions_*.jsonl 2>/dev/null || true
 git add -f scripts/logs/shards_*/*.jsonl 2>/dev/null || true
 
 echo "[3/4] staged diff"

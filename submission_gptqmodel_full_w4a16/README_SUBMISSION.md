@@ -207,10 +207,11 @@ bash scripts/local_eval_sharded.sh \
 ```
 
 The sharded eval appends one row to `scripts/eval_shards.csv` after every
-30-sample shard, prints shard and cumulative accuracy immediately, and runs
-`scripts/checkpoint_full_w4a16.sh` after each shard by default so partial CSV
-and logs are committed and pushed while the long run continues. Use
-`--no-checkpoint` only for local debugging.
+30-sample shard, copies each shard's predictions to
+`scripts/logs/sharded_predictions_*.jsonl`, prints shard and cumulative
+accuracy immediately, and runs `scripts/checkpoint_full_w4a16.sh` after each
+shard by default so partial CSV, predictions, and logs are committed and pushed
+while the long run continues. Use `--no-checkpoint` only for local debugging.
 
 Use the resulting 150-sample cumulative local eval before packing. If local `acc_ori` is
 below the known full-g128 baseline (`78.27`), do not submit; move to the next
