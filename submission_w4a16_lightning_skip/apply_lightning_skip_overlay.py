@@ -277,13 +277,35 @@ def update_quantize_config_dynamic(
 
     SGLang's get_dynamic_override reads this and routes matching modules
     through UnquantizedLinearMethod (which looks for .weight in safetensors).
+
+    CRITICAL (2026-05-26 fix): SGLang's MiniCPM implementation uses a fused
+    MergedColumnParallelLinear named `gate_up_proj` (minicpm.py:62), NOT
+    separate `gate_proj` and `up_proj` Linears. The dynamic rule lookup
+    happens at Linear construction time using the SGLang-side prefix, which
+    will be `...mlp.gate_up_proj` — so rules ending in `gate_proj$` or
+    `up_proj$` will NEVER match. (The pre-2026-05-26 version of this
+    function wrote `gate_proj$` / `up_proj$` rules → SGLang fell back to
+    GPTQMarlinLinearMethod → tried to load .qweight tensors that this
+    overlay had already removed from the index → KeyError on model load.
+    The 14 unit tests for this tool did not cover SGLang's fused-Linear
+    routing, so the bug stayed latent. Discovered by audit-by-source-grep
+    of `python/sglang/srt/models/minicpm.py:62` + `linear.py:463`
+    MergedColumnParallelLinear.)
+
+    Fix: write a single `gate_up_proj$` rule (matches SGLang's fused
+    Linear) PLUS a `down_proj$` rule (matches RowParallelLinear). The
+    safetensors index still has separate `gate_proj.weight` and
+    `up_proj.weight` BF16 tensors; SGLang's stacked_params_mapping in
+    MiniCPMSALAForCausalLM.load_weights (minicpm.py:611-618) maps both
+    tensors to `gate_up_proj` and calls the MergedColumnParallelLinear
+    weight_loader with shard_id 0/1 (linear.py:523) — exactly the path
+    that's been working for base MLP-only quant via the `-:.*self_attn.*`
+    rule (which matches `qkv_proj` via the substring).
     """
-    # Both quantize_config.json AND config.json's quantization_config block
-    # are read by SGLang. Update both for safety.
     new_skip_rules: dict[str, bool] = {}
     for layer_idx in lightning_indices:
-        new_skip_rules[f"-:model.layers.{layer_idx}.mlp.gate_proj$"] = True
-        new_skip_rules[f"-:model.layers.{layer_idx}.mlp.up_proj$"] = True
+        # Match SGLang's MergedColumnParallelLinear (fused gate + up)
+        new_skip_rules[f"-:model.layers.{layer_idx}.mlp.gate_up_proj$"] = True
         new_skip_rules[f"-:model.layers.{layer_idx}.mlp.down_proj$"] = True
 
     for fname, key_path in (

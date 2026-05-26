@@ -73,17 +73,36 @@ ls -la "${INPUT_DIR}" 2>&1 | head -20
 # ----------------------------------------------------------------------------
 # Step 1: standard 1849-style GPTQ quant (MLP-only)
 # ----------------------------------------------------------------------------
-echo "[prepare_model] step 1: GPTQ quantization (1849-style MLP-only)..."
+# CRITICAL (2026-05-26 audit fix): pass --no-offload-disk to the quantizer.
+# Without this, GPTQModel 7.0.0 sets QuantizeConfig.offload_to_disk=True by
+# default, then build_shell_model() leaks this kwarg into
+# MiniCPMSALAForCausalLM.__init__(), which raises:
+#   TypeError: __init__() got an unexpected keyword argument 'offload_to_disk'
+# This is exactly what crashed the 2026-05-24 AutoDL smoke (CRASH_other in
+# scripts/logs/local_eval_quant_submission_w4a16_lightning_skip_bf16_*.log,
+# commit fea87f9cf). Sibling variants (full_w4a16, 1849-base) pass
+# --no-offload-disk via EXTRA_ARGS in their prepare_model.sh; this variant
+# never did.
+#
+# ALSO (2026-05-26 audit fix): wrap quantize in `timeout` so a hung quant
+# fails cleanly with exit 124 inside the 5h platform budget, instead of
+# burning the full slot. Matches 1849-base + full_w4a16 sibling behavior.
+QUANT_TIMEOUT_MIN="${QUANT_TIMEOUT_MIN:-90}"
+echo "[prepare_model] step 1: GPTQ quantization (1849-style MLP-only), timeout=${QUANT_TIMEOUT_MIN}min..."
 set +e
-python3 "${SCRIPT_DIR}/quantize_gptqmodel_w4a16.py" \
+timeout "${QUANT_TIMEOUT_MIN}m" python3 "${SCRIPT_DIR}/quantize_gptqmodel_w4a16.py" \
     --input "${INPUT_DIR}" \
     --output "${OUTPUT_DIR}" \
+    --no-offload-disk \
     "${CALIB_ARGS[@]}" \
     "${EXTRA_ARGS[@]}"
 quant_exit=$?
 set -e
 
-if [ "${quant_exit}" -ne 0 ]; then
+if [ "${quant_exit}" -eq 124 ]; then
+    echo "[prepare_model] FATAL: quantization exceeded ${QUANT_TIMEOUT_MIN} min wall time; aborting cleanly" >&2
+    exit 124
+elif [ "${quant_exit}" -ne 0 ]; then
     echo "[prepare_model] FATAL: quantize_gptqmodel_w4a16.py exited ${quant_exit}" >&2
     exit "${quant_exit}"
 fi

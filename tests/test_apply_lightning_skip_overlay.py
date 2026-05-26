@@ -246,13 +246,19 @@ class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
             with qcfg_path.open() as f:
                 cfg = json.load(f)
 
-            # 3 layers × 3 projs = 9 new skip rules
+            # 3 layers × 2 SGLang-side fused Linears (gate_up_proj + down_proj)
+            # = 6 new skip rules. Pre-2026-05-26 this was 9 (gate/up/down)
+            # but the gate/up rules never matched SGLang's fused Linear name.
             dyn = cfg["dynamic"]
             new_rules_count = sum(
                 1 for k in dyn
                 if "mlp" in k and "model.layers." in k
             )
-            self.assertEqual(new_rules_count, 9)
+            self.assertEqual(new_rules_count, 6)
+            # Verify the actual rule shapes
+            for layer in (1, 3, 5):
+                self.assertIn(f"-:model.layers.{layer}.mlp.gate_up_proj$", dyn)
+                self.assertIn(f"-:model.layers.{layer}.mlp.down_proj$", dyn)
             # Original self_attn skip rule preserved
             self.assertIn("-:.*self_attn.*", dyn)
 
@@ -280,7 +286,51 @@ class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
                 1 for k in qc["dynamic"]
                 if "mlp" in k and "model.layers." in k
             )
-            self.assertEqual(new_rules_count, 6)  # 2 layers × 3 projs
+            self.assertEqual(new_rules_count, 4)  # 2 layers × 2 fused Linears (gate_up_proj + down_proj)
+
+    def test_dynamic_rules_match_sglang_fused_linear_prefix(self):
+        """Regression guard for 2026-05-26 bug.
+
+        SGLang's MiniCPM implementation creates a single MergedColumnParallelLinear
+        named `gate_up_proj` (minicpm.py:62), NOT separate `gate_proj` + `up_proj`.
+        Dynamic rule lookup uses re.match() against the SGLang-side prefix at
+        Linear construction time (utils.py:257). A rule like
+        `-:model.layers.0.mlp.gate_proj$` will NEVER match `gate_up_proj`,
+        so SGLang would fall back to gptq_marlin and crash trying to load
+        the .qweight tensors that overlay had already removed.
+        """
+        import re
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            qcfg_path = qdir / "quantize_config.json"
+            write_quantize_config(qcfg_path)
+            overlay.update_quantize_config_dynamic(qdir, [0, 1])
+            with qcfg_path.open() as f:
+                cfg = json.load(f)
+            dyn = cfg["dynamic"]
+            # Simulate SGLang's Linear prefix and rule matching path
+            for layer in (0, 1):
+                gate_up_prefix = f"model.layers.{layer}.mlp.gate_up_proj"
+                down_prefix = f"model.layers.{layer}.mlp.down_proj"
+                # At least one rule must match each SGLang prefix
+                matched_gate_up = any(
+                    pat.startswith("-:") and re.match(pat[2:], gate_up_prefix)
+                    for pat in dyn.keys()
+                )
+                matched_down = any(
+                    pat.startswith("-:") and re.match(pat[2:], down_prefix)
+                    for pat in dyn.keys()
+                )
+                self.assertTrue(
+                    matched_gate_up,
+                    f"no dynamic skip rule matches SGLang fused prefix {gate_up_prefix!r}; "
+                    f"rules were {list(dyn.keys())}",
+                )
+                self.assertTrue(
+                    matched_down,
+                    f"no dynamic skip rule matches SGLang prefix {down_prefix!r}; "
+                    f"rules were {list(dyn.keys())}",
+                )
 
     def test_no_files_no_crash(self):
         with tempfile.TemporaryDirectory() as tmp:
