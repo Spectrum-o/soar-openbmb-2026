@@ -17,6 +17,7 @@ QUANT_VENV="${QUANT_VENV:-/root/autodl-tmp/zyn/sglang_full_w4a16/.venv_py310_ful
 OUTPUT_MODEL="${OUTPUT_MODEL:-/autodl-fs/data/zyn/models/submission_gptqmodel_mlp_descact_static_20260527-quantized}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/zyn_logs}"
 LOG_FILE="${LOG_FILE:-${LOG_DIR}/quant_mlp_descact_static_$(date +%Y%m%d_%H%M%S).log}"
+LIBSTDCXX_DIR="${LIBSTDCXX_DIR:-/root/miniconda3/lib}"
 
 NUM_CALIB="${NUM_CALIB:-256}"
 MAX_CALIB_LEN="${MAX_CALIB_LEN:-8192}"
@@ -65,6 +66,10 @@ source "${QUANT_VENV}/bin/activate"
 export GPTQ_SYM=True
 export GPTQ_DESC_ACT=True
 export GPTQ_STATIC_GROUPS=True
+if [ -f "${LIBSTDCXX_DIR}/libstdc++.so.6" ]; then
+    export LD_LIBRARY_PATH="${LIBSTDCXX_DIR}:${LD_LIBRARY_PATH:-}"
+    echo "[quant] libstdc++:  ${LIBSTDCXX_DIR}/libstdc++.so.6"
+fi
 
 set +e
 timeout "${QUANT_TIMEOUT_MIN}m" python "${QUANT_SCRIPT}" \
