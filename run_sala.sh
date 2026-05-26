@@ -1,6 +1,6 @@
 #!/bin/bash
-# Launch MiniCPM-SALA inference server with FP8 KV cache quantization.
-# Compare against run_sala_baseline.sh (bf16 KV cache) to measure impact.
+# Launch MiniCPM-SALA inference server with FP8 KV cache quantization and
+# CUDA graph enabled. These defaults mirror the current zyn full-eval run.
 #
 # Why FP8 KV cache:
 #   - KV cache size halved (bf16 -> fp8) -> more concurrency / longer context
@@ -19,6 +19,13 @@ VENV_DIR="${REPO_ROOT}/sglang_minicpm_sala_env"
 MODEL_PATH="${MODEL_PATH:-${REPO_ROOT}/models/MiniCPM-SALA}"
 PORT="${PORT:-31111}"
 KV_DTYPE="${KV_DTYPE:-fp8_e4m3}"
+DTYPE="${DTYPE:-bfloat16}"
+QUANTIZATION="${QUANTIZATION:-gptq_marlin}"
+CHUNKED_PREFILL_SIZE="${CHUNKED_PREFILL_SIZE:-32768}"
+MAX_PREFILL_TOKENS="${MAX_PREFILL_TOKENS:-32768}"
+MAX_RUNNING_REQUESTS="${MAX_RUNNING_REQUESTS:-32}"
+MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.70}"
+CUDA_GRAPH_BS="${CUDA_GRAPH_BS:-1 2 4 8 12 16 24 32}"
 
 if [ ! -d "${VENV_DIR}" ]; then
     echo "Error: venv not found at ${VENV_DIR}"
@@ -33,15 +40,21 @@ if [ ! -d "${MODEL_PATH}" ]; then
 fi
 
 source "${VENV_DIR}/bin/activate"
+export PATH="${VENV_DIR}/bin:${PATH}"
 
 python3 -m sglang.launch_server \
     --model "${MODEL_PATH}" \
     --trust-remote-code \
     --disable-radix-cache \
     --attention-backend minicpm_flashinfer \
-    --chunked-prefill-size 8192 \
-    --max-running-requests 32 \
+    --chunked-prefill-size "${CHUNKED_PREFILL_SIZE}" \
+    --max-prefill-tokens "${MAX_PREFILL_TOKENS}" \
+    --mem-fraction-static "${MEM_FRACTION_STATIC}" \
+    --max-running-requests "${MAX_RUNNING_REQUESTS}" \
+    --quantization "${QUANTIZATION}" \
     --kv-cache-dtype "${KV_DTYPE}" \
+    --dtype "${DTYPE}" \
     --skip-server-warmup \
     --port "${PORT}" \
-    --dense-as-sparse
+    --dense-as-sparse \
+    --cuda-graph-bs ${CUDA_GRAPH_BS}
