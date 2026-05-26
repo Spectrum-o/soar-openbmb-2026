@@ -470,6 +470,34 @@ class MiniCPMSparseBackend(AttentionBackend):
             metadata.cu_seqlens_q_adjusted = metadata.cu_seqlens_q * self.heads_per_group
             metadata.max_seqlen_q_adjusted = metadata.max_seq_len_q * self.heads_per_group
 
+    def _is_fp8_kv_cache(self) -> bool:
+        return self.kv_cache_dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+
+    def _dequant_fp8_kv_cache_for_attention(
+        self,
+        key_cache: torch.Tensor,
+        value_cache: torch.Tensor,
+        target_dtype: torch.dtype,
+        layer: RadixAttention,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if not self._is_fp8_kv_cache():
+            return key_cache, value_cache
+        if self.attention_kernel_type == "flashinfer":
+            return key_cache, value_cache
+
+        if key_cache.dtype != target_dtype:
+            key_cache = key_cache.to(target_dtype)
+        if value_cache.dtype != target_dtype:
+            value_cache = value_cache.to(target_dtype)
+
+        k_scale = getattr(layer, "k_scale_float", None)
+        v_scale = getattr(layer, "v_scale_float", None)
+        if k_scale is not None and k_scale != 1.0:
+            key_cache = key_cache * k_scale
+        if v_scale is not None and v_scale != 1.0:
+            value_cache = value_cache * v_scale
+        return key_cache, value_cache
+
     def init_forward_metadata(self, forward_batch: ForwardBatch):
         """Initialize forward metadata hence all layers in the forward pass can reuse it."""
         if forward_batch.forward_mode.is_target_verify():
@@ -926,13 +954,14 @@ class MiniCPMSparseBackend(AttentionBackend):
             and layer.head_dim <= 256
             and self.fa_impl_ver != 4
         ):
-            if layer.k_scale is not None:
+            if not self._is_fp8_kv_cache() and layer.k_scale is not None:
                 descale_shape = (forward_batch.batch_size, layer.tp_k_head_num)
                 k_descale = layer.k_scale.expand(descale_shape)
                 v_descale = layer.v_scale.expand(descale_shape)
-            q = q.to(self.kv_cache_dtype)
-            q_rope = q_rope.to(self.kv_cache_dtype) if q_rope is not None else None
-            k_rope = k_rope.to(self.kv_cache_dtype) if k_rope is not None else None
+            if not self._is_fp8_kv_cache():
+                q = q.to(self.kv_cache_dtype)
+                q_rope = q_rope.to(self.kv_cache_dtype) if q_rope is not None else None
+                k_rope = k_rope.to(self.kv_cache_dtype) if k_rope is not None else None
         # MiniCPM backend does not support cross attention or encoder-only attention
         causal = True
 
@@ -1036,6 +1065,9 @@ class MiniCPMSparseBackend(AttentionBackend):
         )
         value_cache = value_cache.view(
             -1, self.page_size, layer.tp_v_head_num // 2, layer.head_dim
+        )
+        key_cache, value_cache = self._dequant_fp8_kv_cache_for_attention(
+            key_cache, value_cache, q.dtype, layer
         )
 
         # Prepare attention parameters
@@ -1146,13 +1178,14 @@ class MiniCPMSparseBackend(AttentionBackend):
         # has corresponding quantization method so that layer.k_scale is not None,
         # 3) layer.head_dim <= 256 since fa3 kernel require fp16 and bf16 data type in this case.
         if self.kv_cache_dtype_str != "auto" and layer.head_dim <= 256:
-            if layer.k_scale is not None:
+            if not self._is_fp8_kv_cache() and layer.k_scale is not None:
                 descale_shape = (forward_batch.batch_size, layer.tp_k_head_num)
                 k_descale = layer.k_scale.expand(descale_shape)
                 v_descale = layer.v_scale.expand(descale_shape)
-            q = q.to(self.kv_cache_dtype)
-            q_rope = q_rope.to(self.kv_cache_dtype) if q_rope is not None else None
-            k_rope = k_rope.to(self.kv_cache_dtype) if k_rope is not None else None
+            if not self._is_fp8_kv_cache():
+                q = q.to(self.kv_cache_dtype)
+                q_rope = q_rope.to(self.kv_cache_dtype) if q_rope is not None else None
+                k_rope = k_rope.to(self.kv_cache_dtype) if k_rope is not None else None
         # Do multi-head attention (without cross-attention or local attention support)
 
         key_cache, value_cache = forward_batch.token_to_kv_pool.get_kv_buffer(
@@ -1163,6 +1196,9 @@ class MiniCPMSparseBackend(AttentionBackend):
         )
         value_cache = value_cache.view(
             -1, self.page_size, layer.tp_v_head_num, layer.v_head_dim
+        )
+        key_cache, value_cache = self._dequant_fp8_kv_cache_for_attention(
+            key_cache, value_cache, q.dtype, layer
         )
 
         page_table = metadata.page_table

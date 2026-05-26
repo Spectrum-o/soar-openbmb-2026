@@ -177,6 +177,7 @@ class FlashInferKernel(AttentionKernel):
 
         # KV cache attributes
         self.kv_cache_dtype = model_runner.kv_cache_dtype
+        self.model_dtype = model_runner.dtype
         self.data_type = self.kv_cache_dtype
 
         # Model config attributes
@@ -185,8 +186,12 @@ class FlashInferKernel(AttentionKernel):
             get_tensor_model_parallel_world_size()
         )
         self.head_dim = model_runner.model_config.head_dim
-        # Query data type (same as KV cache dtype, but flashinfer uses separate parameters)
-        self.q_data_type = self.kv_cache_dtype
+        # FlashInfer FA2 rejects fp8 queries. KV-only fp8 is supported via
+        # k_scale/v_scale, so keep query planning at model dtype.
+        if self.kv_cache_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+            self.q_data_type = self.model_dtype
+        else:
+            self.q_data_type = self.kv_cache_dtype
 
         # Create workspace buffers for flashinfer
         workspace_size = envs.SGLANG_FLASHINFER_WORKSPACE_SIZE.get()
@@ -321,6 +326,8 @@ class FlashInferKernel(AttentionKernel):
         """Perform attention computation using flashinfer."""
         # Determine if this is prefill or decode based on max_seqlen_q
         is_prefill = params.max_seqlen_q > 1
+        q_data_type = params.q.dtype
+        kv_data_type = params.k_cache.dtype
 
         # CUDA graph mode: use the pre-configured wrapper from params
         if params.decode_wrapper is not None and not is_prefill:
@@ -436,8 +443,8 @@ class FlashInferKernel(AttentionKernel):
                         self.num_kv_heads,
                         self.head_dim,
                         self.page_size,
-                        q_data_type=self.q_data_type,
-                        kv_data_type=self.data_type,
+                        q_data_type=q_data_type,
+                        kv_data_type=kv_data_type,
                         non_blocking=True,
                         causal=params.causal,
                     )
@@ -452,14 +459,20 @@ class FlashInferKernel(AttentionKernel):
                         self.num_kv_heads,
                         self.head_dim,
                         self.page_size,
-                        q_data_type=self.q_data_type,
-                        kv_data_type=self.data_type,
+                        q_data_type=q_data_type,
+                        kv_data_type=kv_data_type,
                         non_blocking=True,
                     )
 
         # Perform attention
         q_data = params.q
         k_data = (params.k_cache, params.v_cache)
+        scale_kwargs = {}
+        if kv_data_type in (torch.float8_e4m3fn, torch.float8_e5m2):
+            if getattr(layer, "k_scale_float", None) is not None:
+                scale_kwargs["k_scale"] = layer.k_scale_float
+            if getattr(layer, "v_scale_float", None) is not None:
+                scale_kwargs["v_scale"] = layer.v_scale_float
 
         if is_prefill:
             # Prefill mode: use prefill wrapper
@@ -473,6 +486,7 @@ class FlashInferKernel(AttentionKernel):
                     params.window_size[0] if params.window_size[0] != -1 else -1
                 ),
                 logits_soft_cap=params.softcap if params.softcap > 0 else None,
+                **scale_kwargs,
             )
         else:
             # Decode mode: use decode wrapper
@@ -481,6 +495,7 @@ class FlashInferKernel(AttentionKernel):
                 k_data,
                 sm_scale=params.softmax_scale,
                 logits_soft_cap=params.softcap if params.softcap > 0 else None,
+                **scale_kwargs,
             )
 
         return o
