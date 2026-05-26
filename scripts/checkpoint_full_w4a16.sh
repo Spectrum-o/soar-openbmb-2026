@@ -10,7 +10,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
-REMOTE="${REMOTE:-origin}"
+REMOTE="${REMOTE:-github-submit}"
 BRANCH="${BRANCH:-exp/full-w4a16}"
 MESSAGE="${MESSAGE:-checkpoint full w4a16 accuracy pass}"
 RUN_CHECKS="${RUN_CHECKS:-1}"

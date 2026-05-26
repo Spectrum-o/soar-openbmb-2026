@@ -241,6 +241,7 @@ class TestFullW4A16Variant(unittest.TestCase):
     def test_checkpoint_script_pushes_scoped_full_checkpoint(self):
         self.assertTrue(CHECKPOINT_SCRIPT.exists())
         self.assertTrue(CHECKPOINT_SCRIPT.stat().st_mode & 0o111)
+        self.assertIn('REMOTE="${REMOTE:-github-submit}"', self.checkpoint_script_src)
         self.assertIn('BRANCH="${BRANCH:-exp/full-w4a16}"', self.checkpoint_script_src)
         self.assertIn('"HEAD:refs/heads/${BRANCH}"', self.checkpoint_script_src)
         self.assertIn("git add -A -- submission_gptqmodel_full_w4a16", self.checkpoint_script_src)
