@@ -1023,6 +1023,61 @@ class Req:
 
         return False
 
+    def _check_degenerate_repetition_finish(self):
+        if not envs.SGLANG_ENABLE_DEGENERATE_STOP.get():
+            return False
+
+        if self.tokenizer is None:
+            return False
+
+        min_tokens = envs.SGLANG_DEGENERATE_STOP_MIN_TOKENS.get()
+        if len(self.output_ids) < min_tokens:
+            return False
+
+        check_interval = max(1, envs.SGLANG_DEGENERATE_STOP_CHECK_INTERVAL.get())
+        if len(self.output_ids) % check_interval != 0:
+            return False
+
+        repeat_count = max(2, envs.SGLANG_DEGENERATE_STOP_REPEAT_COUNT.get())
+        tail_tokens = max(
+            repeat_count * 16,
+            envs.SGLANG_DEGENERATE_STOP_TAIL_TOKENS.get(),
+        )
+        tail_str = self.tokenizer.decode(self.output_ids[-tail_tokens:])
+        if not tail_str:
+            return False
+
+        # Detect only complete sentence/line chunks repeated back-to-back. This is
+        # intentionally conservative: it avoids task-specific parsing and avoids
+        # stopping normal long reasoning that merely reuses local token patterns.
+        chunks = []
+        for match in re.finditer(r"[^\n.!?]{8,220}(?:[.!?]|\n+)", tail_str):
+            chunk = " ".join(match.group(0).lower().split())
+            if len(chunk) >= 20:
+                chunks.append(chunk)
+
+        if len(chunks) < repeat_count:
+            return False
+
+        if len(set(chunks[-repeat_count:])) == 1:
+            self.finished_reason = FINISH_MATCHED_STR(
+                matched="degenerate repetition"
+            )
+            self.finished_len = len(self.output_ids)
+            return True
+
+        if (
+            len(chunks) >= repeat_count * 2
+            and chunks[-repeat_count:] == chunks[-2 * repeat_count : -repeat_count]
+        ):
+            self.finished_reason = FINISH_MATCHED_STR(
+                matched="degenerate repetition"
+            )
+            self.finished_len = len(self.output_ids)
+            return True
+
+        return False
+
     def _check_vocab_boundary_finish(self, new_accepted_tokens: List[int] = None):
         for i, token_id in enumerate(new_accepted_tokens):
             if token_id > self.vocab_size or token_id < 0:
@@ -1069,6 +1124,9 @@ class Req:
             return
 
         if self._check_str_based_finish():
+            return
+
+        if self._check_degenerate_repetition_finish():
             return
 
     def reset_for_retract(self):

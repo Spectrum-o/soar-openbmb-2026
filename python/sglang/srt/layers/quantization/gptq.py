@@ -29,6 +29,7 @@ from sglang.srt.layers.quantization.base_config import (
     QuantizationConfig,
     QuantizeMethodBase,
 )
+from sglang.srt.layers.quantization.kv_cache import BaseKVCacheMethod
 from sglang.srt.layers.quantization.marlin_utils import (
     apply_gptq_marlin_linear,
     check_marlin_supported,
@@ -206,8 +207,11 @@ class GPTQConfig(QuantizationConfig):
     ) -> Optional[LinearMethodBase]:
         # Delay the import to avoid circular dependency
         from sglang.srt.layers.moe.fused_moe_triton import FusedMoE
+        from sglang.srt.layers.radix_attention import RadixAttention
 
-        if isinstance(layer, FusedMoE):
+        if isinstance(layer, RadixAttention):
+            return BaseKVCacheMethod(self)
+        elif isinstance(layer, FusedMoE):
             raise TypeError("GPTQ Method does not support MoE, please use gptq_marlin")
         else:
             return get_linear_quant_method(
@@ -367,16 +371,11 @@ class GPTQMarlinConfig(QuantizationConfig):
         # Delay the import to avoid circular dependency
         from sglang.srt.layers.moe.fused_moe_triton import FusedMoE
         from sglang.srt.layers.radix_attention import RadixAttention
-        from sglang.srt.layers.quantization.kv_cache import BaseKVCacheMethod
 
-        if isinstance(layer, FusedMoE):
-            return GPTQMarlinMoEMethod(self)
         if isinstance(layer, RadixAttention):
-            # FP8 KV cache support for gptq_marlin (Path D from notes/fp8-kv-cache-investigation)
-            # Mirrors fp8.py:185-186 — attach BaseKVCacheMethod so k_scale/v_scale
-            # parameters get created on RadixAttention. With no fp8 scales in the
-            # checkpoint, process_weights_after_loading defaults them to 1.0.
             return BaseKVCacheMethod(self)
+        elif isinstance(layer, FusedMoE):
+            return GPTQMarlinMoEMethod(self)
         return get_linear_quant_method(self, layer, prefix, GPTQMarlinLinearMethod)
 
     @classmethod

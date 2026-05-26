@@ -617,8 +617,13 @@ class TRTLLMHAAttnBackend(FlashInferAttnBackend):
             if getattr(layer, "k_scale_float", None) is not None
             else 1.0
         )
+        v_scale = (
+            layer.v_scale_float
+            if getattr(layer, "v_scale_float", None) is not None
+            else 1.0
+        )
         bmm1_scale = q_scale * k_scale * layer.scaling
-        bmm2_scale = 1.0
+        bmm2_scale = v_scale
         # sink: additional value per head in the denominator of the softmax.
         attention_sink = kwargs.get("sinks", None)
 
@@ -695,8 +700,13 @@ class TRTLLMHAAttnBackend(FlashInferAttnBackend):
             if getattr(layer, "k_scale_float", None) is not None
             else 1.0
         )
+        v_scale = (
+            layer.v_scale_float
+            if getattr(layer, "v_scale_float", None) is not None
+            else 1.0
+        )
         bmm1_scale = q_scale * k_scale * layer.scaling
-        bmm2_scale = 1.0
+        bmm2_scale = v_scale
 
         if forward_batch.forward_mode.is_target_verify():
             o = flashinfer.decode.trtllm_batch_decode_with_kv_cache(

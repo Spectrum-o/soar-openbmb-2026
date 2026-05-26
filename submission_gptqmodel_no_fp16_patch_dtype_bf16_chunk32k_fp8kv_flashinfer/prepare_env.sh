@@ -345,9 +345,11 @@ export GPTQMODEL_MARLIN_USE_FP32="${GPTQMODEL_MARLIN_USE_FP32:-1}"
 # ----------------------------------------------------------------------
 # FP8 KV CACHE — PATH D PATCH (per SOAR official toolkit guidance)
 # ----------------------------------------------------------------------
-# Official recommendation: "路径一：量化加速 — GPTQ W4A16 + Marlin Kernel + FP8 KV Cache"
-# Specifies: --kv-cache-dtype fp8_e5m2 (NOT fp8_e4m3 — e5m2 has 5 exp bits
-# giving ±57344 range, safer for SALA's scale_emb=12 KV magnitudes).
+# Official recommendation: "路径一：量化加速 — GPTQ W4A16 + Marlin Kernel + FP8 KV Cache".
+# Current server-verified route (2026-05-26, origin/quant/fp8-kv-cache
+# 4af118156) uses --kv-cache-dtype fp8_e4m3 plus explicit CUDA graph batch
+# sizes. Earlier notes that treated fp8_e5m2 as mandatory are superseded by
+# the live fp8kv cudagraph run.
 #
 # Why we need a patch: SGLang's current GPTQMarlinConfig.get_quant_method
 # only handles LinearBase / FusedMoE, not RadixAttention. So
@@ -442,17 +444,27 @@ if [ -d "${HOME}/.cache/flashinfer" ]; then
 fi
 echo "[prepare_env] ENABLE_SM120=${ENABLE_SM120} FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST}"
 
+# Runtime-level guard against obvious degenerate repetition. Defaults in
+# SGLang source stay off; this submission opts in explicitly. This does not
+# parse tasks or answers, and only stops repeated sentence/line chunks after a
+# long generated tail.
+export SGLANG_ENABLE_DEGENERATE_STOP="${SGLANG_ENABLE_DEGENERATE_STOP:-1}"
+export SGLANG_DEGENERATE_STOP_MIN_TOKENS="${SGLANG_DEGENERATE_STOP_MIN_TOKENS:-3072}"
+export SGLANG_DEGENERATE_STOP_CHECK_INTERVAL="${SGLANG_DEGENERATE_STOP_CHECK_INTERVAL:-64}"
+export SGLANG_DEGENERATE_STOP_REPEAT_COUNT="${SGLANG_DEGENERATE_STOP_REPEAT_COUNT:-6}"
+export SGLANG_DEGENERATE_STOP_TAIL_TOKENS="${SGLANG_DEGENERATE_STOP_TAIL_TOKENS:-2048}"
+echo "[prepare_env] SGLANG_ENABLE_DEGENERATE_STOP=${SGLANG_ENABLE_DEGENERATE_STOP}"
+
 # SGLang server args. FP8 KV is enabled.
-# Path X overlay keeps Q in bf16 for FlashInfer while KV pool storage stays FP8.
+# Path Y source keeps Q planning at bf16/model dtype for FlashInfer while KV
+# pool storage stays FP8.
 #
 # CHUNKED-PREFILL: kept at 32768 to match the current bf16 chunk32k baseline.
 # Larger chunk settings can be tested separately; this package keeps the FP8 KV
 # experiment scoped to cache storage and attention backend changes.
-# MEM-FRACTION EXPLICIT (2026-05-23 added):
-# Setting 0.80 explicitly to match 1849's verified-safe config on 84GB platform.
-# W4A16 model (5GB) + 0.80 × 84 KV (67GB) + 0.7GB buffer (8K chunked-prefill)
-# = 72.7GB ≤ 84GB ✓ (11GB headroom). Same budget as 1849 which ran successfully
-# on platform (acc_ori=46.89), so OOM risk is essentially zero.
+# MEM-FRACTION EXPLICIT:
+# Current live server and this package use 0.70, leaving more room for
+# chunk32k prefill and CUDA graph capture on the 84GB platform.
 #
 # DTYPE BFLOAT16 (v5j_dtype_bf16 variant, NOT v5j):
 # v5j tests removing only the sed-patch, keeping --dtype float16.
@@ -460,7 +472,7 @@ echo "[prepare_env] ENABLE_SM120=${ENABLE_SM120} FLASHINFER_CUDA_ARCH_LIST=${FLA
 # Marlin GEMM internally still outputs fp16; SGLang must cast that to bf16
 # for the sparse-backend boundary. If v5j gives partial result (50-70 acc),
 # this tests whether explicit --dtype bfloat16 fixes the remaining gap.
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e5m2 --dtype bfloat16"
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e4m3 --dtype bfloat16 --cuda-graph-bs 1 2 4 8 12 16 24 32"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"

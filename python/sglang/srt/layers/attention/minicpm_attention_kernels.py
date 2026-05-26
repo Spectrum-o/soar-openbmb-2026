@@ -136,22 +136,6 @@ class FlashAttentionKernel(AttentionKernel):
         if params.fa_impl_ver != 3:
             kwargs["ver"] = params.fa_impl_ver
 
-        # PATH Y DEBUG: log the dtype combo when fp8 KV is in play, so we can
-        # see whether the upstream dequant landed before this call. Only logs
-        # for layer_id=0 on first call to avoid spam.
-        if not getattr(self, "_logged_dtypes", False):
-            import os
-            if os.environ.get("PATHY_DEBUG", "0") == "1":
-                print(
-                    f"[PATHY_DEBUG] FA call: q.dtype={params.q.dtype} "
-                    f"k_cache.dtype={params.k_cache.dtype} v_cache.dtype={params.v_cache.dtype} "
-                    f"k_descale={'set' if params.k_descale is not None else 'None'} "
-                    f"v_descale={'set' if params.v_descale is not None else 'None'} "
-                    f"fa_impl_ver={params.fa_impl_ver}",
-                    flush=True,
-                )
-                self._logged_dtypes = True
-
         return self.flash_attn_func(
             q=params.q,
             k_cache=params.k_cache,
@@ -193,6 +177,7 @@ class FlashInferKernel(AttentionKernel):
 
         # KV cache attributes
         self.kv_cache_dtype = model_runner.kv_cache_dtype
+        self.model_dtype = model_runner.dtype
         self.data_type = self.kv_cache_dtype
 
         # Model config attributes
@@ -201,15 +186,12 @@ class FlashInferKernel(AttentionKernel):
             get_tensor_model_parallel_world_size()
         )
         self.head_dim = model_runner.model_config.head_dim
-        # Q dtype follows model dtype (not KV cache dtype). flashinfer's
-        # fp8_enabled gate is derived purely from dtype_q; if we leave this
-        # as self.kv_cache_dtype, then under --kv-cache-dtype fp8_* the
-        # cuda graph capture path (minicpm_backend.py:1656/1815) reads this
-        # attribute and triggers "fp8 tensor core is not supported in fa2
-        # backend" at flashinfer/jit/attention/modules.py:978. The runtime
-        # forward path already reads params.q.dtype locally, but capture
-        # path reads self.attention_kernel.q_data_type directly.
-        self.q_data_type = model_runner.dtype
+        # FlashInfer FA2 rejects fp8 queries. KV-only fp8 is supported via
+        # k_scale/v_scale, so keep query planning at model dtype.
+        if self.kv_cache_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+            self.q_data_type = self.model_dtype
+        else:
+            self.q_data_type = self.kv_cache_dtype
 
         # Create workspace buffers for flashinfer
         workspace_size = envs.SGLANG_FLASHINFER_WORKSPACE_SIZE.get()
@@ -486,10 +468,11 @@ class FlashInferKernel(AttentionKernel):
         q_data = params.q
         k_data = (params.k_cache, params.v_cache)
         scale_kwargs = {}
-        if getattr(layer, "k_scale_float", None) is not None:
-            scale_kwargs["k_scale"] = layer.k_scale_float
-        if getattr(layer, "v_scale_float", None) is not None:
-            scale_kwargs["v_scale"] = layer.v_scale_float
+        if kv_data_type in (torch.float8_e4m3fn, torch.float8_e5m2):
+            if getattr(layer, "k_scale_float", None) is not None:
+                scale_kwargs["k_scale"] = layer.k_scale_float
+            if getattr(layer, "v_scale_float", None) is not None:
+                scale_kwargs["v_scale"] = layer.v_scale_float
 
         if is_prefill:
             # Prefill mode: use prefill wrapper

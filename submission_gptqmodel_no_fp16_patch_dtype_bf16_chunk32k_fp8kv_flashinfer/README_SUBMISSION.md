@@ -1,8 +1,9 @@
-# v5j_dtype_bf16_chunk32k_fp8kv (v2) — official-toolkit-aligned FP8 KV
+# fp8kv cudagraph current — server-verified FP8 KV route
 
-> **2026-05-24 v2 redesign** after reading SOAR official toolkit guidance.
-> Previous v1 (using fp8_e4m3 + Path B minicpm_backend.py patch) was
-> wrong on multiple axes.
+> **2026-05-26 update**: this variant now mirrors the live server run from
+> `origin/quant/fp8-kv-cache` commit `4af118156`. The current runnable stack
+> uses `fp8_e4m3`, `minicpm_flashinfer`, bfloat16 model dtype, chunk32k prefill,
+> and explicit CUDA graph batch sizes.
 
 ## What the SOAR official actually says
 
@@ -14,7 +15,9 @@
 
 So:
 - **FP8 KV IS officially recommended** for SALA, not the previously-thought "incompatible"
-- **Must use `fp8_e5m2`** (5 exp bits, ±57344 range), NOT fp8_e4m3 (4 exp bits, ±448 range)
+- The live server route currently uses **`fp8_e4m3`**. Earlier local notes that
+  treated `fp8_e5m2` as mandatory are superseded by the 2026-05-26 fp8kv
+  cudagraph run.
 - **Lightning attention uses linear state** (not KV cache), so FP8 only affects dense attention layers — no special handling needed
 
 ## Why prior attempts failed
@@ -40,9 +43,9 @@ extend gptq_marlin's `get_quant_method` to also handle RadixAttention.
    - Added GPTQMARLIN_KV_PATCH block (runs patch after install)
    - Use `--attention-backend minicpm_flashinfer`. The `minicpm_flashattn` / FA3
      path still fails on Blackwell with `no kernel image`.
-   - Keep `--kv-cache-dtype fp8_e5m2` in SGLANG_SERVER_ARGS. KV pool storage
-     is FP8; the MiniCPM Path Y patch upcasts the read path to bf16 before
-     FlashInfer attention.
+   - Keep `--kv-cache-dtype fp8_e4m3` and `--cuda-graph-bs 1 2 4 8 12 16 24 32`
+     in SGLANG_SERVER_ARGS. KV pool storage is FP8; the MiniCPM Path Y patch
+     keeps FlashInfer query planning at bf16/model dtype.
 
 ## Why compressed_k dtype mismatch is NOT a concern
 
@@ -127,3 +130,26 @@ Per official guidance:
 - If it works, this beats every other variant we've prepared
 
 After smoke clears, this should be the next platform submission.
+
+## Latest Server Evidence
+
+Latest pulled fp8kv branch:
+
+- `origin/quant/fp8-kv-cache @ 4af118156`
+- server run snapshot:
+  `zyn_eval_runs/fp8kv_cg_e4m3_20260526_180812_snapshot_0060`
+- snapshot result: 60/60 completed, `ori_accuracy=81.83`,
+  `overall_accuracy=100`, `tps=147.12`
+
+Runtime settings mirrored here:
+
+```bash
+--attention-backend minicpm_flashinfer \
+--quantization gptq_marlin \
+--kv-cache-dtype fp8_e4m3 \
+--dtype bfloat16 \
+--chunked-prefill-size 32768 \
+--max-prefill-tokens 32768 \
+--mem-fraction-static 0.70 \
+--cuda-graph-bs 1 2 4 8 12 16 24 32
+```
