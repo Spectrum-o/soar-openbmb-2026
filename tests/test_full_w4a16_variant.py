@@ -496,8 +496,9 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("Top GPTQ loss modules", result.stdout)
         self.assertIn("layer= 1 module=mlp.down_proj", result.stdout)
-        self.assertIn("Mixed BF16 skip candidate", result.stdout)
-        self.assertIn("MIXED_SKIP_LAYERS=1,2", result.stdout)
+        self.assertIn("Narrow mixed BF16 skip candidate", result.stdout)
+        self.assertIn("MIXED_SKIP_LAYERS=1 MIXED_SKIP_MODULES=down", result.stdout)
+        self.assertIn("MIXED_SKIP_LAYERS=1,2 MIXED_SKIP_MODULES=all", result.stdout)
 
     def test_decision_helper_quant_only_does_not_require_eval_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -534,8 +535,8 @@ class TestFullW4A16Variant(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertIn("Top GPTQ loss modules", result.stdout)
-        self.assertIn("Mixed BF16 skip candidate", result.stdout)
-        self.assertIn("MIXED_SKIP_LAYERS=4", result.stdout)
+        self.assertIn("Narrow mixed BF16 skip candidate", result.stdout)
+        self.assertIn("MIXED_SKIP_LAYERS=4 MIXED_SKIP_MODULES=down", result.stdout)
 
     def test_decision_helper_reads_quant_log_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -571,7 +572,7 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("layer=31 module=mlp.down_proj", result.stdout)
         self.assertIn("layer=30 module=mlp.down_proj", result.stdout)
-        self.assertIn("MIXED_SKIP_LAYERS=30,31", result.stdout)
+        self.assertIn("MIXED_SKIP_LAYERS=30,31 MIXED_SKIP_MODULES=down", result.stdout)
 
     def test_prepare_env_uses_verified_bf16_runtime_stack(self):
         self.assertIn('TRANSFORMERS_PIN="${TRANSFORMERS_PIN:-4.57.1}"', self.prepare_env_src)

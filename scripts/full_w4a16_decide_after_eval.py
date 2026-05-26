@@ -211,6 +211,49 @@ def pick_sensitive_layers(
     return sorted(selected)
 
 
+def module_to_mixed_alias(module: str) -> str | None:
+    """Map quant-log module names to quantizer mixed-skip aliases."""
+    mapping = {
+        "mlp.down_proj": "down",
+        "mlp.up_proj": "up",
+        "mlp.gate_proj": "gate",
+        "self_attn.o_proj": "o",
+        "self_attn.q_proj": "q",
+        "self_attn.k_proj": "k",
+        "self_attn.v_proj": "v",
+    }
+    return mapping.get(module)
+
+
+def pick_narrow_mixed_candidate(
+    rows: list[QuantLossRow],
+    max_layers: int,
+) -> tuple[str, list[int]]:
+    """Pick a narrow mixed candidate from GPTQ loss rows.
+
+    Keep the candidate intentionally small: choose the module family with the
+    single largest loss, then keep only the highest-loss layers for that same
+    module alias. This avoids drifting into broad layer-wide BF16 fallback.
+    """
+    ranked = sorted(rows, key=lambda item: item.loss, reverse=True)
+    top_alias = next(
+        (module_to_mixed_alias(row.module) for row in ranked if module_to_mixed_alias(row.module)),
+        None,
+    )
+    if top_alias is None:
+        return "down", []
+
+    layers: list[int] = []
+    for row in ranked:
+        if module_to_mixed_alias(row.module) != top_alias:
+            continue
+        if row.layer not in layers:
+            layers.append(row.layer)
+        if len(layers) >= max_layers:
+            break
+    return top_alias, sorted(layers)
+
+
 def latest_quant_log(log_dir: Path, variant: str) -> Path | None:
     logs = sorted(
         log_dir.glob(f"sharded_quant_{variant}_*.log"),
@@ -225,6 +268,7 @@ def print_sensitive_layer_plan(
     *,
     top_modules: int,
     top_layers: int,
+    mixed_candidate_layers: int,
 ) -> None:
     if not rows:
         print("\nSensitive-layer plan: no GPTQ loss rows found yet")
@@ -238,17 +282,24 @@ def print_sensitive_layer_plan(
     for layer, mean_loss, count in aggregate_loss_by_layer(rows)[:top_layers]:
         print(f"  layer={layer:>2} mean_loss={mean_loss:.10f} modules={count}")
 
-    layers = pick_sensitive_layers(rows, top_layers)
+    alias, layers = pick_narrow_mixed_candidate(rows, mixed_candidate_layers)
     if not layers:
         return
     layer_spec = ",".join(str(layer) for layer in layers)
-    print("\nMixed BF16 skip candidate if full-g64 accuracy is still low:")
+    print("\nNarrow mixed BF16 skip candidate if full-g64 accuracy is still low:")
     print("```bash")
     print(
-        f"MIXED_SKIP_LAYERS={layer_spec} MIXED_SKIP_MODULES=all "
-        "GROUP_SIZE=64 bash scripts/run_full_w4a16_py310_local.sh"
+        f"MIXED_SKIP_LAYERS={layer_spec} MIXED_SKIP_MODULES={alias} "
+        "GROUP_SIZE=64 bash scripts/run_full_w4a16_skip30_31_down_quant_local.sh"
     )
     print("```")
+    broad_layers = pick_sensitive_layers(rows, top_layers)
+    if broad_layers and set(broad_layers) != set(layers):
+        broad_layer_spec = ",".join(str(layer) for layer in broad_layers)
+        print(
+            "Broader diagnostic only, not the first mixed candidate: "
+            f"MIXED_SKIP_LAYERS={broad_layer_spec} MIXED_SKIP_MODULES=all"
+        )
 
 
 def summarize_predictions(rows: list[dict]) -> str:
@@ -369,6 +420,16 @@ def main() -> int:
     parser.add_argument("--top-loss-modules", type=int, default=10)
     parser.add_argument("--top-loss-layers", type=int, default=4)
     parser.add_argument(
+        "--mixed-candidate-layers",
+        type=int,
+        default=2,
+        help=(
+            "Maximum layers to include in the first narrow mixed BF16 "
+            "candidate. Defaults to 2 so the next run keeps full-W4A16 as "
+            "the main behavior and only restores a tiny sensitive slice."
+        ),
+    )
+    parser.add_argument(
         "--pack-output",
         default="soar_gptqmodel_full_w4a16_platform_acc.tar.gz",
     )
@@ -389,6 +450,7 @@ def main() -> int:
             parse_quant_losses(quant_log),
             top_modules=args.top_loss_modules,
             top_layers=args.top_loss_layers,
+            mixed_candidate_layers=args.mixed_candidate_layers,
         )
         return 0
 
@@ -443,6 +505,7 @@ def main() -> int:
             parse_quant_losses(quant_log),
             top_modules=args.top_loss_modules,
             top_layers=args.top_loss_layers,
+            mixed_candidate_layers=args.mixed_candidate_layers,
         )
 
     print(
