@@ -1,0 +1,13 @@
+2026-05-27 00:22:17,026 - SGLANG_INFERENCE - INFO - mid truncation: max_out_len=65536, max_seq_len=262144, max_prompt_len=128000
+2026-05-27 00:22:18,895 - SGLANG_INFERENCE - INFO - SGLang sampling kwargs: {'temperature': 0.0, 'max_tokens': 65536, 'stop': ['</s>', '<|im_end|>']}
+Auto-detected model name: /root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized
+API Base: http://127.0.0.1:31111
+Model Name: /root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized
+Model Path: /root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized
+Data Path: /root/autodl-tmp/zyn/sglang_full_w4a16/scripts/logs/shards_submission_gptqmodel_full_w4a16_1779810852/shard_003_060_089.jsonl
+Saving results to outputs/20260527_002214
+Testing with 30 samples.
+Initializing model client...
+Generating responses...
+  Sending 30 requests to SGLang API (concurrency=32)...
+Generating:   0%|          | 0/30 [00:00<?, ?it/s]Generating:   3%|▎         | 1/30 [03:42<1:47:18, 222.02s/it]Generating:  10%|█         | 3/30 [03:42<25:56, 57.64s/it]   Generating:  17%|█▋        | 5/30 [03:42<11:43, 28.15s/it]Generating:  20%|██        | 6/30 [03:42<08:15, 20.63s/it]Generating:  23%|██▎       | 7/30 [03:44<05:51, 15.27s/it]Generating:  27%|██▋       | 8/30 [03:44<04:04, 11.11s/it]Generating:  30%|███       | 9/30 [03:45<02:49,  8.07s/it]Generating:  33%|███▎      | 10/30 [03:45<01:54,  5.75s/it]Generating:  37%|███▋      | 11/30 [03:46<01:23,  4.37s/it]Generating:  40%|████      | 12/30 [03:48<01:03,  3.52s/it]Generating:  50%|█████     | 15/30 [03:48<00:24,  1.60s/it]Generating:  53%|█████▎    | 16/30 [03:48<00:19,  1.38s/it]Generating:  57%|█████▋    | 17/30 [03:49<00:14,  1.09s/it]Generating:  60%|██████    | 18/30 [03:49<00:12,  1.02s/it]Generating:  63%|██████▎   | 19/30 [03:50<00:09,  1.20it/s]Generating:  67%|██████▋   | 20/30 [03:51<00:08,  1.19it/s]Generating:  70%|███████   | 21/30 [03:52<00:09,  1.10s/it]Generating:  73%|███████▎  | 22/30 [03:53<00:08,  1.05s/it]
