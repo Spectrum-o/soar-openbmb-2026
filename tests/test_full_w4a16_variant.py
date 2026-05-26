@@ -536,6 +536,42 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn("Mixed BF16 skip candidate", result.stdout)
         self.assertIn("MIXED_SKIP_LAYERS=4", result.stdout)
 
+    def test_decision_helper_reads_quant_log_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            quant_log = Path(tmp) / "quant_log.csv"
+            quant_log.write_text(
+                "\n".join(
+                    [
+                        "layer,module,loss,samples,damp,time",
+                        "29,self_attn.o_proj,0.0000545588,2301973,0.05000,6.887",
+                        "30,mlp.down_proj,0.0002090041,2301973,0.05000,4.338",
+                        "31,mlp.down_proj,0.0007653785,2301973,0.05000,4.947",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(DECIDE_SCRIPT),
+                    "--quant-log",
+                    str(quant_log),
+                    "--quant-only",
+                    "--top-loss-layers",
+                    "2",
+                ],
+                cwd=str(REPO),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("layer=31 module=mlp.down_proj", result.stdout)
+        self.assertIn("layer=30 module=mlp.down_proj", result.stdout)
+        self.assertIn("MIXED_SKIP_LAYERS=30,31", result.stdout)
+
     def test_prepare_env_uses_verified_bf16_runtime_stack(self):
         self.assertIn('TRANSFORMERS_PIN="${TRANSFORMERS_PIN:-4.57.1}"', self.prepare_env_src)
         self.assertIn("import smoke test: transformers", self.prepare_env_src)

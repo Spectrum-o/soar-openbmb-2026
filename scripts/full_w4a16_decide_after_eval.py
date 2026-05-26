@@ -156,8 +156,24 @@ def load_predictions(path: Path) -> list[dict]:
 def parse_quant_losses(log_path: Path) -> list[QuantLossRow]:
     if not log_path.is_file():
         return []
+    text = log_path.read_text(errors="replace")
+    first_line = text.splitlines()[0] if text.splitlines() else ""
+    if log_path.suffix == ".csv" or first_line.startswith("layer,module,loss"):
+        rows: list[QuantLossRow] = []
+        for record in csv.DictReader(text.splitlines()):
+            try:
+                layer = int(str(record.get("layer", "")).strip())
+                module = str(record.get("module", "")).strip()
+                loss = float(str(record.get("loss", "")).strip())
+            except (TypeError, ValueError):
+                continue
+            if module:
+                rows.append(QuantLossRow(layer=layer, module=module, loss=loss))
+        if rows:
+            return rows
+
     rows: list[QuantLossRow] = []
-    for raw_line in log_path.read_text(errors="replace").splitlines():
+    for raw_line in text.splitlines():
         line = ANSI_RE.sub("", raw_line)
         match = GPTQ_LOSS_RE.search(line)
         if not match:
