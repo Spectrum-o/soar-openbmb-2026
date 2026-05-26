@@ -1,0 +1,121 @@
+# MLP-only artifact and long-tail notes, 2026-05-27
+
+## Current direction
+
+The active direction is still:
+
+- MLP-only W4A16
+- `gptq_marlin`
+- `dtype=bfloat16`
+- KV cache `fp8_e4m3`
+- `minicpm_flashinfer`
+- CUDA graph enabled with batch sizes `1 2 4 8 12 16 24 32`
+
+The current strongest local baseline remains:
+
+`/autodl-fs/data/zyn/models/submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe-quantized`
+
+with full 150 public-set accuracy `83.13` in:
+
+`/root/autodl-tmp/zyn/eval_runs/fp8kv_cg_e4m3_20260526_180812`
+
+`v25_multi_adaptive` was only checked as a candidate MLP-only artifact because
+its quantization log looked lower-loss. It is not a direction change.
+
+## v25_multi_adaptive first-30 result
+
+Candidate:
+
+`/autodl-fs/data/zyn/models/submission_gptqmodel_calib_w4a16_v25_calib_multi_adaptive-quantized`
+
+Serving config matched the baseline except for the model artifact:
+
+```bash
+MODEL_PATH=/autodl-fs/data/zyn/models/submission_gptqmodel_calib_w4a16_v25_calib_multi_adaptive-quantized \
+KV_DTYPE=fp8_e4m3 \
+PORT=31111 \
+MAX_RUNNING_REQUESTS=32 \
+CUDA_GRAPH_BS="1 2 4 8 12 16 24 32" \
+bash run_sala.sh
+```
+
+The server loaded successfully and captured CUDA graph. The checkpoint load was
+slow from `/autodl-fs`, but it was not a CUDA graph failure.
+
+First-30 evaluation was stopped after 28 completed samples:
+
+- completed: `28 / 30`
+- missing long-tail indices: `[10, 21]`
+- completed score sum: `22.4`
+- completed accuracy: `80.0`
+- best possible first-30 accuracy if both missing samples were perfect:
+  `81.33`
+
+This is below the current baseline first-30 accuracy `85.67`, so the candidate
+is rejected and should not be expanded to 60 or 150 samples.
+
+Same-index comparison:
+
+```text
+safe_e4m3: n=30 acc=85.67 out=103782 avg_out=3459.4 max_out=65546
+  cwe: n=6 acc=95.0 wrong=[10, 15, 20] avg_out=11558.3
+  fwe: n=6 acc=100.0 wrong=[] avg_out=746.7
+  mcq: n=6 acc=66.67 wrong=[7, 27] avg_out=4441.8
+  niah: n=6 acc=100.0 wrong=[] avg_out=445.5
+  qa: n=6 acc=66.67 wrong=[19, 29] avg_out=104.7
+multi_adaptive: n=28 acc=80.0 out=35694 avg_out=1274.8 max_out=7374
+  cwe: n=5 acc=88.0 wrong=[0, 5, 15, 20, 25] avg_out=615.0
+  fwe: n=5 acc=100.0 wrong=[] avg_out=744.8
+  mcq: n=6 acc=66.67 wrong=[7, 27] avg_out=4307.5
+  niah: n=6 acc=100.0 wrong=[] avg_out=411.3
+  qa: n=6 acc=50.0 wrong=[14, 19, 29] avg_out=97.0
+```
+
+## Long-tail interpretation
+
+Long outputs mainly hurt runtime first. They do not automatically imply a wrong
+answer.
+
+Evidence from the full `safe_e4m3` 150-sample baseline:
+
+- `11` samples reached about `65546` output tokens.
+- Their combined score was `9.6 / 11`.
+- The `fwe` max-output samples all scored `1.0`.
+- Some `cwe` max-output samples still scored `0.8` or `0.9`.
+
+Max-output samples in the full baseline:
+
+```text
+cwe: indices [10, 50, 90, 110, 130, 135], average score 0.767
+fwe: indices [101, 96, 106, 141, 146], average score 1.0
+```
+
+However, long outputs are still a platform-risk issue because a few tail
+requests can dominate total wall time. The platform fp8kv submission running
+longer than the previous 2.5h runs is therefore more likely to be caused by
+tail requests decoding to `max_tokens` than by the server failing to start,
+assuming the platform has already reached the inferencing stage.
+
+Known local long-tail example from the baseline:
+
+```text
+index=10 task=cwe score=0.9 output_tokens=65546
+prediction tail repeatedly says: "I've re-checked the list."
+```
+
+This is not safe to fix with an arbitrary repetition stop rule unless that rule
+is explicitly accepted, because it can change benchmark behavior and may be
+considered an output heuristic rather than a quantization improvement.
+
+## Next action
+
+Do not continue `v25_multi_adaptive`.
+
+Reasonable next actions are:
+
+1. Keep `safe_e4m3` as the current best runnable candidate.
+2. Ask for or inspect the platform stage log. If it is in `INFERENCING`, expect
+   long-tail requests; if it is still in `PREPARING`, inspect package download
+   and setup time instead.
+3. Only test another MLP-only artifact if it can be screened on first-30 and
+   rejected early when its best possible score drops below `85.67`.
