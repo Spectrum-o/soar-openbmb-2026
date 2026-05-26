@@ -27,13 +27,6 @@ The script enables:
 It also prepends the venv `bin` directory to `PATH` so FlashInfer JIT can find
 `ninja`.
 
-The entrypoint enables a conservative, runtime-level degenerate repetition stop:
-
-- default runtime env is off unless the submission script opts in
-- no task recognition, answer parsing, or dataset-specific logic
-- only complete sentence/line chunks repeated back-to-back after 3072 generated
-  tokens are stopped
-
 ## Runtime Verified
 
 Live server launch path:
@@ -63,13 +56,11 @@ The live logs confirm:
 - `Using KV cache dtype: torch.float8_e4m3fn`
 - CUDA graph capture completed
 - decode is running with `cuda graph: True`
-- repeated-output smoke requests finish with `finish_reason=stop` instead of
-  exhausting `max_tokens`
 
 ## Known Accuracy Caveat
 
 The safe GPTQ model does not contain calibrated `k_scale` or `v_scale` tensors
 for FP8 KV. SGLang therefore defaults KV scales to `1.0`; this can still cause
-some quality loss. The current code fixes the plumbing and cudagraph path, and
-adds a conservative guard for obvious degenerate repetition, but further accuracy
-work may require real KV scale calibration.
+long CWE repetition loops. The current code fixes the plumbing and cudagraph
+path, but full accuracy is still being measured and may require real KV scale
+calibration.
