@@ -33,6 +33,7 @@ if [ "${RUN_CHECKS}" = "1" ]; then
     "${CHECK_PYTHON_BIN}" -m py_compile \
         submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py \
         tools/calib_set_preview.py \
+        tools/verify_full_w4a16_artifact.py \
         scripts/full_w4a16_decide_after_eval.py \
         tools/pack_submission.py \
         tools/hard_constraints_lint.py
@@ -72,6 +73,7 @@ git add \
     tests/test_hard_constraints_lint.py \
     tests/test_pack_submission_validate.py \
     tools/calib_set_preview.py \
+    tools/verify_full_w4a16_artifact.py \
     tools/hard_constraints_lint.py \
     tools/pack_submission.py
 
