@@ -25,6 +25,8 @@ MAX_SAMPLES="${MAX_SAMPLES:-150}"
 SHARD_SIZE="${SHARD_SIZE:-30}"
 CONCURRENCY="${CONCURRENCY:-32}"
 STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-240}"
+CHECKPOINT_AFTER_SHARD="${CHECKPOINT_AFTER_SHARD:-1}"
+CHECKPOINT_SCRIPT="${CHECKPOINT_SCRIPT:-${REPO_ROOT}/scripts/checkpoint_full_w4a16.sh}"
 FORCE_REQUANT=0
 SKIP_QUANT=0
 
@@ -56,6 +58,7 @@ while [ "$#" -gt 0 ]; do
         --concurrency)     CONCURRENCY="$2"; shift 2 ;;
         --port)            PORT="$2"; shift 2 ;;
         --startup-timeout) STARTUP_TIMEOUT="$2"; shift 2 ;;
+        --no-checkpoint)   CHECKPOINT_AFTER_SHARD=0; shift ;;
         --force-requant)   FORCE_REQUANT=1; shift ;;
         --skip-quant)      SKIP_QUANT=1; shift ;;
         -h|--help)         usage; exit 0 ;;
@@ -134,6 +137,7 @@ echo " eval data:     ${EVAL_DATA}"
 echo " max samples:   ${MAX_SAMPLES}"
 echo " shard size:    ${SHARD_SIZE}"
 echo " concurrency:   ${CONCURRENCY}"
+echo " checkpoint:    ${CHECKPOINT_AFTER_SHARD}"
 echo " sglang args:   ${SGLANG_SERVER_ARGS}"
 echo " shard csv:     ${RESULTS_CSV}"
 echo "=================================================="
@@ -349,6 +353,14 @@ PY
 
     echo "[shard ${SHARD_INDEX}] shard_acc=${SHARD_ACC} cumulative_acc=${CUM_ACC} cumulative_samples=${CUM_COUNT}"
     echo "$(date '+%F %T'),${VARIANT_NAME},${QUANT_OUT},${SHARD_INDEX},${SHARD_START},${SHARD_END},${SCORE_COUNT},${CUM_COUNT},${CONCURRENCY},${SHARD_ACC},${CUM_ACC},${SHARD_DURATION},${TOTAL_DURATION},${SERVER_LOG},${EVAL_LOG},${PRED_PATH}" >> "${RESULTS_CSV}"
+
+    if [ "${CHECKPOINT_AFTER_SHARD}" = "1" ] && [ -x "${CHECKPOINT_SCRIPT}" ]; then
+        echo "[shard ${SHARD_INDEX}] checkpointing partial results"
+        if ! RUN_CHECKS=0 MESSAGE="checkpoint full w4a16 shard ${SHARD_INDEX} cumulative ${CUM_ACC}" \
+                bash "${CHECKPOINT_SCRIPT}"; then
+            echo "[shard ${SHARD_INDEX}] WARNING: checkpoint failed; continuing eval" >&2
+        fi
+    fi
 done
 
 echo "=================================================="

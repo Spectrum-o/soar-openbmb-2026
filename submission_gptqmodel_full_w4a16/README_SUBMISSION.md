@@ -197,15 +197,22 @@ use drops below `IDLE_MEM_MIB` (default 2000 MiB) and the port is free, it
 launches:
 
 ```bash
-bash scripts/local_eval.sh \
+bash scripts/local_eval_sharded.sh \
   --variant submission_gptqmodel_full_w4a16 \
   --quant-out /root/autodl-fs/zyn/models/submission_gptqmodel_full_w4a16_platform_acc-quantized \
-  --num-samples 150 \
+  --max-samples 150 \
+  --shard-size 30 \
   --concurrency 32 \
   --force-requant
 ```
 
-Use the resulting 150-sample local eval before packing. If local `acc_ori` is
+The sharded eval appends one row to `scripts/eval_shards.csv` after every
+30-sample shard, prints shard and cumulative accuracy immediately, and runs
+`scripts/checkpoint_full_w4a16.sh` after each shard by default so partial CSV
+and logs are committed and pushed while the long run continues. Use
+`--no-checkpoint` only for local debugging.
+
+Use the resulting 150-sample cumulative local eval before packing. If local `acc_ori` is
 below the known full-g128 baseline (`78.27`), do not submit; move to the next
 single-variable acc knob documented above. If it lands between `78.27` and
 `80`, treat it as a slot-cost decision rather than an automatic submit. At
@@ -218,9 +225,11 @@ pack/next-experiment decision with:
 python3 scripts/full_w4a16_decide_after_eval.py
 ```
 
-This script is CPU-only. It reads `scripts/eval_results.csv`, locates the
-latest full predictions file from the eval log, runs per-task analysis, and
-prints either a `full_preflight.sh --pack` command or the next accuracy knob.
+This script is CPU-only. It reads `scripts/eval_results.csv` and
+`scripts/eval_shards.csv`, locates the latest full predictions file from the
+eval log or shard row, runs per-task analysis when possible, and prints either
+a `full_preflight.sh --pack` command, a partial-progress decision, or the next
+accuracy knob.
 
 ## Known Risk
 

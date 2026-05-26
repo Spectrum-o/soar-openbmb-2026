@@ -39,7 +39,12 @@ python3 submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py   --input /r
 - While FP8KV is still being debugged, prefer
   `bash scripts/run_full_w4a16_platform_acc_now.sh`; it starts only if GPU
   memory and the target port are already free and otherwise exits without
-  waiting.
+  waiting. The runner defaults to sharded local eval: 30 rows per shard, with
+  cumulative accuracy appended to `scripts/eval_shards.csv` after every shard.
+  `scripts/local_eval_sharded.sh` also runs `scripts/checkpoint_full_w4a16.sh`
+  after each shard by default, so partial logs and CSV rows are committed and
+  pushed while the long evaluation continues. Use `--no-checkpoint` only for
+  local debugging.
 - After the full local eval finishes, run
   `python3 scripts/full_w4a16_decide_after_eval.py` to summarize the latest
   result, inspect per-task failures, and choose either pack-for-platform or the
