@@ -56,7 +56,7 @@ python3 submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py   --input /r
   `python3 scripts/full_w4a16_decide_after_eval.py` to summarize the latest
   result, inspect per-task failures, and choose either pack-for-platform or the
   next single-variable accuracy knob.
-- Current narrow mixed-sensitive candidate:
+- Failed narrow mixed-sensitive candidate:
 
   ```bash
   bash scripts/run_full_w4a16_skip30_31_down_quant_local.sh
@@ -64,8 +64,10 @@ python3 submission_gptqmodel_full_w4a16/quantize_gptqmodel_w4a16.py   --input /r
 
   This sets `MIXED_SKIP_LAYERS=30,31` and `MIXED_SKIP_MODULES=down`, keeping
   only the two highest-loss `mlp.down_proj` modules in BF16 while the rest of
-  the full attention/MLP stack remains W4A16 g64. It must be re-quantized
-  because the artifact differs from the uniform full-W4A16 baseline.
+  the full attention/MLP stack remains W4A16 g64. It was tested on shard 1 and
+  regressed from uniform full-g64 `81.33` to `74.67`, while output tokens
+  increased from `235,361` to `297,743`. Do not continue this exact candidate;
+  see `experiments/FULL_W4A16_MIXED_SKIP30_31_DOWN_FAILURE.md`.
 
 ## Push Notes
 

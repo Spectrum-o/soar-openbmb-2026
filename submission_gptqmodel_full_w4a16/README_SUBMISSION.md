@@ -172,11 +172,13 @@ GROUP_SIZE=64 NUM_CALIB=150 CALIB_WINDOW_MODE=multi-adaptive MAX_CALIB_LEN=16384
 GPTQ_DESC_ACT=True GPTQ_STATIC_GROUPS=True GROUP_SIZE=64 NUM_CALIB=150 CALIB_WINDOW_MODE=multi-adaptive ...
 ```
 
-The narrow mixed candidate above keeps almost all attention/MLP projections in
-W4A16 and only leaves the two highest-loss `mlp.down_proj` modules (`layers
-30,31`) in BF16. It requires a new quantized artifact because the weight set
-and `quantization_config.dynamic` differ from the uniform full-W4A16 artifact.
-For local AutoDL reproduction use:
+The narrow mixed candidate above kept almost all attention/MLP projections in
+W4A16 and only left the two highest-loss `mlp.down_proj` modules (`layers
+30,31`) in BF16. It is a negative result: local shard 1 regressed from uniform
+full-g64 `81.33` to `74.67`, and output tokens increased from `235,361` to
+`297,743`. Do not submit or continue this exact candidate. The record is in
+`experiments/FULL_W4A16_MIXED_SKIP30_31_DOWN_FAILURE.md`; the reproduction
+command is kept only for audit:
 
 ```bash
 bash scripts/run_full_w4a16_skip30_31_down_quant_local.sh

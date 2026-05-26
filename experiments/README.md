@@ -15,6 +15,7 @@ These two files cover ~95% of operational scenarios. The rest is reference.
 
 | Doc | When to read |
 |---|---|
+| `FULL_W4A16_MIXED_SKIP30_31_DOWN_FAILURE.md` | Negative result for full-g64 mixed BF16 skip of layers 30/31 `mlp.down_proj`; read before trying more full-W4A16 sensitivity runs. |
 | `V24_PLAN.md` | Before/after submitting v24+. Decision tree by v23 outcome with concrete pack commands for each branch. |
 | `V23_PLATFORM_LOG_CHECKLIST.md` | When v23 (or any future GPTQModel) platform result comes back. 8 grep blocks attribute the result to a hypothesis. |
 | `AWQ_FEASIBILITY_ASSESSMENT.md` | Only if v23 platform acc < 10 AND H1/H2/H4 fixes don't move the needle. Then trigger the docs/awq_fallback_plan.md 4-step process. |
