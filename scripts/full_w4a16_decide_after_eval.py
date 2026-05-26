@@ -345,6 +345,11 @@ def main() -> int:
         default="",
         help="Optional GPTQ quantization log. Defaults to the latest sharded full-W4A16 quant log.",
     )
+    parser.add_argument(
+        "--quant-only",
+        action="store_true",
+        help="Print only the GPTQ-loss sensitive-layer plan, without requiring eval CSV rows.",
+    )
     parser.add_argument("--top-loss-modules", type=int, default=10)
     parser.add_argument("--top-loss-layers", type=int, default=4)
     parser.add_argument(
@@ -352,6 +357,24 @@ def main() -> int:
         default="soar_gptqmodel_full_w4a16_platform_acc.tar.gz",
     )
     args = parser.parse_args()
+
+    quant_log = Path(args.quant_log) if args.quant_log else latest_quant_log(
+        REPO / "scripts" / "logs",
+        args.variant,
+    )
+    if quant_log is not None and not quant_log.is_absolute():
+        quant_log = REPO / quant_log
+    if args.quant_only:
+        if quant_log is None:
+            print("No GPTQ quantization log found")
+            return 1
+        print(f"quant log: {quant_log}")
+        print_sensitive_layer_plan(
+            parse_quant_losses(quant_log),
+            top_modules=args.top_loss_modules,
+            top_layers=args.top_loss_layers,
+        )
+        return 0
 
     standard_result = load_latest_result(Path(args.csv), args.variant)
     sharded_result = load_latest_shard_result(Path(args.shards_csv), args.variant)
@@ -398,12 +421,6 @@ def main() -> int:
     else:
         print("\npredictions: not found from eval log; skipping per-task analysis")
 
-    quant_log = Path(args.quant_log) if args.quant_log else latest_quant_log(
-        REPO / "scripts" / "logs",
-        args.variant,
-    )
-    if quant_log is not None and not quant_log.is_absolute():
-        quant_log = REPO / quant_log
     if quant_log is not None:
         print(f"\nquant log: {quant_log}")
         print_sensitive_layer_plan(

@@ -470,6 +470,44 @@ class TestFullW4A16Variant(unittest.TestCase):
         self.assertIn("Mixed BF16 skip candidate", result.stdout)
         self.assertIn("MIXED_SKIP_LAYERS=1,2", result.stdout)
 
+    def test_decision_helper_quant_only_does_not_require_eval_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            quant_log = Path(tmp) / "quant.log"
+            quant_log.write_text(
+                "\n".join(
+                    [
+                        "| gptq | 4 | mlp.down_proj    | 16384, 4096 | bf16 | 0.0000190000 |",
+                        "| gptq | 7 | self_attn.o_proj | 4096, 4096 | bf16 | 0.0000140000 |",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(DECIDE_SCRIPT),
+                    "--csv",
+                    str(Path(tmp) / "missing_eval_results.csv"),
+                    "--shards-csv",
+                    str(Path(tmp) / "missing_eval_shards.csv"),
+                    "--quant-log",
+                    str(quant_log),
+                    "--quant-only",
+                    "--top-loss-layers",
+                    "1",
+                ],
+                cwd=str(REPO),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Top GPTQ loss modules", result.stdout)
+        self.assertIn("Mixed BF16 skip candidate", result.stdout)
+        self.assertIn("MIXED_SKIP_LAYERS=4", result.stdout)
+
     def test_prepare_env_uses_verified_bf16_runtime_stack(self):
         self.assertIn('TRANSFORMERS_PIN="${TRANSFORMERS_PIN:-4.57.1}"', self.prepare_env_src)
         self.assertIn("import smoke test: transformers", self.prepare_env_src)
