@@ -47,6 +47,9 @@ LOCAL_ACC_TARGET="${LOCAL_ACC_TARGET:-80}"
 STARTUP_TIMEOUT=240
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 export PYTHON_BIN
+LOCAL_NO_PROXY="127.0.0.1,localhost,::1"
+export NO_PROXY="${NO_PROXY:+${NO_PROXY},}${LOCAL_NO_PROXY}"
+export no_proxy="${no_proxy:+${no_proxy},}${LOCAL_NO_PROXY}"
 FORCE_REQUANT=0
 SKIP_QUANT=0
 NO_EVAL=0
@@ -264,7 +267,7 @@ while [ "${ELAPSED}" -lt "${STARTUP_TIMEOUT}" ]; do
         tail -40 "${SERVER_LOG}" >&2
         exit 1
     fi
-    if curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+    if curl --noproxy 127.0.0.1,localhost -m 2 -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
         echo "  ✓ server up after ${ELAPSED}s"
         break
     fi
