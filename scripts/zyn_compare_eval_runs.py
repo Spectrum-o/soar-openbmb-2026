@@ -54,6 +54,8 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "total_output_tokens": sum(output_tokens),
         "avg_output_tokens": round(mean(output_tokens), 1) if output_tokens else 0,
         "max_output_tokens": max(output_tokens) if output_tokens else 0,
+        "tail_ge_10k": sum(1 for x in output_tokens if x >= 10000),
+        "tail_ge_60k": sum(1 for x in output_tokens if x >= 60000),
         "tasks": tasks,
     }
 
@@ -97,7 +99,10 @@ def main() -> int:
         print(
             f"{name}: n={summary['count']} acc={summary['accuracy']} "
             f"out={summary['total_output_tokens']} "
-            f"avg_out={summary['avg_output_tokens']} max_out={summary['max_output_tokens']}"
+            f"avg_out={summary['avg_output_tokens']} "
+            f"max_out={summary['max_output_tokens']} "
+            f"tail10k={summary['tail_ge_10k']} "
+            f"tail60k={summary['tail_ge_60k']}"
         )
         for task, task_summary in summary["tasks"].items():
             print(
