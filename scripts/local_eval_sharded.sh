@@ -106,6 +106,7 @@ fi
 
 SGLANG_SERVER_ARGS="$(grep -E '^export SGLANG_SERVER_ARGS=' "${PREPARE_ENV}" \
     | sed -E 's/^export SGLANG_SERVER_ARGS="//; s/"$//')"
+SGLANG_SERVER_ARGS="${SGLANG_SERVER_ARGS} ${LOCAL_SGLANG_EXTRA_ARGS:-}"
 
 SED_PATCH_FILES=()
 if echo "${SGLANG_SERVER_ARGS}" | grep -q "gptq_marlin" \
@@ -147,6 +148,9 @@ echo " concurrency:   ${CONCURRENCY}"
 echo " checkpoint:    ${CHECKPOINT_AFTER_SHARD}"
 echo " python bin:    ${PYTHON_BIN}"
 echo " sglang args:   ${SGLANG_SERVER_ARGS}"
+if [ -n "${LOCAL_SGLANG_EXTRA_ARGS:-}" ]; then
+    echo " local extras:  ${LOCAL_SGLANG_EXTRA_ARGS}"
+fi
 echo " shard csv:     ${RESULTS_CSV}"
 echo "=================================================="
 
