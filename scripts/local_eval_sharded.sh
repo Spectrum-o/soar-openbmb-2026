@@ -11,6 +11,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_ROOT}"
 RESULTS_CSV="${REPO_ROOT}/scripts/eval_shards.csv"
 CSV_HEADER="timestamp,variant,quant_model,shard_index,shard_start,shard_end,shard_samples,cumulative_samples,concurrency,shard_acc,cumulative_acc,shard_duration_s,total_duration_s,server_log,eval_log,predictions_path"
 

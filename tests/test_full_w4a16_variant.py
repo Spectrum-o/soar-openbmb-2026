@@ -203,6 +203,7 @@ class TestFullW4A16Variant(unittest.TestCase):
     def test_sharded_eval_writes_incremental_results(self):
         self.assertTrue(SHARDED_SCRIPT.exists())
         self.assertTrue(SHARDED_SCRIPT.stat().st_mode & 0o111)
+        self.assertIn('cd "${REPO_ROOT}"', self.sharded_script_src)
         self.assertIn('RESULTS_CSV="${REPO_ROOT}/scripts/eval_shards.csv"', self.sharded_script_src)
         self.assertIn("cumulative_acc", self.sharded_script_src)
         self.assertIn('CHECKPOINT_AFTER_SHARD="${CHECKPOINT_AFTER_SHARD:-1}"', self.sharded_script_src)
