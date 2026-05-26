@@ -24,7 +24,8 @@ Usage:
         --input /root/autodl-fs/zyn/calib_sets/calib_long.jsonl \\
         --tokenizer /root/autodl-fs/models/OpenBMB/MiniCPM-SALA \\
         --max-len 8192 \\
-        --window-mode multi-adaptive
+        --window-mode multi-adaptive \\
+        --max-windows 4
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ from pathlib import Path
 # Single source of truth: change both files together.
 # ---------------------------------------------------------------------------
 def slice_windows_for_prompt(
-    n_tokens: int, max_len: int, rng: random.Random
+    n_tokens: int, max_len: int, rng: random.Random, max_windows: int = 4
 ) -> list[tuple[int, int]]:
     """Return (start, end) windows under the multi-adaptive policy.
 
@@ -50,34 +51,45 @@ def slice_windows_for_prompt(
         n <= L:             [(0, n)]
         L < n <= 4L:        [(n-L, n)]                       — tail only
         4L < n <= 12.5L:    tail + centered mid              — 2 windows
-        n > 12.5L:          tail + mid + 1 random window     — 3 windows
+        n > 12.5L:          tail + mid + random windows      — <= max_windows
 
-    The random window is drawn from regions that do NOT overlap the tail
-    or the centered mid (the naive "anywhere in [L, n-2L]" would let it
-    collide with the centered mid; we exclude that span explicitly).
+    Random windows are drawn from regions that do NOT overlap existing windows.
+    The pure prompt head is deliberately skipped.
     """
     L = max_len
+    max_windows = max(1, int(max_windows))
     if n_tokens <= L:
         return [(0, n_tokens)]
     if n_tokens <= 4 * L:
         return [(n_tokens - L, n_tokens)]
     windows = [(n_tokens - L, n_tokens)]
+    if len(windows) >= max_windows:
+        return windows
     mid_start = (n_tokens - L) // 2
     mid_end = mid_start + L
     windows.append((mid_start, mid_end))
-    if n_tokens > int(12.5 * L):
-        # Random window placed in a region disjoint from tail and centered mid.
-        #   region A (before mid): start in [L, mid_start - L]
-        #   region B (after mid):  start in [mid_end, (n - L) - L]
-        candidates: list[tuple[int, int]] = []
-        if mid_start - L >= L:
-            candidates.append((L, mid_start - L))
-        if (n_tokens - 2 * L) >= mid_end:
-            candidates.append((mid_end, n_tokens - 2 * L))
-        if candidates:
+    if n_tokens > int(12.5 * L) and len(windows) < max_windows:
+        occupied = sorted(windows)
+        attempts = 0
+        while len(windows) < max_windows and attempts < max_windows * 8:
+            attempts += 1
+            candidates: list[tuple[int, int]] = []
+            cursor = L
+            for occ_start, occ_end in occupied:
+                hi = occ_start - L
+                if hi >= cursor:
+                    candidates.append((cursor, hi))
+                cursor = max(cursor, occ_end)
+            hi = n_tokens - 2 * L
+            if hi >= cursor:
+                candidates.append((cursor, hi))
+            if not candidates:
+                break
             lo, hi = rng.choice(candidates)
             start = rng.randint(lo, hi)
-            windows.append((start, start + L))
+            new_window = (start, start + L)
+            windows.append(new_window)
+            occupied = sorted(occupied + [new_window])
     return windows
 
 
@@ -169,6 +181,7 @@ def main() -> int:
         choices=["tail", "multi-adaptive"],
         default="multi-adaptive",
     )
+    ap.add_argument("--max-windows", type=int, default=4)
     ap.add_argument(
         "--disable-chat-template",
         action="store_true",
@@ -195,7 +208,8 @@ def main() -> int:
         return 2
 
     print(f"[preview] tokenizer={args.tokenizer}  max_len={args.max_len}  "
-          f"mode={args.window_mode}  chat_template_off={args.disable_chat_template}",
+          f"mode={args.window_mode}  max_windows={args.max_windows}  "
+          f"chat_template_off={args.disable_chat_template}",
           file=sys.stderr)
     tk = Tokenizer(args.tokenizer)
 
@@ -218,7 +232,9 @@ def main() -> int:
         if args.window_mode == "tail":
             slices = [(max(0, n - args.max_len), n)]
         else:
-            slices = slice_windows_for_prompt(n, args.max_len, rng)
+            slices = slice_windows_for_prompt(
+                n, args.max_len, rng, args.max_windows
+            )
         total_windows += len(slices)
 
         # Bucket label for stats

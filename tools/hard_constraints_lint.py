@@ -229,15 +229,24 @@ def _check_flash_attn_installed(variant_dir: Path, mode: Mode) -> Result:
     has_install_call = (
         "flash_attn" in env or "flash-attn" in env
     )
-    has_bundled_wheel = any(
-        p.name.startswith("flash_attn-") and p.suffix == ".whl"
-        for p in variant_dir.glob("*.whl")
-    )
-    # Also check symlinks
-    has_bundled_wheel = has_bundled_wheel or any(
-        p.is_symlink() and "flash_attn" in p.name
-        for p in variant_dir.iterdir() if p.is_symlink()
-    )
+    flash_wheels = [
+        p for p in variant_dir.glob("*.whl")
+        if p.name.startswith("flash_attn-") and p.suffix == ".whl"
+    ]
+    broken_flash_wheels = [
+        p for p in flash_wheels
+        if p.is_symlink() and not p.exists()
+    ]
+    has_bundled_wheel = any(p.exists() for p in flash_wheels)
+    if broken_flash_wheels:
+        return Result(
+            "C_flash_attn",
+            "flash_attn installed or bundled",
+            Status.FAIL,
+            "flash_attn wheel symlink is broken: "
+            + ", ".join(f"{p.name}->{p.readlink()}" for p in broken_flash_wheels),
+            "SUBMISSIONS.md rows 40-42",
+        )
     if mode == Mode.BF16_SYMLINK and not has_install_call and not has_bundled_wheel:
         # BF16 symlink variants may not need flash_attn install if base env has it
         # — but SALA hard-asserts flash_attention_2. Warn, don't fail.

@@ -80,20 +80,33 @@ class TestSliceWindows(unittest.TestCase):
         self.assertEqual(ws[1], (mid_start, mid_start + self.L))
 
     def test_super_long(self):
-        """N > 12.5L: tail + mid + random."""
+        """N > 12.5L: tail + mid + random windows up to max_windows."""
         rng = random.Random(42)
         n = 20 * self.L
         ws = calib_set_preview.slice_windows_for_prompt(n, self.L, rng)
-        self.assertEqual(len(ws), 3)
+        self.assertEqual(len(ws), 4)
         # Tail and mid are deterministic
         self.assertEqual(ws[0], (n - self.L, n))
         mid_start = (n - self.L) // 2
         self.assertEqual(ws[1], (mid_start, mid_start + self.L))
-        # Random window: must be size L, in-range, not overlapping tail
-        s, e = ws[2]
-        self.assertEqual(e - s, self.L)
-        self.assertGreaterEqual(s, self.L)
-        self.assertLessEqual(e, n - self.L)
+        # Random windows: size L, in-range, not overlapping tail.
+        for s, e in ws[2:]:
+            self.assertEqual(e - s, self.L)
+            self.assertGreaterEqual(s, self.L)
+            self.assertLessEqual(e, n - self.L)
+
+    def test_max_windows_cap(self):
+        rng = random.Random(42)
+        n = 20 * self.L
+        self.assertEqual(
+            len(calib_set_preview.slice_windows_for_prompt(n, self.L, rng, max_windows=1)),
+            1,
+        )
+        rng = random.Random(42)
+        self.assertEqual(
+            len(calib_set_preview.slice_windows_for_prompt(n, self.L, rng, max_windows=3)),
+            3,
+        )
 
     def test_no_overlap_in_super_long(self):
         """The random mid window must not overlap tail or centered mid."""
@@ -213,11 +226,11 @@ class TestParseExperimentLogs(unittest.TestCase):
         self.assertIsNotNone(parse_experiment_logs._RE["calib_chat_off"].search(line))
 
     def test_calib_window_mode(self):
-        line = "[calib] multi-adaptive: 150 prompts -> 270 windows (L=8192); per-bucket: ..."
+        line = "[calib] multi-adaptive: 150 prompts -> 320 windows (L=8192, max_windows=4); per-bucket: ..."
         m = parse_experiment_logs._RE["calib_window"].search(line)
         self.assertIsNotNone(m)
         self.assertEqual(m.group(1), "150")
-        self.assertEqual(m.group(2), "270")
+        self.assertEqual(m.group(2), "320")
 
     def test_quant_start(self):
         line = "[quantize] starting GPTQModel W4A16 group_size=128 samples=256 max_len=8192"

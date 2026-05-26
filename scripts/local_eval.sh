@@ -43,6 +43,7 @@ EVAL_DATA="${TOOLKIT_DIR}/perf_public_set.jsonl"
 PORT="${PORT:-31111}"
 NUM_SAMPLES="${NUM_SAMPLES:-200}"
 CONCURRENCY="${CONCURRENCY:-32}"
+LOCAL_ACC_TARGET="${LOCAL_ACC_TARGET:-80}"
 STARTUP_TIMEOUT=240
 FORCE_REQUANT=0
 SKIP_QUANT=0
@@ -321,14 +322,14 @@ echo "$(date '+%F %T'),${VARIANT_NAME},${QUANT_OUT},${NUM_SAMPLES},${CONCURRENCY
 echo "=================================================="
 echo " RESULT"
 echo "   acc_ori (raw on dataset):  ${ACC_ORI}"
-echo "   overall_accuracy (vs 80):  ${ACC_OVERALL}"
+echo "   parsed overall accuracy:   ${ACC_OVERALL}"
 echo "   total wall clock:          ${DURATION}s"
 echo "=================================================="
-echo " >> Pass platform correctness gate? "
-if [ "${ACC_ORI}" != "?" ] && python3 -c "import sys; sys.exit(0 if float('${ACC_ORI}') >= 80 else 1)"; then
-    echo "    ✅ YES (acc_ori >= 80) — safe to submit"
+echo " >> Meets local accuracy target? "
+if [ "${ACC_ORI}" != "?" ] && python3 -c "import sys; sys.exit(0 if float('${ACC_ORI}') >= float('${LOCAL_ACC_TARGET}') else 1)"; then
+    echo "    ✅ YES (acc_ori >= ${LOCAL_ACC_TARGET}) — candidate for variant-specific submit decision"
 else
-    echo "    ❌ NO (acc_ori < 80) — would score 0 on the platform; keep iterating"
+    echo "    ❌ NO (acc_ori < ${LOCAL_ACC_TARGET}) — compare against the variant baseline before submitting"
 fi
 echo "=================================================="
 echo " server log:  ${SERVER_LOG}"

@@ -38,8 +38,10 @@ Usage (on the GPU node):
         --input  /root/autodl-fs/models/OpenBMB/MiniCPM-SALA \\
         --output /root/autodl-tmp/models/MiniCPM-SALA-W4A16-GPTQ \\
         --calib-jsonl /root/autodl-fs/zyn/soar_toolkit/perf_public_set.jsonl \\
-        --num-calib 256 \\
-        --max-calib-len 8192
+        --num-calib 150 \\
+        --max-calib-len 8192 \\
+        --calib-window-mode multi-adaptive \\
+        --max-calib-windows 4
 
 For local dry-runs of the script logic (CPU-only, no actual quant),
 the `--dry-run` flag prints the resolved config + the first 3
@@ -60,6 +62,9 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Any
+
+
+CalibPrompt = dict[str, str | None]
 
 
 def _stub_transformers_for_gptqmodel_7() -> None:
@@ -88,9 +93,6 @@ def _stub_transformers_for_gptqmodel_7() -> None:
         pass
 
 
-_stub_transformers_for_gptqmodel_7()
-
-
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -101,7 +103,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", required=True, help="Original BF16 model directory")
     parser.add_argument("--output", required=True, help="Quantized model output directory")
     parser.add_argument("--bits", type=int, default=4)
-    parser.add_argument("--group-size", type=int, default=128)
+    parser.add_argument("--group-size", type=int, default=64)
     parser.add_argument(
         "--calib-jsonl",
         default="",
@@ -112,9 +114,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--num-calib",
         type=int,
-        default=256,
-        help="Number of calibration samples (1024+ if VRAM/RAM permits "
-             "for higher quality)",
+        default=150,
+        help="Number of calibration prompts before window expansion. Default "
+             "covers each SOAR public calibration row once; multi-adaptive "
+             "then expands long prompts into about 310-330 windows at the "
+             "default --max-calib-windows=4.",
     )
     parser.add_argument(
         "--max-calib-len",
@@ -128,18 +132,25 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--calib-window-mode",
-        default="tail",
+        default="multi-adaptive",
         choices=["tail", "multi-adaptive"],
         help="How to slice prompts into calibration samples. "
-             "'tail' (default): keep the last --max-calib-len tokens of "
-             "each prompt via tokenizer truncation — matches v21/v22 "
-             "behavior. 'multi-adaptive': split each prompt into 1-3 "
+             "'tail': keep the last --max-calib-len tokens of each prompt "
+             "via tokenizer truncation — use this to reproduce the g128 "
+             "baseline. 'multi-adaptive' (default): split each prompt into 1-N "
              "non-overlapping --max-calib-len windows depending on its "
              "full token length (short prompts as-is; medium tail-only; "
-             "long prompts tail+mid; super-long add one random mid "
-             "window). Multi-adaptive can roughly 2-3x the calibration "
-             "sample count — keep --num-calib <= 512 to stay under the "
-             "90-min prepare_model timeout.",
+             "long prompts tail+mid; super-long prompts add dispersed random "
+             "windows up to --max-calib-windows).",
+    )
+    parser.add_argument(
+        "--max-calib-windows",
+        type=int,
+        default=4,
+        help="Maximum windows per prompt when --calib-window-mode=multi-adaptive. "
+             "Tail and centered-mid windows are always preferred; extra windows "
+             "are random, non-overlapping, and avoid the pure filler head. "
+             "Use 3 to reproduce the earlier platform_acc draft.",
     )
     parser.add_argument(
         "--no-chat-template",
@@ -192,7 +203,7 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 # Calibration data
 # ---------------------------------------------------------------------------
-def _synthetic_long_probes(count: int) -> list[str]:
+def _synthetic_long_probes(count: int) -> list[CalibPrompt]:
     """Fallback when no calibration JSONL is provided.
 
     Goal: still better than the previous 4-template approach by varying
@@ -222,27 +233,63 @@ def _synthetic_long_probes(count: int) -> list[str]:
         "GPTQ uses second-order Hessian information for weight quantization.",
     ]
     rng = random.Random(0xC4118)
-    texts: list[str] = []
+    texts: list[CalibPrompt] = []
     for i in range(count):
         tpl = base_templates[i % len(base_templates)]
         # Vary length by repeating filler N times
         n_repeats = 8 + (i % 32)
         filler = " ".join(rng.sample(filler_phrases, k=len(filler_phrases))) * n_repeats
-        texts.append(tpl.format(filler=filler))
+        texts.append(_make_calib_prompt(tpl.format(filler=filler), None))
     return texts
+
+
+def _compact_gold_answer(gold: Any) -> str | None:
+    """Return a short answer string suitable for calibration context."""
+    if isinstance(gold, str):
+        answer = gold.strip()
+        return answer if 0 < len(answer) < 200 else None
+    if not isinstance(gold, list):
+        return None
+
+    parts: list[str] = []
+    seen: set[str] = set()
+    for item in gold:
+        part = str(item).strip()
+        if not part or len(part) >= 120 or part in seen:
+            continue
+        parts.append(part)
+        seen.add(part)
+    if not parts:
+        return None
+    answer = ", ".join(parts)
+    return answer if len(answer) < 600 else None
+
+
+def _make_calib_prompt(question: str, answer: str | None) -> CalibPrompt:
+    text = question.strip()
+    if answer:
+        text = f"{text}\nAnswer: {answer}"
+    return {
+        "question": question.strip(),
+        "answer": answer,
+        "text": text,
+    }
 
 
 def load_calibration_prompts(
     jsonl_path: str, num_samples: int, seed: int
-) -> list[str]:
+) -> list[CalibPrompt]:
     """Load and sample calibration prompts.
 
     Strategy:
       1. If --calib-jsonl is given (typically perf_public_set.jsonl),
          load all rows, deterministic shuffle, take first num_samples.
       2. Each row's `question` field becomes the calibration text.
-         If `gold` is a short string we append it (so the calibration
-         covers a typical answer continuation, not only prompt prefix).
+         If `gold` is a short string OR a list of short strings, keep it
+         as the answer continuation, not only the prompt. During chat-template
+         rendering this becomes an assistant turn instead of being stuffed
+         into the user message. This matters for SOAR: cwe/fwe/niah/qa rows
+         use list-valued gold.
       3. If the JSONL is empty/missing, fall back to synthetic probes
          and WARN clearly.
     """
@@ -285,8 +332,9 @@ def load_calibration_prompts(
     rng = random.Random(seed)
     rng.shuffle(usable_rows)
 
-    texts: list[str] = []
+    texts: list[CalibPrompt] = []
     task_counts: dict[str, int] = {}
+    answer_count = 0
     row_index = 0
     pass_index = 0
     while len(texts) < num_samples:
@@ -299,14 +347,17 @@ def load_calibration_prompts(
         if len(texts) >= num_samples:
             break
         question = row["question"]
-        gold = row.get("gold")
+        answer = _compact_gold_answer(row.get("gold"))
         task = row.get("task", "unknown")
-        # Append gold answer if it's a short string. For MCQ, gold is often
-        # just "A"/"B"/"C"/"D" — append it as "Answer: <gold>".
-        prompt = question.strip()
-        if isinstance(gold, str) and 0 < len(gold) < 200:
-            prompt = f"{prompt}\n{gold.strip()}"
-        texts.append(prompt)
+        # Preserve compact gold answers. Earlier versions only handled string
+        # gold, so 120/150 public rows (list-valued cwe/fwe/niah/qa answers)
+        # contributed no answer tokens to GPTQ calibration. When a chat
+        # template exists, tokenize_calibration renders this answer as an
+        # assistant turn so the answer tokens sit in the same role/boundary
+        # position they occupy during supervised instruction tuning.
+        if answer:
+            answer_count += 1
+        texts.append(_make_calib_prompt(question, answer))
         task_counts[task] = task_counts.get(task, 0) + 1
 
     print(f"[calib] loaded {len(texts)} prompts from {jsonl_path}", flush=True)
@@ -317,6 +368,11 @@ def load_calibration_prompts(
             flush=True,
         )
     print(f"[calib] task distribution: {task_counts}", flush=True)
+    print(
+        f"[calib] answer continuations: {answer_count}/{len(texts)} "
+        "(chat-template path renders them as assistant turns)",
+        flush=True,
+    )
     return texts
 
 
@@ -637,56 +693,74 @@ def _slice_windows_for_prompt(
     n_tokens: int,
     max_len: int,
     rng: random.Random,
+    max_windows: int = 4,
 ) -> list[tuple[int, int]]:
     """Return (start, end) windows for one prompt under multi-adaptive policy.
 
-    Input-aware split of a prompt of length ``n_tokens`` into 1-3
+    Input-aware split of a prompt of length ``n_tokens`` into 1-N
     non-overlapping ``max_len``-sized windows:
 
         n <= L:              [(0, n)]                       short: all
         L  <  n <= 4L:       [(n-L, n)]                     medium: tail only
         4L <  n <= 12.5L:    tail + centered mid             long
-        n  >  12.5L:         tail + mid + 1 random non-overlap window
+        n  >  12.5L:         tail + mid + random non-overlap windows
 
-    where L = max_len. The HEAD window is deliberately NEVER taken: the
-    first 8K of a 30K perf_public_set row is pure haystack filler whose
-    activations would mis-direct GPTQ's per-channel scale selection.
+    where L = max_len and the total count is capped by ``max_windows``.
+    The HEAD window is deliberately NEVER taken: the first 8K of a 30K
+    perf_public_set row is pure haystack filler whose activations would
+    mis-direct GPTQ's per-channel scale selection.
     """
     L = max_len
+    max_windows = max(1, int(max_windows))
     if n_tokens <= L:
         return [(0, n_tokens)]
     if n_tokens <= 4 * L:
         return [(n_tokens - L, n_tokens)]
     windows = [(n_tokens - L, n_tokens)]
+    if len(windows) >= max_windows:
+        return windows
     mid_start = (n_tokens - L) // 2
     mid_end = mid_start + L
     windows.append((mid_start, mid_end))
-    if n_tokens > int(12.5 * L):
-        # Random window placed in a region disjoint from tail AND centered mid.
-        # The naive "anywhere in [L, n-2L]" lets the random window collide
-        # with the centered mid (caught by tests/test_calibration_tools.py
-        # at seed=7, n=13L). Explicitly exclude the mid span.
-        #   region A (before mid): start in [L, mid_start - L]
-        #   region B (after mid):  start in [mid_end, (n - L) - L]
-        candidates = []
-        if mid_start - L >= L:
-            candidates.append((L, mid_start - L))
-        if (n_tokens - 2 * L) >= mid_end:
-            candidates.append((mid_end, n_tokens - 2 * L))
-        if candidates:
+    if n_tokens > int(12.5 * L) and len(windows) < max_windows:
+        # Extra random windows placed in regions disjoint from tail and
+        # centered mid. Build candidate segments from [L, n-L] so the pure
+        # head is never sampled, then subtract occupied spans as windows are
+        # added. This keeps every window non-overlapping while covering more
+        # of niah/qa/cwe's very long contexts than the older single-random
+        # policy.
+        occupied = sorted(windows)
+        attempts = 0
+        while len(windows) < max_windows and attempts < max_windows * 8:
+            attempts += 1
+            candidates: list[tuple[int, int]] = []
+            cursor = L
+            for occ_start, occ_end in occupied:
+                hi = occ_start - L
+                if hi >= cursor:
+                    candidates.append((cursor, hi))
+                cursor = max(cursor, occ_end)
+            hi = n_tokens - 2 * L
+            if hi >= cursor:
+                candidates.append((cursor, hi))
+            if not candidates:
+                break
             lo, hi = rng.choice(candidates)
             start = rng.randint(lo, hi)
-            windows.append((start, start + L))
+            new_window = (start, start + L)
+            windows.append(new_window)
+            occupied = sorted(occupied + [new_window])
     return windows
 
 
 def tokenize_calibration(
     tokenizer,
-    texts: list[str],
+    texts: list[CalibPrompt],
     max_len: int,
     window_mode: str = "tail",
     seed: int = 42,
     disable_chat_template: bool = False,
+    max_windows: int = 4,
 ) -> list[dict[str, Any]]:
     """Tokenize each prompt into the plain dict format GPTQModel 7.x expects.
 
@@ -702,19 +776,21 @@ def tokenize_calibration(
          instruction-tuned, so serving wraps inputs as `<用户>...<AI>`;
          calibrating on bare `question` strings makes the Hessian see a
          different boundary-token distribution than what the deployed
-         model consumes.
+         model consumes. When a compact `gold` answer is available, render
+         it as an assistant turn rather than adding it to the user message.
 
     ``window_mode``:
       - ``"tail"`` (default): one window per prompt — the last ``max_len``
         tokens, via tokenizer truncation. Byte-equivalent to the
         pre-2026-05-21 behavior; v21/v22 quant artifacts were produced
         with this.
-      - ``"multi-adaptive"``: 1-3 non-overlapping ``max_len``-sized windows
-        per prompt, sized by ``_slice_windows_for_prompt``. Tail is always
-        kept; mid is added on long prompts. Returned windows are shuffled
-        with ``seed`` to keep GPTQ batches diverse. Inflates total sample
-        count for long prompts — keep ``--num-calib`` <= 512 to stay under
-        the 90-min prepare_model timeout.
+      - ``"multi-adaptive"``: 1-N non-overlapping ``max_len``-sized windows
+        per prompt, sized by ``_slice_windows_for_prompt`` and capped by
+        ``max_windows``. Tail is always kept; mid is added on long prompts;
+        extra windows cover dispersed non-head spans on super-long prompts.
+        Returned windows are shuffled with ``seed`` to keep GPTQ batches
+        diverse. Inflates total sample count for long prompts — keep
+        ``--num-calib`` conservative to stay under the prepare_model timeout.
     """
     if window_mode not in ("tail", "multi-adaptive"):
         raise ValueError(
@@ -739,14 +815,20 @@ def tokenize_calibration(
             print("[calib] tokenizer has no chat_template; using raw prompts",
                   flush=True)
 
-    def _render(text: str) -> str:
+    def _render(sample: CalibPrompt) -> str:
+        text = str(sample.get("text") or "")
         if not use_chat_template:
             return text
+        question = str(sample.get("question") or text)
+        answer = sample.get("answer")
+        messages = [{"role": "user", "content": question}]
+        if isinstance(answer, str) and answer.strip():
+            messages.append({"role": "assistant", "content": answer.strip()})
         try:
             return tokenizer.apply_chat_template(
-                [{"role": "user", "content": text}],
+                messages,
                 tokenize=False,
-                add_generation_prompt=True,
+                add_generation_prompt=(len(messages) == 1),
             )
         except Exception as exc:
             print(f"[calib] chat template render failed ({exc}); "
@@ -758,8 +840,8 @@ def tokenize_calibration(
 
     if window_mode == "tail":
         # ORIGINAL PATH — preserves byte-for-byte behavior of v21/v22 quant.
-        for text in texts:
-            rendered = _render(text)
+        for sample in texts:
+            rendered = _render(sample)
             encoded = tokenizer(
                 rendered,
                 truncation=True,
@@ -791,8 +873,8 @@ def tokenize_calibration(
             "tail+mid(<=12.5L)": 0,
             "tail+mid+rand(>12.5L)": 0,
         }
-        for text in texts:
-            rendered = _render(text)
+        for sample in texts:
+            rendered = _render(sample)
             encoded = tokenizer(
                 rendered,
                 truncation=False,
@@ -804,7 +886,7 @@ def tokenize_calibration(
             if input_ids is None or input_ids.numel() == 0:
                 continue
             n = int(input_ids.shape[-1])
-            slices = _slice_windows_for_prompt(n, max_len, rng)
+            slices = _slice_windows_for_prompt(n, max_len, rng, max_windows)
             for s, e in slices:
                 w = input_ids[:, s:e].contiguous()
                 am = torch.ones_like(w)
@@ -825,7 +907,8 @@ def tokenize_calibration(
         rng.shuffle(examples)
         print(
             f"[calib] multi-adaptive: {len(texts)} prompts -> "
-            f"{len(examples)} windows (L={max_len}); per-bucket: {buckets}",
+            f"{len(examples)} windows (L={max_len}, max_windows={max_windows}); "
+            f"per-bucket: {buckets}",
             flush=True,
         )
 
@@ -1285,7 +1368,7 @@ def fix_qzeros_for_marlin(output_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
-def dry_run(args: argparse.Namespace, prompts: list[str]) -> int:
+def dry_run(args: argparse.Namespace, prompts: list[CalibPrompt]) -> int:
     print("=" * 60)
     print("DRY RUN — no GPU/quantization actually invoked")
     print("=" * 60)
@@ -1296,6 +1379,7 @@ def dry_run(args: argparse.Namespace, prompts: list[str]) -> int:
     print(f"  --num-calib        {args.num_calib} (loaded {len(prompts)})")
     print(f"  --max-calib-len    {args.max_calib_len}")
     print(f"  --calib-window-mode {args.calib_window_mode}")
+    print(f"  --max-calib-windows {args.max_calib_windows}")
     print(f"  --no-chat-template  {args.no_chat_template}")
     print(f"  --calib-jsonl      {args.calib_jsonl or '(synthetic)'}")
     print(f"  --gpu-max-mem      {args.gpu_max_mem or '(GPTQModel default)'}")
@@ -1304,7 +1388,7 @@ def dry_run(args: argparse.Namespace, prompts: list[str]) -> int:
     print()
     print("First 3 calibration prompts (truncated to 200 chars):")
     for i, p in enumerate(prompts[:3]):
-        snippet = p.replace("\n", " | ")
+        snippet = str(p.get("text") or "").replace("\n", " | ")
         if len(snippet) > 200:
             snippet = snippet[:200] + "..."
         print(f"  [{i}] {snippet}")
@@ -1323,7 +1407,9 @@ def dry_run(args: argparse.Namespace, prompts: list[str]) -> int:
             20 * args.max_calib_len,
         )
         for n in test_ns:
-            windows = _slice_windows_for_prompt(n, args.max_calib_len, sim_rng)
+            windows = _slice_windows_for_prompt(
+                n, args.max_calib_len, sim_rng, args.max_calib_windows
+            )
             ratio = f"{n / args.max_calib_len:.1f}L"
             spans = ", ".join(f"[{s:>6}:{e:>6}]" for s, e in windows)
             print(f"  N={n:7d} ({ratio:>5}) -> {len(windows)} window(s): {spans}")
@@ -1350,6 +1436,10 @@ def main() -> int:
     print_runtime_versions()
 
     # Lazy import — only after we know it's not a dry run.
+    # Apply the transformers compatibility shim here instead of at module
+    # import time so --dry-run remains usable in a lightweight shell env.
+    _stub_transformers_for_gptqmodel_7()
+
     # IMPORTANT: monkey-patch BEFORE register/load — SALA's modeling code
     # has a hard assertion on _attn_implementation == "flash_attention_2"
     # inside MiniCPMInfLLMv2Attention.__init__ that fires at model
@@ -1381,6 +1471,7 @@ def main() -> int:
         window_mode=args.calib_window_mode,
         seed=args.seed,
         disable_chat_template=args.no_chat_template,
+        max_windows=args.max_calib_windows,
     )
     if not calibration:
         raise RuntimeError(

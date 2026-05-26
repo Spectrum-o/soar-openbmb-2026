@@ -123,6 +123,31 @@ class TestValidateVariantGood(unittest.TestCase):
             self.assertEqual(problems, [],
                              f"unexpected problems on good variant: {problems}")
 
+    def test_broken_wheel_symlink_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            variant = _make_variant(Path(tmp))
+            (variant / "flash_attn-test.whl").symlink_to("missing.whl")
+            problems = pack_submission.validate_variant(variant)
+            self.assertTrue(
+                _has_problem_containing(problems, "broken wheel symlink"),
+                f"expected broken wheel symlink problem, got: {problems}",
+            )
+
+    def test_stage_variant_surfaces_cp_warning_for_any_broken_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant = _make_variant(root)
+            (variant / "not_a_wheel").symlink_to("missing.file")
+            stage = root / "stage"
+            stage.mkdir()
+
+            _, warnings = pack_submission.stage_variant(variant, stage)
+
+            self.assertTrue(
+                any("cannot stat" in warning for warning in warnings),
+                f"expected cp warning for broken symlink, got: {warnings}",
+            )
+
 
 class TestValidateVariantQuantScript(unittest.TestCase):
     """Check the 4 GPTQ-script canaries fire when removed."""

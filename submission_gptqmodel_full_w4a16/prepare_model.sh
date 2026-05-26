@@ -49,10 +49,12 @@ else
 fi
 
 # perf_public_set.jsonl has 150 rows (30 each across mcq / niah / qa / fwe / cwe).
-# GPTQModel 7.x warns below 256 examples, so the quantizer deterministically
-# cycles the public rows to reach this default without falling back to synthetic
-# prompts.
-NUM_CALIB="${NUM_CALIB:-256}"
+# For the platform_acc profile, cover every public row exactly once and let
+# multi-adaptive tokenization expand long prompts into ~310-330 calibration
+# windows at MAX_CALIB_WINDOWS=4.
+# This avoids duplicate prompt cycling while still clearing GPTQModel's
+# effective-sample warning after window expansion.
+NUM_CALIB="${NUM_CALIB:-150}"
 # max_calib_len 8192: tokenize_calibration uses truncation_side="left",
 # so the kept window is the TAIL of each prompt — the question/answer
 # structure that v17's right-truncation cut off (median ~30K, p90 ~117K
@@ -61,9 +63,10 @@ NUM_CALIB="${NUM_CALIB:-256}"
 MAX_CALIB_LEN="${MAX_CALIB_LEN:-8192}"
 
 # Calibration window mode: see quantize_gptqmodel_w4a16.py --calib-window-mode.
-#   tail            -> single tail window per prompt (default; v21/v22 behavior)
-#   multi-adaptive  -> 1-3 windows per prompt based on full token length
-CALIB_WINDOW_MODE="${CALIB_WINDOW_MODE:-tail}"
+#   tail            -> single tail window per prompt (g128 baseline behavior)
+#   multi-adaptive  -> 1-N windows per prompt based on full token length
+CALIB_WINDOW_MODE="${CALIB_WINDOW_MODE:-multi-adaptive}"
+MAX_CALIB_WINDOWS="${MAX_CALIB_WINDOWS:-4}"
 
 # Chat template ablation switch. Set DISABLE_CHAT_TEMPLATE=1 to skip
 # apply_chat_template() during calibration tokenization. perf_public_set
@@ -79,7 +82,7 @@ if [ -n "${CALIB_JSONL}" ]; then
 else
     echo "[prepare_model] WARNING: no calibration file found — synthetic fallback will likely fail correctness gate" >&2
 fi
-CALIB_ARGS+=(--num-calib "${NUM_CALIB}" --max-calib-len "${MAX_CALIB_LEN}" --calib-window-mode "${CALIB_WINDOW_MODE}")
+CALIB_ARGS+=(--num-calib "${NUM_CALIB}" --max-calib-len "${MAX_CALIB_LEN}" --calib-window-mode "${CALIB_WINDOW_MODE}" --max-calib-windows "${MAX_CALIB_WINDOWS}")
 if [ "${DISABLE_CHAT_TEMPLATE}" = "1" ]; then
     CALIB_ARGS+=(--no-chat-template)
     echo "[prepare_model] chat template DISABLED (DISABLE_CHAT_TEMPLATE=1)"
@@ -91,29 +94,36 @@ fi
 #     SOAR platform's gptqmodel 7.0 + torch 2.9.1, because cpp
 #     extensions require torch>=2.11 (verified from 20:30 submission log)
 #     so GPTQ falls back to pure-Python path (~30% slower than cpp).
-#   - We abort at 90 min. Past that, prepare_model.sh exits 124 and the
+#   - We abort at 120 min. Past that, prepare_model.sh exits 124 and the
 #     platform marks the submission as "failed midway" (does NOT consume
 #     a slot per user's reported rule), well before the 5h hard timeout
 #     (which WOULD consume the slot).
 #   - Total budget on a successful run:
 #       prepare_env:   ~ 5 min
-#       quantize:      ~60 min (typical pure-Python path)
-#       bench S1+8+max:~95 min (matches the 2026-05-19 RTN runs)
+#       quantize:      ~60-110 min (g64 + multi-adaptive max_windows=4)
+#       bench S1+8+max:~120 min (observed full-g128 platform eval)
 #       eval_model.py: ~15 min
-#       TOTAL:        ~175 min ≈ 2.9 h  (still well under 5h)
-QUANT_TIMEOUT_MIN="${QUANT_TIMEOUT_MIN:-90}"
+#       TOTAL:        ~260 min max ≈ 4.3 h  (still under 5h)
+QUANT_TIMEOUT_MIN="${QUANT_TIMEOUT_MIN:-120}"
+GROUP_SIZE="${GROUP_SIZE:-64}"
+FULL_QUANT_PROFILE="${FULL_QUANT_PROFILE:-platform_acc}"
 
 # Disk offload during quantization is slow on this workload — RTX PRO
 # 6000 has 96GB VRAM, which fits the 18GB BF16 model + Hessian
 # workspace comfortably. Disabling disk offload prevents thrashing.
 # --no-offload-disk passes through to the quantize script.
-EXTRA_ARGS+=(--no-offload-disk --group-size "${GROUP_SIZE:-128}")
+EXTRA_ARGS+=(--no-offload-disk --group-size "${GROUP_SIZE}")
 
 # FULL W4A16 variant: quantizes attention/Lightning q/k/v/o plus MLP.
-# Start with group-size 128 for speed and lower scale overhead. Override
-# GROUP_SIZE=64 for a slower, potentially higher-quality follow-up run.
+# Default to group-size 64 for this accuracy-recovery pass. The previous
+# full-W4A16 platform run at g128 was viable but landed at acc_ori=78.27 /
+# final_score=22.85, just below the preferred 80-ish accuracy target.
+# Override GROUP_SIZE=128 only for a speed-parity reproduction of that run.
 
 echo "[prepare_model] FULL W4A16 quantize timeout: ${QUANT_TIMEOUT_MIN} min"
+echo "[prepare_model] FULL W4A16 profile: ${FULL_QUANT_PROFILE}"
+echo "[prepare_model] FULL W4A16 group size: ${GROUP_SIZE}"
+echo "[prepare_model] FULL W4A16 calibration: NUM_CALIB=${NUM_CALIB} MAX_CALIB_LEN=${MAX_CALIB_LEN} CALIB_WINDOW_MODE=${CALIB_WINDOW_MODE} MAX_CALIB_WINDOWS=${MAX_CALIB_WINDOWS}"
 
 # Diagnostic snapshot BEFORE quantize so platform logs show what we have.
 # v21/v22 both scored 0 on the platform with no remote signal of why;

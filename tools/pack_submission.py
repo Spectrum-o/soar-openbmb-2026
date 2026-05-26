@@ -55,6 +55,13 @@ def grep_file(path: Path, needle: str) -> bool:
         return False
 
 
+def _broken_wheel_symlinks(variant_dir: Path) -> list[Path]:
+    return [
+        p for p in variant_dir.glob("*.whl")
+        if p.is_symlink() and not p.exists()
+    ]
+
+
 def validate_variant(variant_dir: Path) -> list[str]:
     """Return a list of validation problems. Empty list means OK.
 
@@ -81,6 +88,15 @@ def validate_variant(variant_dir: Path) -> list[str]:
           → fix attribution is unambiguous
     """
     problems: list[str] = []
+
+    broken_wheels = _broken_wheel_symlinks(variant_dir)
+    for wheel in broken_wheels:
+        problems.append(
+            f"broken wheel symlink: {wheel.name} -> {wheel.readlink()}. "
+            "pack_submission dereferences symlinks with cp -L, so this wheel "
+            "will be omitted from the tarball and platform prepare_env may "
+            "fall back to network/source build."
+        )
 
     quant_script = variant_dir / "quantize_gptqmodel_w4a16.py"
     if quant_script.is_file():
@@ -217,16 +233,14 @@ def stage_variant(variant_dir: Path, stage: Path) -> tuple[int, list[str]]:
     """Copy variant_dir/. into stage/ with symlinks dereferenced.
 
     Returns (file_count, cp_warnings).
-    `cp -rL` warnings on broken symlinks are non-fatal (cp continues).
+    `cp -rL` can continue after omitting a broken symlink; pack() treats
+    those warnings as fatal unless --force is passed.
     """
     result = subprocess.run(
         ["cp", "-rL", f"{variant_dir}/.", str(stage)],
         capture_output=True, text=True,
     )
     warnings = [line for line in (result.stderr or "").splitlines() if line.strip()]
-    # cp exits non-zero if ANY symlink was broken, but the rest of the tree
-    # is still copied. We accept this so v17_minconfig (with a known broken
-    # sgl-kernel .clang-format inside the bundled sglang) packs cleanly.
     for pyc in list(stage.rglob("__pycache__")):
         shutil.rmtree(pyc, ignore_errors=True)
     n_files = sum(1 for _ in stage.rglob("*") if _.is_file())
@@ -279,6 +293,12 @@ def pack(variant_dir: Path, out: Path, force: bool) -> int:
                 print(f"    {w}")
             if len(warnings) > 5:
                 print(f"    ... ({len(warnings) - 5} more)")
+            if not force:
+                print(
+                    "\n[pack] staging had cp warnings. Refusing to pack because "
+                    "the tarball would be missing files. Pass --force to override."
+                )
+                return 2
         print(f"[pack] staged {n_files} files")
 
         print(f"[pack] tar -> {out}")
