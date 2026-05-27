@@ -277,11 +277,9 @@ echo "[prepare_env] all required packages present: gptqmodel==${GPTQMODEL_PIN} t
 #   seem to be installed.
 #
 # Platform env (confirmed from prior submission logs): torch 2.9.1+cu128,
-# python 3.10. The exact-match prebuilt wheel from mjun0812's repo is
-# `flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl` — about
-# 253 MB, installs in seconds, no source compile. Using the direct URL
-# avoids the `+cu128` local-version bug that breaks pip's wheel auto-
-# resolution from `pip install flash-attn`.
+# python 3.10. Prefer a bundled prebuilt flash_attn wheel so platform prepare
+# does not depend on GitHub download latency. The SM120 cp310 wheel installs in
+# seconds and covers the Blackwell target.
 FLASH_ATTN_WHEEL="https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl"
 LOCAL_FLASH_ATTN_WHEEL="$(
     find "${SUBMISSION_DIR}" -maxdepth 1 -type f -name 'flash_attn-*.whl' | sort | tail -n 1
@@ -301,7 +299,7 @@ else
                 uv pip install --no-build-isolation flash-attn
             else
                 echo "[prepare_env] FATAL: flash-attn wheel install failed and source build is disabled" >&2
-                echo "[prepare_env]        include flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl in the submission package" >&2
+                echo "[prepare_env]        include a cp310 flash_attn-*.whl in the submission package" >&2
                 exit 1
             fi
         fi
@@ -345,9 +343,10 @@ export GPTQMODEL_MARLIN_USE_FP32="${GPTQMODEL_MARLIN_USE_FP32:-1}"
 # ----------------------------------------------------------------------
 # FP8 KV CACHE — PATH D PATCH (per SOAR official toolkit guidance)
 # ----------------------------------------------------------------------
-# Official recommendation: "路径一：量化加速 — GPTQ W4A16 + Marlin Kernel + FP8 KV Cache"
-# Specifies: --kv-cache-dtype fp8_e5m2 (NOT fp8_e4m3 — e5m2 has 5 exp bits
-# giving ±57344 range, safer for SALA's scale_emb=12 KV magnitudes).
+# Official recommendation: "路径一：量化加速 — GPTQ W4A16 + Marlin Kernel + FP8 KV Cache".
+# This prepare-cache package is aligned with the current platform experiment and
+# local prewarm run: --kv-cache-dtype fp8_e4m3. If we switch back to e5m2 later,
+# regenerate the FlashInfer cache bundle with the same dtype before packing.
 #
 # Why we need a patch: SGLang's current GPTQMarlinConfig.get_quant_method
 # only handles LinearBase / FusedMoE, not RadixAttention. So
@@ -427,18 +426,69 @@ fi
 # skips SM 12.0 targets and the runtime falls back to a non-FP8 SM89 kernel
 # that rejects fp8 query.
 #
-# Three knobs together:
+# Runtime knobs:
 #   1. ENABLE_SM120=1 — tell flashinfer's generator to emit SM 12.0 cubins
 #   2. FLASHINFER_CUDA_ARCH_LIST=12.0f — explicit arch list (real cubin,
 #      not +PTX; 12.0f avoids the 12.0a TMA-WS crash from vLLM #38718)
-#   3. nuke ~/.cache/flashinfer — force JIT regen with the new env vars
-# Champion notes (智算一队 笔记 05) confirm FP8 KV "基础优化工作" was done
-# on Blackwell — they almost certainly used this path.
+#
+# Cache policy:
+#   - Do NOT clear ~/.cache/flashinfer by default. The 2026-05-26 platform
+#     timeout stayed in the prepare/DOWNLOADING stage; clearing the cache is a
+#     prime suspect because it forces cold FlashInfer JIT during server startup.
+#   - A rebuild is still available for diagnostics via
+#     FORCE_FLASHINFER_CACHE_REBUILD=1.
+#   - If the platform cache is empty and this package includes a small
+#     flashinfer_cache_0.5.3_120f.tar.gz bundle, restore it before startup.
+#     This mirrors the successful chunk32k_safe package's prepare behavior as
+#     closely as possible while removing the cold-JIT variable introduced by
+#     fp8kv FlashInfer.
 export ENABLE_SM120="${ENABLE_SM120:-1}"
 export FLASHINFER_CUDA_ARCH_LIST="${FLASHINFER_CUDA_ARCH_LIST:-12.0f}"
-if [ -d "${HOME}/.cache/flashinfer" ]; then
-    echo "[prepare_env] nuking ~/.cache/flashinfer to force SM 12.0 cubin regen"
-    rm -rf "${HOME}/.cache/flashinfer" 2>/dev/null || true
+FLASHINFER_CACHE_DIR="${HOME}/.cache/flashinfer"
+FLASHINFER_CACHE_BUNDLE="${SUBMISSION_DIR}/flashinfer_cache_0.5.3_120f.tar.gz"
+
+if [ "${FORCE_FLASHINFER_CACHE_REBUILD:-0}" = "1" ]; then
+    if [ -d "${FLASHINFER_CACHE_DIR}" ]; then
+        echo "[prepare_env] FORCE_FLASHINFER_CACHE_REBUILD=1; clearing ${FLASHINFER_CACHE_DIR}"
+        rm -rf "${FLASHINFER_CACHE_DIR}" 2>/dev/null || true
+    else
+        echo "[prepare_env] FORCE_FLASHINFER_CACHE_REBUILD=1; no existing ${FLASHINFER_CACHE_DIR}"
+    fi
+else
+    flashinfer_version="$(
+        python3 - <<'PY' 2>/dev/null || true
+import importlib.metadata as metadata
+
+for package in ("flashinfer-python", "flashinfer"):
+    try:
+        print(metadata.version(package))
+        break
+    except metadata.PackageNotFoundError:
+        pass
+else:
+    try:
+        import flashinfer
+        print(getattr(flashinfer, "__version__", "UNKNOWN"))
+    except Exception:
+        print("UNKNOWN")
+PY
+    )"
+    flashinfer_version="${flashinfer_version:-UNKNOWN}"
+    flashinfer_cache_target="${FLASHINFER_CACHE_DIR}/${flashinfer_version}/120f"
+
+    if [ -d "${flashinfer_cache_target}" ]; then
+        echo "[prepare_env] preserving FlashInfer cache: ${flashinfer_cache_target}"
+    elif [ "${RESTORE_FLASHINFER_JIT_CACHE:-1}" = "1" ] \
+        && [ "${FLASHINFER_CUDA_ARCH_LIST}" = "12.0f" ] \
+        && [ "${flashinfer_version}" = "0.5.3" ] \
+        && [ -f "${FLASHINFER_CACHE_BUNDLE}" ]; then
+        echo "[prepare_env] restoring bundled FlashInfer JIT cache to ${FLASHINFER_CACHE_DIR}"
+        mkdir -p "${FLASHINFER_CACHE_DIR}"
+        tar -xzf "${FLASHINFER_CACHE_BUNDLE}" -C "${FLASHINFER_CACHE_DIR}"
+    else
+        echo "[prepare_env] no reusable FlashInfer cache target found: ${flashinfer_cache_target}"
+        echo "[prepare_env] first server launch may JIT FlashInfer kernels"
+    fi
 fi
 echo "[prepare_env] ENABLE_SM120=${ENABLE_SM120} FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST}"
 
@@ -460,7 +510,7 @@ echo "[prepare_env] ENABLE_SM120=${ENABLE_SM120} FLASHINFER_CUDA_ARCH_LIST=${FLA
 # Marlin GEMM internally still outputs fp16; SGLang must cast that to bf16
 # for the sparse-backend boundary. If v5j gives partial result (50-70 acc),
 # this tests whether explicit --dtype bfloat16 fixes the remaining gap.
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e5m2 --dtype bfloat16"
+export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 32768 --max-prefill-tokens 32768 --mem-fraction-static 0.70 --max-running-requests 32 --skip-server-warmup --dense-as-sparse --quantization gptq_marlin --kv-cache-dtype fp8_e4m3 --dtype bfloat16 --cuda-graph-bs 1 2 4 8 12 16 24 32"
 
 echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"

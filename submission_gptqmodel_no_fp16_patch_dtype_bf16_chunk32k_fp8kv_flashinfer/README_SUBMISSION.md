@@ -1,10 +1,10 @@
-# v5j_dtype_bf16_chunk32k_fp8kv (v2) — official-toolkit-aligned FP8 KV
+# v5j_dtype_bf16_chunk32k_fp8kv FlashInfer — prepare-cache package
 
-> **2026-05-24 v2 redesign** after reading SOAR official toolkit guidance.
-> Previous v1 (using fp8_e4m3 + Path B minicpm_backend.py patch) was
-> wrong on multiple axes.
+> **2026-05-27 prepare-cache update.** This package follows the current
+> fp8kv FlashInfer platform experiment: `fp8_e4m3`, `max-running-requests 32`,
+> and CUDA graph batches `1 2 4 8 12 16 24 32`.
 
-## What the SOAR official actually says
+## FP8 KV dtype in this package
 
 `soar.openbmb.cn/toolkit` "路径一：量化加速"
 > "可选路径：GPTQ W4A16 + Marlin Kernel + FP8 KV Cache"
@@ -12,10 +12,14 @@
 > "开启 KV Cache FP8： `--kv-cache-dtype fp8_e5m2`，长上下文场景收益显著。
 >  注意 Lightning Attention 层使用独立线性注意力状态，优化路径不同。"
 
-So:
-- **FP8 KV IS officially recommended** for SALA, not the previously-thought "incompatible"
-- **Must use `fp8_e5m2`** (5 exp bits, ±57344 range), NOT fp8_e4m3 (4 exp bits, ±448 range)
-- **Lightning attention uses linear state** (not KV cache), so FP8 only affects dense attention layers — no special handling needed
+The earlier v2 writeup preferred `fp8_e5m2` for range. The active platform
+package being debugged uses `fp8_e4m3`, and the bundled FlashInfer JIT cache is
+generated for e4m3. Keep dtype and cache aligned: if changing this package back
+to e5m2, regenerate `flashinfer_cache_0.5.3_120f.tar.gz` from an e5m2 local
+prewarm before submitting.
+
+FP8 KV is still only for dense attention KV cache. Lightning attention uses
+separate linear state.
 
 ## Why prior attempts failed
 
@@ -40,9 +44,11 @@ extend gptq_marlin's `get_quant_method` to also handle RadixAttention.
    - Added GPTQMARLIN_KV_PATCH block (runs patch after install)
    - Use `--attention-backend minicpm_flashinfer`. The `minicpm_flashattn` / FA3
      path still fails on Blackwell with `no kernel image`.
-   - Keep `--kv-cache-dtype fp8_e5m2` in SGLANG_SERVER_ARGS. KV pool storage
+   - Keep `--kv-cache-dtype fp8_e4m3` in SGLANG_SERVER_ARGS. KV pool storage
      is FP8; the MiniCPM Path Y patch upcasts the read path to bf16 before
      FlashInfer attention.
+   - Restore bundled FlashInfer JIT cache when platform cache is empty, while
+     preserving existing platform cache by default.
 
 ## Why compressed_k dtype mismatch is NOT a concern
 

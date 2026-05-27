@@ -6,7 +6,7 @@ Background:
   recommends GPTQ W4A16 + Marlin + FP8 KV Cache as the canonical stack.
   But SGLang's current GPTQMarlinConfig.get_quant_method only handles
   LinearBase / FusedMoE, NOT RadixAttention. So when --quantization gptq_marlin
-  is combined with --kv-cache-dtype fp8_e5m2, RadixAttention.k_scale stays
+  is combined with --kv-cache-dtype fp8_*, RadixAttention.k_scale stays
   None and FlashAttention rejects the fp8 query without scales.
 
   This patch (Path D from notes/fp8-kv-cache-investigation) extends
