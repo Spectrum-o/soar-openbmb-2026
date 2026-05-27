@@ -33,4 +33,16 @@ If the local wheel has a different filename, it must still start with
 `flash_attn-`, end with `.whl`, and include `-cp310-cp310-` in the filename.
 The platform Python is 3.10; do not pack a cp312 wheel.
 
+Before uploading, audit the exact tarball:
+
+```bash
+bash scripts/audit_fp8kv_submission_tarball.sh \
+  ./dist/soar_fp8kv_flashinfer_prepare_cache_<timestamp>.tar.gz
+```
+
+This catches the known bad cases: tiny runtime snapshot instead of a full SOAR
+package, missing wheel, wrong Python ABI wheel, missing FlashInfer cache,
+default network download fallback, default cache deletion, and fp8kv/cudagraph
+argument drift.
+
 The final tarball is what should be uploaded to the SOAR platform.
