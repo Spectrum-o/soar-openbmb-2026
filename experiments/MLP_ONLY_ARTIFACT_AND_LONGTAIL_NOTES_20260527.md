@@ -168,10 +168,15 @@ Keep CUDA graph and normal concurrency for candidate selection.
 
 The live fp8-KV submission was reported still running at about 4 hours on
 2026-05-27, while earlier successful submissions usually finished within about
-2.5 hours. Without platform stage logs this is not enough to infer accuracy.
-If the platform is already in `INFERENCING`, the most likely explanation is a
-small number of requests decoding to the output cap; if it is still in
-`PREPARING`, inspect dependency installation and quantization/setup time.
+2.5 hours. The later platform status showed it was still in `DOWNLOADING` /
+submit preparation, not `INFERENCING`.
+
+That changes the primary interpretation: treat it first as a prepare/startup
+problem rather than a correctness long-tail problem. The most actionable
+suspect for the fp8kv package family is preserving FlashInfer's cache instead
+of clearing `~/.cache/flashinfer`, because clearing it forces cold SM120 JIT on
+the next service launch. See `PLATFORM_TEST_LOGIC_20260527.md` for the platform
+stage breakdown.
 
 This does not justify arbitrary stop rules or answer parsing. The next aligned
 optimization is to improve the MLP-only artifact under the normal serving
