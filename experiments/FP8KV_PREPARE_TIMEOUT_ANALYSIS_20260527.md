@@ -1,89 +1,65 @@
-# FP8KV prepare timeout analysis, 2026-05-27
+# FP8KV prepare/startup analysis, 2026-05-27
 
 ## Goal
 
-Fix the fp8kv submission that stayed in the platform
-`DOWNLOADING` / preparation stage, without changing the inference strategy more
-than necessary.
+Fix the fp8kv submission startup path without changing the inference strategy
+more than necessary.
 
-The comparison baseline is the platform-successful MLP-only W4A16 package:
+The platform-proven baseline remains the MLP-only W4A16 chunk32k package:
 
-`soar_w4a16_bf16_chunk32k_safe_20260524_163047.tar.gz`
+- `submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe`
+- platform result: `acc_ori=80.31`, `final_score=22.90`
+- shared server args: `minicpm_flashinfer`, `gptq_marlin`,
+  `dtype=bfloat16`, chunked prefill 32768, max prefill 32768,
+  mem fraction 0.70
 
-Platform result:
+## What failed
 
-- wall time: about 2h22m
-- `acc_ori=80.31`
-- `final_score=22.90`
-- server args: `minicpm_flashinfer`, `gptq_marlin`, `dtype=bfloat16`,
-  chunked prefill 32768, mem fraction 0.70
+The package
 
-## Prepare-stage diff against the successful package
+`/autodl-fs/data/zyn/submissions/soar_fp8kv_flashinfer_prepare_cache_20260527_102811.tar.gz`
 
-Both packages already do the same heavyweight prepare work:
+failed on platform at service startup:
 
-- Install the bundled editable `sglang/python` when present.
-- Pin/install `gptqmodel==7.0.0`.
-- Pin/install `transformers==4.57.1`, compatible `huggingface-hub` and
-  `tokenizers`.
-- Install `accelerate` and `ninja`.
-- Use a bundled `flash_attn-2.8.3+cu128torch2.9` wheel when available, falling
-  back to a direct wheel URL only if the bundled wheel is missing.
-
-Those shared steps are not the new timeout suspect when the package is actually
-packed the same way. A critical caveat: the git variant directory does not store
-the large `flash_attn-*.whl`; it must be injected at tarball-build time. If a
-platform package is built directly from the bare variant without that wheel,
-`prepare_env.sh` can fall back to a GitHub download. That exact failure class
-has already caused platform `PREPARING` / `DOWNLOADING` stalls, so the fp8kv
-package is now offline-by-default.
-
-The fp8kv FlashInfer package adds:
-
-- `apply_gptq_marlin_kv_method_patch.py` on `gptq.py`.
-- `--kv-cache-dtype fp8_e4m3`.
-- `--max-running-requests 32`.
-- `--cuda-graph-bs 1 2 4 8 12 16 24 32`.
-- `ENABLE_SM120=1`.
-- `FLASHINFER_CUDA_ARCH_LIST=12.0f`.
-- Previously: unconditional `rm -rf ~/.cache/flashinfer`.
-
-The last item is the most preparation/startup-relevant delta. The deletion is
-fast by itself, but it forces cold FlashInfer JIT during server startup. The
-platform UI can still show this as `DOWNLOADING` / preparation because that
-stage covers contestant setup and service readiness.
-
-## Direct diff against the timed-out check branch
-
-Timed-out branch inspected:
-
-`github-submit/codex/fp8kv-degenstop-soar-check-20260526`
-
-Local worktree:
-
-`/root/autodl-tmp/zyn/sglang_check_branch`
-
-The timed-out branch's fp8kv `prepare_env.sh` still had both risky prepare
-paths:
-
-```bash
-echo "[prepare_env] bundled flash-attn wheel missing; trying direct prebuilt wheel URL" >&2
-uv pip install --no-deps --no-build-isolation "${FLASH_ATTN_WHEEL}"
-
-echo "[prepare_env] nuking ~/.cache/flashinfer to force SM 12.0 cubin regen"
-rm -rf "${HOME}/.cache/flashinfer" 2>/dev/null || true
+```text
+RuntimeError: Ninja build failed
+ninja: error: '/root/autodl-tmp/zyn/fp8kv_platform_prewarm_home/.cache/flashinfer/.../batch_prefill_paged_kernel_mask_0.cu',
+needed by '...batch_prefill_paged_kernel_mask_0.cuda.o',
+missing and no known rule to make it
 ```
 
-The current final package changes those to:
+Root cause: the bundled `flashinfer_cache_0.5.3_120f.tar.gz` was generated on
+the local prewarm machine. Its FlashInfer `build.ninja` metadata contained
+absolute paths to that machine's cache/source tree. FlashInfer still invokes
+ninja during `build_and_load()`, so a copied cache is not safe just because it
+contains an e4m3 `.so`.
 
-- flash-attn download is opt-in only via `ALLOW_FLASH_ATTN_DOWNLOAD=1`; missing
-  bundled wheel fails fast with a clear error instead of hanging in network I/O.
-- FlashInfer cache deletion is opt-in only via
-  `FORCE_FLASHINFER_CACHE_REBUILD=1`; otherwise existing cache is preserved and
-  the bundled `flashinfer_cache_0.5.3_120f.tar.gz` is restored when usable.
+The old audit only checked that an e4m3 cached op `.so` existed. That was too
+weak and allowed a non-portable cache bundle into the tarball.
 
-The fp8kv server args are intentionally not the changed variable in this fix.
-Both the timed-out branch and the current final package use:
+## Current fix
+
+Do not bundle locally generated FlashInfer JIT cache.
+
+The fp8kv package now does this instead:
+
+1. Requires a bundled cp310 `flash_attn-*.whl` by default.
+2. Keeps direct GitHub `flash-attn` download opt-in only with
+   `ALLOW_FLASH_ATTN_DOWNLOAD=1`.
+3. Preserves existing platform `~/.cache/flashinfer` by default.
+4. Does not restore a local `flashinfer_cache_0.5.3_120f.tar.gz`.
+5. If platform FlashInfer cache is empty, lets FlashInfer JIT in the platform
+   environment.
+6. Keeps FlashInfer cache deletion diagnostic-only via
+   `FORCE_FLASHINFER_CACHE_REBUILD=1`.
+
+CUDA graph remains enabled. The local prewarm log showed graph capture itself
+was 18.80s after weight load, so disabling CUDA graph is not the fix for this
+failure.
+
+## Server args
+
+The fp8kv server args remain:
 
 ```text
 --attention-backend minicpm_flashinfer
@@ -99,154 +75,47 @@ Both the timed-out branch and the current final package use:
 --cuda-graph-bs 1 2 4 8 12 16 24 32
 ```
 
-So the timeout fix is specifically scoped to preparation/startup slow paths,
-not a change to the inference strategy.
+The startup fix is scoped to prepare/cache packaging, not quantization or
+generation behavior.
 
-## Change made
+## Audits
 
-Updated:
+Current local no-cache candidate:
 
-`submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv_flashinfer/prepare_env.sh`
+`/autodl-fs/data/zyn/submissions/soar_fp8kv_flashinfer_no_jit_cache_20260527_113508.tar.gz`
 
-Behavior is now:
+- size: `168986242` bytes, shown by `ls -lh` as `162M`
+- md5: `fe9335f77135bbacf4621ec5b66955d4`
 
-1. Require `flash_attn` to be either already importable or provided as a bundled
-   `flash_attn-*.whl`. Direct GitHub download is disabled unless
-   `ALLOW_FLASH_ATTN_DOWNLOAD=1` is set explicitly.
-2. Preserve an existing `~/.cache/flashinfer/<version>/120f` cache.
-3. If platform cache is empty and the package includes
-   `flashinfer_cache_0.5.3_120f.tar.gz`, restore it.
-4. Fall back to normal JIT only when no reusable cache exists.
-5. Only clear FlashInfer cache when explicitly requested with
-   `FORCE_FLASHINFER_CACHE_REBUILD=1`.
-
-Added bundled cache:
-
-`submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_fp8kv_flashinfer/flashinfer_cache_0.5.3_120f.tar.gz`
-
-It is generated from a clean local HOME with the platform-target server args:
-`minicpm_flashinfer`, `gptq_marlin`, `kv_cache_dtype=fp8_e4m3`,
-`dtype=bfloat16`, `max_running_requests=32`, and CUDA graph batches
-`1 2 4 8 12 16 24 32`.
-
-Local prewarm result:
-
-- server ready after weight load plus CUDA graph capture
-- weight load: about 4m40s in the current local environment
-- CUDA graph capture: 18.80s
-- request smoke: `GET /v1/models` returned 200, one short chat completion
-  returned 200
-- generated cache: `~/.cache/flashinfer/0.5.3/120f`, about 17MB uncompressed
-- key cached op:
-  `batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_e4m3_dtype_o_bf16_...so`
-
-The compressed bundle is small enough to include in the submission package.
-
-## What can be packed locally
-
-Already packed in the successful/fp8kv family:
-
-- Patched `sglang/python` source through the variant's `sglang` link.
-- GPTQ quantization scripts and calibration JSONL.
-
-Packed now:
-
-- FlashInfer JIT cache for `flashinfer==0.5.3`, arch key `120f`.
-
-Packed at tarball-build time, not committed to git:
-
-- `flash-attn` cp310 prebuilt wheel. It is larger than GitHub's normal 100MB
-  single-file limit, so WSL should pass the local wheel path to
-  `scripts/pack_fp8kv_prepare_cache.sh`. The script temporarily links it into
-  the variant, packs the tarball with symlinks dereferenced, then removes the
-  temporary link.
-
-Possible but not selected as this first fix:
-
-- Full Python wheelhouse for `gptqmodel`, `transformers`, `tokenizers`,
-  `huggingface-hub`, `accelerate`, `ninja`.
-
-Reason: these dependencies were already part of the successful package's
-prepare path. The immediate non-negotiable offline artifact is the flash-attn
-wheel, because the bare repository cannot commit it and a missing wheel routes
-prepare back to GitHub unless guarded.
-
-## Residual risk
-
-The bundled `120f` cache currently contains the FlashInfer bf16/e4m3/bf16
-batch-prefill module reached by the local smoke run. If the platform run asks
-FlashInfer for another module not present in the bundle, FlashInfer will still
-JIT that missing module. This is intentional: the cache restore is a
-startup-risk reduction, not a hard dependency. If the cache is incompatible,
-removing it or setting `RESTORE_FLASHINFER_JIT_CACHE=0` falls back to normal
-JIT.
-
-CUDA graph stays enabled. The local fp8kv logs showed graph capture itself was
-seconds-scale once the server had the needed kernels, so disabling CUDA graph
-is not the first fix for a prepare-stage timeout.
-
-The cache hypothesis is not treated as proven. Local prewarm made the cache
-small and startup finite. The robust fix for the last platform slot is therefore
-two-part: remove default network download from prepare, and avoid forced cold
-FlashInfer JIT when a reusable cache exists.
-
-## Final package audit
-
-Final local package:
-
-`/autodl-fs/data/zyn/submissions/soar_fp8kv_flashinfer_prepare_cache_20260527_102811.tar.gz`
-
-- size: 173614932 bytes
-- md5: `f5513a55a6c43b7ba8f11dc68871ed46`
-
-Audits run:
+Use these before uploading a new fp8kv package:
 
 ```bash
-scripts/audit_fp8kv_submission_tarball.sh \
-  /autodl-fs/data/zyn/submissions/soar_fp8kv_flashinfer_prepare_cache_20260527_102811.tar.gz
+bash scripts/audit_fp8kv_submission_tarball.sh \
+  /path/to/soar_fp8kv_flashinfer_no_jit_cache_<timestamp>.tar.gz
 
 bash scripts/compare_fp8kv_prepare_to_baseline.sh \
   --baseline-variant submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe \
-  --fp8kv-tarball /autodl-fs/data/zyn/submissions/soar_fp8kv_flashinfer_prepare_cache_20260527_102811.tar.gz
+  --fp8kv-tarball /path/to/soar_fp8kv_flashinfer_no_jit_cache_<timestamp>.tar.gz
 ```
 
-Both passed.
+The audit now rejects:
 
-The baseline comparison confirms the fp8kv package keeps the platform-proven
-prepare/server shape for the non-fp8 variables:
+- tiny runtime snapshots
+- missing cp310 `flash_attn` wheel
+- cp312 `flash_attn` wheel
+- bundled `flashinfer_cache_0.5.3_120f.tar.gz`
+- old default GitHub download fallback
+- old unconditional FlashInfer cache deletion
+- bundled FlashInfer cache restore logic
+- FlashInfer/ninja build metadata in the tarball
 
-- `--chunked-prefill-size 32768`
-- `--max-prefill-tokens 32768`
-- `--mem-fraction-static 0.70`
-- `--quantization gptq_marlin`
-- `--dtype bfloat16`
+The previously submitted `102811` package is now a negative control and should
+fail the new audit because it contains `flashinfer_cache_0.5.3_120f.tar.gz`.
 
-The fp8kv-only server deltas are:
+## Residual risk
 
-- `--kv-cache-dtype fp8_e4m3`
-- `--cuda-graph-bs 1 2 4 8 12 16 24 32`
-- `--max-running-requests 32`
-
-The prepare-timeout guards verified by the audit are:
-
-- bundled cp310 `flash_attn` wheel is present in the final tarball
-- `flashinfer_cache_0.5.3_120f.tar.gz` is present
-- flash-attn GitHub download is opt-in only
-- FlashInfer cache rebuild is opt-in only
-
-Negative control:
-
-```bash
-scripts/audit_fp8kv_submission_tarball.sh \
-  /root/autodl-tmp/zyn/sglang_check_branch/zyn_submission_packages/fp8kv_cudagraph_current/fp8kv_cudagraph_current.tar.gz
-```
-
-This correctly fails with:
-
-```text
-FAIL: tarball is too small (190076 bytes); likely not a full SOAR package
-```
-
-The `fp8kv_cudagraph_current.tar.gz` file is a 188K runtime snapshot/check
-artifact, not a SOAR platform package. The audit script is intended to prevent
-uploading this class of artifact by mistake.
+If the platform has no suitable FlashInfer cache, first launch will JIT
+FlashInfer kernels in the platform environment. That is preferable to copying
+machine-local JIT metadata. The previous 21-minute platform run reached server
+startup and failed on stale cache paths, so the earlier indefinite
+`DOWNLOADING` suspicion is no longer the main diagnosis for that package.

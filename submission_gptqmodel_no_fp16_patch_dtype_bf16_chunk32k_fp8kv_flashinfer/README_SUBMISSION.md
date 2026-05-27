@@ -1,8 +1,9 @@
-# v5j_dtype_bf16_chunk32k_fp8kv FlashInfer — prepare-cache package
+# v5j_dtype_bf16_chunk32k_fp8kv FlashInfer — no local JIT cache
 
-> **2026-05-27 prepare-cache update.** This package follows the current
+> **2026-05-27 no-cache update.** This package follows the current
 > fp8kv FlashInfer platform experiment: `fp8_e4m3`, `max-running-requests 32`,
-> and CUDA graph batches `1 2 4 8 12 16 24 32`.
+> and CUDA graph batches `1 2 4 8 12 16 24 32`. It does not bundle a locally
+> generated FlashInfer JIT cache.
 
 ## FP8 KV dtype in this package
 
@@ -13,10 +14,9 @@
 >  注意 Lightning Attention 层使用独立线性注意力状态，优化路径不同。"
 
 The earlier v2 writeup preferred `fp8_e5m2` for range. The active platform
-package being debugged uses `fp8_e4m3`, and the bundled FlashInfer JIT cache is
-generated for e4m3. Keep dtype and cache aligned: if changing this package back
-to e5m2, regenerate `flashinfer_cache_0.5.3_120f.tar.gz` from an e5m2 local
-prewarm before submitting.
+package being debugged uses `fp8_e4m3`. Do not bundle a locally generated
+FlashInfer JIT cache when changing dtype; let FlashInfer generate kernels in
+the platform environment.
 
 FP8 KV is still only for dense attention KV cache. Lightning attention uses
 separate linear state.
@@ -47,8 +47,8 @@ extend gptq_marlin's `get_quant_method` to also handle RadixAttention.
    - Keep `--kv-cache-dtype fp8_e4m3` in SGLANG_SERVER_ARGS. KV pool storage
      is FP8; the MiniCPM Path Y patch upcasts the read path to bf16 before
      FlashInfer attention.
-   - Restore bundled FlashInfer JIT cache when platform cache is empty, while
-     preserving existing platform cache by default.
+   - Preserve existing platform FlashInfer cache by default. If the platform
+     cache is empty, let FlashInfer JIT in that environment.
 
 ## Why compressed_k dtype mismatch is NOT a concern
 

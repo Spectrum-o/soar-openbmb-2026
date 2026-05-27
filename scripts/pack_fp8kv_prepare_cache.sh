@@ -23,6 +23,11 @@ The flash-attn wheel is intentionally not committed to git because common
 builds are larger than GitHub's 100 MB single-file limit. This script
 temporarily symlinks the local wheel into the variant directory, runs
 tools/pack_submission.py, verifies the tarball, then restores the workspace.
+
+FlashInfer JIT cache is intentionally not packed. FlashInfer build metadata can
+contain absolute source paths from the build machine; platform startup should
+either preserve its own existing cache or JIT kernels in the platform
+environment.
 EOF
 }
 
@@ -87,7 +92,7 @@ fi
 mkdir -p "${OUT_DIR}"
 if [ -z "${OUTPUT}" ]; then
     stamp="$(date +%Y%m%d_%H%M%S)"
-    OUTPUT="${OUT_DIR}/soar_fp8kv_flashinfer_prepare_cache_${stamp}.tar.gz"
+    OUTPUT="${OUT_DIR}/soar_fp8kv_flashinfer_no_jit_cache_${stamp}.tar.gz"
 fi
 
 tmp_link="${VARIANT_DIR}/${wheel_name}"
@@ -124,18 +129,21 @@ echo "[pack_fp8kv] verifying tarball contents"
 listing="$(mktemp)"
 tar -tzf "${OUTPUT}" > "${listing}"
 grep -q "^./${wheel_name}$" "${listing}"
-grep -q '^./flashinfer_cache_0.5.3_120f.tar.gz$' "${listing}"
+if grep -q '^./flashinfer_cache_0.5.3_120f.tar.gz$' "${listing}"; then
+    echo "[pack_fp8kv] FAIL: FlashInfer cache bundle must not be packed" >&2
+    exit 1
+fi
 tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q -- '--kv-cache-dtype fp8_e4m3'
 tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q -- '--cuda-graph-bs 1 2 4 8 12 16 24 32'
 tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q -- '--max-running-requests 32'
 tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q 'ALLOW_FLASH_ATTN_DOWNLOAD'
+tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q 'no reusable FlashInfer cache target found'
+if tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -Eq 'restoring bundled FlashInfer JIT cache|flashinfer_cache_0\.5\.3_120f\.tar\.gz|/root/autodl-tmp|fp8kv_platform_prewarm_home'; then
+    echo "[pack_fp8kv] FAIL: prepare_env.sh contains stale FlashInfer cache restore/path logic" >&2
+    exit 1
+fi
 
-tmp_dir="$(mktemp -d)"
-trap 'cleanup; rm -rf "${tmp_dir}" "${listing}"' EXIT
-tar -xzf "${OUTPUT}" -C "${tmp_dir}" ./flashinfer_cache_0.5.3_120f.tar.gz
-cache_listing="${tmp_dir}/flashinfer_cache.list"
-tar -tzf "${tmp_dir}/flashinfer_cache_0.5.3_120f.tar.gz" > "${cache_listing}"
-grep -q 'dtype_kv_e4m3.*\.so$' "${cache_listing}"
+trap 'cleanup; rm -f "${listing}"' EXIT
 
 echo "[pack_fp8kv] OK"
 md5sum "${OUTPUT}"

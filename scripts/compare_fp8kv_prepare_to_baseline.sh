@@ -6,7 +6,7 @@ usage() {
 Usage:
   bash scripts/compare_fp8kv_prepare_to_baseline.sh \
     --baseline-variant submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe \
-    --fp8kv-tarball /path/to/soar_fp8kv_flashinfer_prepare_cache_*.tar.gz
+    --fp8kv-tarball /path/to/soar_fp8kv_flashinfer_no_jit_cache_*.tar.gz
 
 Compares the fp8kv final tarball against the platform-proven chunk32k_safe
 prepare path. This is not an accuracy test; it is a prepare/startup risk audit.
@@ -108,13 +108,19 @@ check_contains "${fp8kv_args}" "--max-running-requests 32" "fp8kv max-running-re
 check_contains "$(cat "${fp8kv_env}")" "ALLOW_FLASH_ATTN_DOWNLOAD" "offline flash-attn guard"
 check_contains "$(cat "${fp8kv_env}")" "FATAL: bundled flash-attn wheel missing" "missing-wheel fast failure"
 check_contains "$(cat "${fp8kv_env}")" "FORCE_FLASHINFER_CACHE_REBUILD" "opt-in FlashInfer rebuild"
+check_contains "$(cat "${fp8kv_env}")" "no reusable FlashInfer cache target found" "platform-local FlashInfer JIT fallback"
 check_not_contains_file "${fp8kv_env}" "nuking ~/.cache/flashinfer" "old unconditional cache deletion"
 check_not_contains_file "${fp8kv_env}" "bundled flash-attn wheel missing; trying direct prebuilt wheel URL" "old default GitHub fallback"
+check_not_contains_file "${fp8kv_env}" "restoring bundled FlashInfer JIT cache" "bundled FlashInfer cache restore"
+check_not_contains_file "${fp8kv_env}" "flashinfer_cache_0.5.3_120f.tar.gz" "bundled FlashInfer cache reference"
 
 listing="${tmp_dir}/listing.txt"
 tar -tzf "${FP8KV_TARBALL}" > "${listing}"
 grep -Eq '^\./flash_attn-.*-cp310-cp310-.*\.whl$' "${listing}"
-grep -Eq '^\./flashinfer_cache_0\.5\.3_120f\.tar\.gz$' "${listing}"
+if grep -Eq '^\./flashinfer_cache_0\.5\.3_120f\.tar\.gz$' "${listing}"; then
+    echo "FAIL: fp8kv tarball contains a bundled FlashInfer JIT cache" >&2
+    exit 1
+fi
 
 cat <<EOF
 OK: fp8kv prepare path is aligned with the platform-proven baseline where expected.
@@ -136,7 +142,7 @@ fp8kv-only server args:
 
 prepare-timeout guards verified:
 - bundled cp310 flash-attn wheel present in final tarball
-- FlashInfer 0.5.3/120f cache bundle present
+- no bundled FlashInfer JIT cache is present
 - flash-attn GitHub download is opt-in only
 - FlashInfer cache rebuild is opt-in only
 EOF

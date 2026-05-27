@@ -13,7 +13,7 @@ submission:
 - accidentally uploading the tiny runtime snapshot instead of a full package
 - missing bundled flash-attn wheel, which would route prepare to GitHub
 - wrong Python ABI wheel (platform is cp310)
-- missing FlashInfer cache bundle
+- accidental bundled FlashInfer cache, which can contain machine-local paths
 - accidental default FlashInfer cache deletion
 - fp8kv/cudagraph args drifting from the locally verified path
 EOF
@@ -90,13 +90,14 @@ require_entry '^\./sglang/python/sglang/srt/layers/attention/minicpm_attention_k
 require_entry '^\./sglang/python/sglang/srt/layers/quantization/gptq\.py$' 'bundled SGLang gptq.py'
 require_entry '^\./flash_attn-.*-cp310-cp310-.*\.whl$' 'cp310 flash-attn wheel'
 reject_entry '^\./flash_attn-.*-cp312-cp312-.*\.whl$' 'cp312 flash-attn wheel'
-require_entry '^\./flashinfer_cache_0\.5\.3_120f\.tar\.gz$' 'FlashInfer 0.5.3 120f cache bundle'
+reject_entry '^\./flashinfer_cache_0\.5\.3_120f\.tar\.gz$' 'bundled FlashInfer cache'
 
 tar -xOf "${TARBALL}" ./prepare_env.sh > "${tmp_dir}/prepare_env.sh"
 require_prepare_text 'ALLOW_FLASH_ATTN_DOWNLOAD' 'offline flash-attn download guard'
 require_prepare_text 'FATAL: bundled flash-attn wheel missing' 'missing-wheel fast failure'
 require_prepare_text 'cp310-cp310' 'cp310 wheel guard'
 require_prepare_text 'FORCE_FLASHINFER_CACHE_REBUILD' 'opt-in FlashInfer cache rebuild guard'
+require_prepare_text 'no reusable FlashInfer cache target found' 'platform-local FlashInfer JIT fallback'
 require_prepare_text '--kv-cache-dtype fp8_e4m3' 'fp8_e4m3 KV cache arg'
 require_prepare_text '--cuda-graph-bs 1 2 4 8 12 16 24 32' 'explicit small CUDA graph batch list'
 require_prepare_text '--max-running-requests 32' 'max-running-requests 32'
@@ -104,12 +105,16 @@ require_prepare_text 'ENABLE_SM120=.*1' 'ENABLE_SM120 default'
 require_prepare_text 'FLASHINFER_CUDA_ARCH_LIST=.*12\.0f' 'FlashInfer SM120 arch default'
 reject_prepare_text 'nuking ~/.cache/flashinfer' 'old unconditional FlashInfer cache deletion message'
 reject_prepare_text 'bundled flash-attn wheel missing; trying direct prebuilt wheel URL' 'old default GitHub download fallback'
+reject_prepare_text 'restoring bundled FlashInfer JIT cache' 'bundled FlashInfer cache restore path'
+reject_prepare_text 'flashinfer_cache_0\.5\.3_120f\.tar\.gz' 'bundled FlashInfer cache reference'
 
-tar -xzf "${TARBALL}" -C "${tmp_dir}" ./flashinfer_cache_0.5.3_120f.tar.gz
-cache_listing="${tmp_dir}/flashinfer_cache_listing.txt"
-tar -tzf "${tmp_dir}/flashinfer_cache_0.5.3_120f.tar.gz" > "${cache_listing}"
-if ! grep -Eq '0\.5\.3/120f/cached_ops/.+dtype_kv_e4m3.+\.so$' "${cache_listing}"; then
-    echo "FAIL: FlashInfer cache bundle does not contain an e4m3 cached op .so" >&2
+if tar -tzf "${TARBALL}" | grep -Eq '(^|/)(build\.ninja|\.ninja_log|\.ninja_deps)$'; then
+    echo "FAIL: tarball contains FlashInfer/ninja build metadata" >&2
+    exit 1
+fi
+
+if tar -xOf "${TARBALL}" ./prepare_env.sh | grep -Eq '/root/autodl-tmp|fp8kv_platform_prewarm_home'; then
+    echo "FAIL: prepare_env.sh contains machine-local paths" >&2
     exit 1
 fi
 

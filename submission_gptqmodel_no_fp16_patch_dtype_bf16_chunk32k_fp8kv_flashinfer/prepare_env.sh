@@ -360,9 +360,9 @@ export GPTQMODEL_MARLIN_USE_FP32="${GPTQMODEL_MARLIN_USE_FP32:-1}"
 # FP8 KV CACHE — PATH D PATCH (per SOAR official toolkit guidance)
 # ----------------------------------------------------------------------
 # Official recommendation: "路径一：量化加速 — GPTQ W4A16 + Marlin Kernel + FP8 KV Cache".
-# This prepare-cache package is aligned with the current platform experiment and
-# local prewarm run: --kv-cache-dtype fp8_e4m3. If we switch back to e5m2 later,
-# regenerate the FlashInfer cache bundle with the same dtype before packing.
+# This package is aligned with the current platform experiment and local prewarm
+# run: --kv-cache-dtype fp8_e4m3. Do not pack locally generated FlashInfer JIT
+# cache; if the KV dtype changes, let FlashInfer generate platform-local kernels.
 #
 # Why we need a patch: SGLang's current GPTQMarlinConfig.get_quant_method
 # only handles LinearBase / FusedMoE, not RadixAttention. So
@@ -453,15 +453,15 @@ fi
 #     prime suspect because it forces cold FlashInfer JIT during server startup.
 #   - A rebuild is still available for diagnostics via
 #     FORCE_FLASHINFER_CACHE_REBUILD=1.
-#   - If the platform cache is empty and this package includes a small
-#     flashinfer_cache_0.5.3_120f.tar.gz bundle, restore it before startup.
-#     This mirrors the successful chunk32k_safe package's prepare behavior as
-#     closely as possible while removing the cold-JIT variable introduced by
-#     fp8kv FlashInfer.
+#   - Do not restore a locally generated FlashInfer cache bundle. FlashInfer
+#     build metadata contains absolute source paths, so a cache generated on
+#     another machine can make platform ninja fail before the server becomes
+#     ready.
+#     If the platform cache is empty, let FlashInfer JIT in the platform
+#     environment.
 export ENABLE_SM120="${ENABLE_SM120:-1}"
 export FLASHINFER_CUDA_ARCH_LIST="${FLASHINFER_CUDA_ARCH_LIST:-12.0f}"
 FLASHINFER_CACHE_DIR="${HOME}/.cache/flashinfer"
-FLASHINFER_CACHE_BUNDLE="${SUBMISSION_DIR}/flashinfer_cache_0.5.3_120f.tar.gz"
 
 if [ "${FORCE_FLASHINFER_CACHE_REBUILD:-0}" = "1" ]; then
     if [ -d "${FLASHINFER_CACHE_DIR}" ]; then
@@ -494,13 +494,6 @@ PY
 
     if [ -d "${flashinfer_cache_target}" ]; then
         echo "[prepare_env] preserving FlashInfer cache: ${flashinfer_cache_target}"
-    elif [ "${RESTORE_FLASHINFER_JIT_CACHE:-1}" = "1" ] \
-        && [ "${FLASHINFER_CUDA_ARCH_LIST}" = "12.0f" ] \
-        && [ "${flashinfer_version}" = "0.5.3" ] \
-        && [ -f "${FLASHINFER_CACHE_BUNDLE}" ]; then
-        echo "[prepare_env] restoring bundled FlashInfer JIT cache to ${FLASHINFER_CACHE_DIR}"
-        mkdir -p "${FLASHINFER_CACHE_DIR}"
-        tar -xzf "${FLASHINFER_CACHE_BUNDLE}" -C "${FLASHINFER_CACHE_DIR}"
     else
         echo "[prepare_env] no reusable FlashInfer cache target found: ${flashinfer_cache_target}"
         echo "[prepare_env] first server launch may JIT FlashInfer kernels"
