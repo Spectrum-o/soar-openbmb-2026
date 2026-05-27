@@ -233,3 +233,20 @@ The prepare-timeout guards verified by the audit are:
 - `flashinfer_cache_0.5.3_120f.tar.gz` is present
 - flash-attn GitHub download is opt-in only
 - FlashInfer cache rebuild is opt-in only
+
+Negative control:
+
+```bash
+scripts/audit_fp8kv_submission_tarball.sh \
+  /root/autodl-tmp/zyn/sglang_check_branch/zyn_submission_packages/fp8kv_cudagraph_current/fp8kv_cudagraph_current.tar.gz
+```
+
+This correctly fails with:
+
+```text
+FAIL: tarball is too small (190076 bytes); likely not a full SOAR package
+```
+
+The `fp8kv_cudagraph_current.tar.gz` file is a 188K runtime snapshot/check
+artifact, not a SOAR platform package. The audit script is intended to prevent
+uploading this class of artifact by mistake.

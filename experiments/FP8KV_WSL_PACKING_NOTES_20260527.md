@@ -54,4 +54,21 @@ bash scripts/compare_fp8kv_prepare_to_baseline.sh \
   --fp8kv-tarball ./dist/soar_fp8kv_flashinfer_prepare_cache_<timestamp>.tar.gz
 ```
 
+Negative-control check:
+
+```bash
+scripts/audit_fp8kv_submission_tarball.sh \
+  /root/autodl-tmp/zyn/sglang_check_branch/zyn_submission_packages/fp8kv_cudagraph_current/fp8kv_cudagraph_current.tar.gz
+```
+
+Expected result:
+
+```text
+FAIL: tarball is too small (190076 bytes); likely not a full SOAR package
+```
+
+That 188K archive is only a runtime snapshot/check artifact. Do not upload it
+to the platform. The upload candidate should be the 166M full package with md5
+`f5513a55a6c43b7ba8f11dc68871ed46`.
+
 The final tarball is what should be uploaded to the SOAR platform.
