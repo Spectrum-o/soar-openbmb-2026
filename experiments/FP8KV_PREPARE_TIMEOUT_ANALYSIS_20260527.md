@@ -140,3 +140,47 @@ The cache hypothesis is not treated as proven. Local prewarm made the cache
 small and startup finite. The robust fix for the last platform slot is therefore
 two-part: remove default network download from prepare, and avoid forced cold
 FlashInfer JIT when a reusable cache exists.
+
+## Final package audit
+
+Final local package:
+
+`/autodl-fs/data/zyn/submissions/soar_fp8kv_flashinfer_prepare_cache_20260527_102811.tar.gz`
+
+- size: 173614932 bytes
+- md5: `f5513a55a6c43b7ba8f11dc68871ed46`
+
+Audits run:
+
+```bash
+scripts/audit_fp8kv_submission_tarball.sh \
+  /autodl-fs/data/zyn/submissions/soar_fp8kv_flashinfer_prepare_cache_20260527_102811.tar.gz
+
+bash scripts/compare_fp8kv_prepare_to_baseline.sh \
+  --baseline-variant submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe \
+  --fp8kv-tarball /autodl-fs/data/zyn/submissions/soar_fp8kv_flashinfer_prepare_cache_20260527_102811.tar.gz
+```
+
+Both passed.
+
+The baseline comparison confirms the fp8kv package keeps the platform-proven
+prepare/server shape for the non-fp8 variables:
+
+- `--chunked-prefill-size 32768`
+- `--max-prefill-tokens 32768`
+- `--mem-fraction-static 0.70`
+- `--quantization gptq_marlin`
+- `--dtype bfloat16`
+
+The fp8kv-only server deltas are:
+
+- `--kv-cache-dtype fp8_e4m3`
+- `--cuda-graph-bs 1 2 4 8 12 16 24 32`
+- `--max-running-requests 32`
+
+The prepare-timeout guards verified by the audit are:
+
+- bundled cp310 `flash_attn` wheel is present in the final tarball
+- `flashinfer_cache_0.5.3_120f.tar.gz` is present
+- flash-attn GitHub download is opt-in only
+- FlashInfer cache rebuild is opt-in only

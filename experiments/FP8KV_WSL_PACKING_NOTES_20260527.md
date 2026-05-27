@@ -45,4 +45,13 @@ package, missing wheel, wrong Python ABI wheel, missing FlashInfer cache,
 default network download fallback, default cache deletion, and fp8kv/cudagraph
 argument drift.
 
+Then compare the prepare path against the platform-proven `chunk32k_safe`
+variant:
+
+```bash
+bash scripts/compare_fp8kv_prepare_to_baseline.sh \
+  --baseline-variant submission_gptqmodel_no_fp16_patch_dtype_bf16_chunk32k_safe \
+  --fp8kv-tarball ./dist/soar_fp8kv_flashinfer_prepare_cache_<timestamp>.tar.gz
+```
+
 The final tarball is what should be uploaded to the SOAR platform.
