@@ -108,8 +108,8 @@ reject_prepare_text 'bundled flash-attn wheel missing; trying direct prebuilt wh
 tar -xzf "${TARBALL}" -C "${tmp_dir}" ./flashinfer_cache_0.5.3_120f.tar.gz
 cache_listing="${tmp_dir}/flashinfer_cache_listing.txt"
 tar -tzf "${tmp_dir}/flashinfer_cache_0.5.3_120f.tar.gz" > "${cache_listing}"
-if ! grep -Eq '0\.5\.3/120f/cached_ops/.+dtype_kv_e4m3' "${cache_listing}"; then
-    echo "FAIL: FlashInfer cache bundle does not contain an e4m3 cached op" >&2
+if ! grep -Eq '0\.5\.3/120f/cached_ops/.+dtype_kv_e4m3.+\.so$' "${cache_listing}"; then
+    echo "FAIL: FlashInfer cache bundle does not contain an e4m3 cached op .so" >&2
     exit 1
 fi
 
