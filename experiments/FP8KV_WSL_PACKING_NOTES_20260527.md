@@ -29,6 +29,8 @@ The script:
 - verifies the bundled FlashInfer cache contains an e4m3 cached op `.so`
 - removes the temporary wheel link before exit
 
-If the local wheel has a different filename but starts with `flash_attn-` and
-ends with `.whl`, the script accepts it. The final tarball is what should be
-uploaded to the SOAR platform.
+If the local wheel has a different filename, it must still start with
+`flash_attn-`, end with `.whl`, and include `-cp310-cp310-` in the filename.
+The platform Python is 3.10; do not pack a cp312 wheel.
+
+The final tarball is what should be uploaded to the SOAR platform.

@@ -277,13 +277,24 @@ echo "[prepare_env] all required packages present: gptqmodel==${GPTQMODEL_PIN} t
 #   seem to be installed.
 #
 # Platform env (confirmed from prior submission logs): torch 2.9.1+cu128,
-# python 3.10. Prefer a bundled prebuilt flash_attn wheel so platform prepare
-# does not depend on GitHub download latency. The SM120 cp310 wheel installs in
-# seconds and covers the Blackwell target.
+# python 3.10. Require a bundled prebuilt flash_attn wheel by default so platform
+# prepare never depends on GitHub download latency. A direct download fallback is
+# available only for diagnostics via ALLOW_FLASH_ATTN_DOWNLOAD=1.
 FLASH_ATTN_WHEEL="https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3+cu128torch2.9-cp310-cp310-linux_x86_64.whl"
 LOCAL_FLASH_ATTN_WHEEL="$(
     find "${SUBMISSION_DIR}" -maxdepth 1 -type f -name 'flash_attn-*.whl' | sort | tail -n 1
 )"
+if [ -n "${LOCAL_FLASH_ATTN_WHEEL}" ]; then
+    local_flash_attn_wheel_name="$(basename "${LOCAL_FLASH_ATTN_WHEEL}")"
+    case "${local_flash_attn_wheel_name}" in
+        *-cp310-cp310-*) ;;
+        *)
+            echo "[prepare_env] FATAL: bundled flash-attn wheel is not cp310: ${local_flash_attn_wheel_name}" >&2
+            echo "[prepare_env]        platform Python is 3.10; repack with a cp310-cp310 wheel" >&2
+            exit 1
+            ;;
+    esac
+fi
 
 if flash_attn_importable; then
     echo "[prepare_env] flash-attn already importable; skipping install"
@@ -291,8 +302,13 @@ else
     if [ -n "${LOCAL_FLASH_ATTN_WHEEL}" ]; then
         echo "[prepare_env] installing bundled flash-attn wheel: ${LOCAL_FLASH_ATTN_WHEEL}"
         uv pip install --no-deps --no-build-isolation "${LOCAL_FLASH_ATTN_WHEEL}"
+    elif [ "${ALLOW_FLASH_ATTN_DOWNLOAD:-0}" != "1" ]; then
+        echo "[prepare_env] FATAL: bundled flash-attn wheel missing and ALLOW_FLASH_ATTN_DOWNLOAD is not enabled" >&2
+        echo "[prepare_env]        include a cp310 flash_attn-*.whl in the submission package" >&2
+        echo "[prepare_env]        this fp8kv package is offline-by-default to avoid platform prepare/DOWNLOADING stalls" >&2
+        exit 1
     else
-        echo "[prepare_env] bundled flash-attn wheel missing; trying direct prebuilt wheel URL" >&2
+        echo "[prepare_env] ALLOW_FLASH_ATTN_DOWNLOAD=1; trying direct prebuilt wheel URL" >&2
         if ! uv pip install --no-deps --no-build-isolation "${FLASH_ATTN_WHEEL}"; then
             if [ "${ALLOW_FLASH_ATTN_SOURCE_BUILD:-0}" = "1" ]; then
                 echo "[prepare_env] direct wheel failed; ALLOW_FLASH_ATTN_SOURCE_BUILD=1 so trying source build" >&2

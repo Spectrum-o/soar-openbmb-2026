@@ -71,6 +71,13 @@ case "${wheel_name}" in
         exit 2
         ;;
 esac
+case "${wheel_name}" in
+    *-cp310-cp310-*) ;;
+    *)
+        echo "error: wheel must target platform Python cp310-cp310: ${wheel_name}" >&2
+        exit 2
+        ;;
+esac
 
 if [ ! -d "${VARIANT_DIR}" ]; then
     echo "error: variant directory not found: ${VARIANT_DIR}" >&2
@@ -121,6 +128,7 @@ grep -q '^./flashinfer_cache_0.5.3_120f.tar.gz$' "${listing}"
 tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q -- '--kv-cache-dtype fp8_e4m3'
 tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q -- '--cuda-graph-bs 1 2 4 8 12 16 24 32'
 tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q -- '--max-running-requests 32'
+tar -xOf "${OUTPUT}" ./prepare_env.sh | grep -q 'ALLOW_FLASH_ATTN_DOWNLOAD'
 
 tmp_dir="$(mktemp -d)"
 trap 'cleanup; rm -rf "${tmp_dir}" "${listing}"' EXIT

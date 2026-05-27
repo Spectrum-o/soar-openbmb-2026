@@ -30,8 +30,13 @@ Both packages already do the same heavyweight prepare work:
 - Use a bundled `flash_attn-2.8.3+cu128torch2.9` wheel when available, falling
   back to a direct wheel URL only if the bundled wheel is missing.
 
-Those shared steps are not the new timeout suspect, because the successful
-package already completed them on platform.
+Those shared steps are not the new timeout suspect when the package is actually
+packed the same way. A critical caveat: the git variant directory does not store
+the large `flash_attn-*.whl`; it must be injected at tarball-build time. If a
+platform package is built directly from the bare variant without that wheel,
+`prepare_env.sh` can fall back to a GitHub download. That exact failure class
+has already caused platform `PREPARING` / `DOWNLOADING` stalls, so the fp8kv
+package is now offline-by-default.
 
 The fp8kv FlashInfer package adds:
 
@@ -56,11 +61,14 @@ Updated:
 
 Behavior is now:
 
-1. Preserve an existing `~/.cache/flashinfer/<version>/120f` cache.
-2. If platform cache is empty and the package includes
+1. Require `flash_attn` to be either already importable or provided as a bundled
+   `flash_attn-*.whl`. Direct GitHub download is disabled unless
+   `ALLOW_FLASH_ATTN_DOWNLOAD=1` is set explicitly.
+2. Preserve an existing `~/.cache/flashinfer/<version>/120f` cache.
+3. If platform cache is empty and the package includes
    `flashinfer_cache_0.5.3_120f.tar.gz`, restore it.
-3. Fall back to normal JIT only when no reusable cache exists.
-4. Only clear FlashInfer cache when explicitly requested with
+4. Fall back to normal JIT only when no reusable cache exists.
+5. Only clear FlashInfer cache when explicitly requested with
    `FORCE_FLASHINFER_CACHE_REBUILD=1`.
 
 Added bundled cache:
@@ -110,9 +118,9 @@ Possible but not selected as this first fix:
   `huggingface-hub`, `accelerate`, `ninja`.
 
 Reason: these dependencies were already part of the successful package's
-prepare path, so bundling them is lower-priority than removing the fp8kv-only
-cold-JIT trigger. If the next platform run still stalls in prepare with logs
-showing pip/network time, build the wheelhouse next.
+prepare path. The immediate non-negotiable offline artifact is the flash-attn
+wheel, because the bare repository cannot commit it and a missing wheel routes
+prepare back to GitHub unless guarded.
 
 ## Residual risk
 
@@ -127,3 +135,8 @@ JIT.
 CUDA graph stays enabled. The local fp8kv logs showed graph capture itself was
 seconds-scale once the server had the needed kernels, so disabling CUDA graph
 is not the first fix for a prepare-stage timeout.
+
+The cache hypothesis is not treated as proven. Local prewarm made the cache
+small and startup finite. The robust fix for the last platform slot is therefore
+two-part: remove default network download from prepare, and avoid forced cold
+FlashInfer JIT when a reusable cache exists.
