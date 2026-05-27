@@ -53,6 +53,55 @@ fast by itself, but it forces cold FlashInfer JIT during server startup. The
 platform UI can still show this as `DOWNLOADING` / preparation because that
 stage covers contestant setup and service readiness.
 
+## Direct diff against the timed-out check branch
+
+Timed-out branch inspected:
+
+`github-submit/codex/fp8kv-degenstop-soar-check-20260526`
+
+Local worktree:
+
+`/root/autodl-tmp/zyn/sglang_check_branch`
+
+The timed-out branch's fp8kv `prepare_env.sh` still had both risky prepare
+paths:
+
+```bash
+echo "[prepare_env] bundled flash-attn wheel missing; trying direct prebuilt wheel URL" >&2
+uv pip install --no-deps --no-build-isolation "${FLASH_ATTN_WHEEL}"
+
+echo "[prepare_env] nuking ~/.cache/flashinfer to force SM 12.0 cubin regen"
+rm -rf "${HOME}/.cache/flashinfer" 2>/dev/null || true
+```
+
+The current final package changes those to:
+
+- flash-attn download is opt-in only via `ALLOW_FLASH_ATTN_DOWNLOAD=1`; missing
+  bundled wheel fails fast with a clear error instead of hanging in network I/O.
+- FlashInfer cache deletion is opt-in only via
+  `FORCE_FLASHINFER_CACHE_REBUILD=1`; otherwise existing cache is preserved and
+  the bundled `flashinfer_cache_0.5.3_120f.tar.gz` is restored when usable.
+
+The fp8kv server args are intentionally not the changed variable in this fix.
+Both the timed-out branch and the current final package use:
+
+```text
+--attention-backend minicpm_flashinfer
+--chunked-prefill-size 32768
+--max-prefill-tokens 32768
+--mem-fraction-static 0.70
+--max-running-requests 32
+--skip-server-warmup
+--dense-as-sparse
+--quantization gptq_marlin
+--kv-cache-dtype fp8_e4m3
+--dtype bfloat16
+--cuda-graph-bs 1 2 4 8 12 16 24 32
+```
+
+So the timeout fix is specifically scoped to preparation/startup slow paths,
+not a change to the inference strategy.
+
 ## Change made
 
 Updated:
