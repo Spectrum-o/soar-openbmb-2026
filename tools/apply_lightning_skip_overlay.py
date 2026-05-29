@@ -2,8 +2,8 @@
 """tools/apply_lightning_skip_overlay.py
 
 Post-quant surgery: convert a normally-quantized SALA artifact into a
-mixed-precision artifact where Lightning Attention layers' MLPs are
-preserved as BF16 instead of W4A16.
+mixed-precision artifact where selected SALA layer modules are preserved as
+BF16 instead of W4A16.
 
 WHY
 ---
@@ -15,17 +15,20 @@ on long-context tasks (cwe / niah). MLP-only quant still touches the MLP
 that FEEDS into the recurrence, which is suspected of being the dominant
 acc loss source.
 
-This tool keeps the existing W4A16 quantization for DENSE layers' MLPs
-but reverts LIGHTNING layers' MLPs to BF16, by:
-  1. Reading the source BF16 model's lightning-layer MLP weights
+By default, this tool keeps the original lightning-skip behavior: revert
+LIGHTNING layers' MLPs to BF16. Newer full-W4A16 recovery variants can pass
+`--modules attn` to restore selected attention q/k/v/o projections instead.
+
+This tool works by:
+  1. Reading the source BF16 model's selected layer weights
   2. Writing those into a new "lightning-skip-overlay" safetensors shard
      in the quantized output directory
-  3. Updating model.safetensors.index.json so SGLang loader finds .weight
-     at the lightning-layer-mlp paths
-  4. Physically removing old lightning-layer MLP quant tensors from their
+  3. Updating model.safetensors.index.json so SGLang loader finds BF16 .weight
+     tensors at the selected paths
+  4. Physically removing old selected quant tensors from their
      safetensors shards, because SGLang iterates physical shard keys rather
      than only index.json entries
-  5. Updating quantize_config.json's dynamic field to mark lightning MLPs
+  5. Updating quantize_config.json's dynamic field to mark selected modules
      as "skip quantization" (load as BF16 / UnquantizedLinearMethod)
 
 ALIGNMENT GUARANTEE
@@ -42,6 +45,8 @@ After running the normal 1849-style quant:
     python3 tools/apply_lightning_skip_overlay.py \\
         --quantized-dir /path/to/output-quantized \\
         --bf16-dir      /path/to/MiniCPM-SALA \\
+        [--layers all-lightning|last4-lightning|23,27,29-31]
+        [--modules mlp|attn|mlp,attn]
         [--dry-run]
 
 Idempotent: if the overlay shard already exists, it's overwritten.
@@ -51,6 +56,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -93,13 +99,166 @@ def find_lightning_layer_indices(config_path: Path) -> tuple[list[int], int]:
     return indices, len(mixer_types)
 
 
-def collect_lightning_mlp_tensors(
-    bf16_dir: Path, lightning_indices: list[int]
-) -> dict[str, "any"]:  # noqa: F821 (forward ref to torch tensor)
-    """Read BF16 source for lightning layer MLP weights.
+def parse_layer_selector(
+    selector: str, lightning_indices: list[int], total_layers: int
+) -> list[int]:
+    """Resolve a user layer selector into sorted layer indices.
 
-    Returns a dict mapping `model.layers.{i}.mlp.{gate_proj,up_proj,down_proj}.weight`
-    → torch.Tensor (bfloat16, on CPU).
+    Supported selectors:
+      - all-lightning / lightning: all lightning indices from config.json
+      - lastN-lightning: last N lightning indices, e.g. last4-lightning
+      - all: every layer index [0, total_layers)
+      - explicit comma/range list: "23,27,29-31"
+    """
+    value = (selector or "all-lightning").strip().lower()
+    if value in ("all-lightning", "lightning"):
+        return list(lightning_indices)
+    if value == "all":
+        return list(range(total_layers))
+
+    match = re.fullmatch(r"last(\d+)-lightning", value)
+    if match:
+        n = int(match.group(1))
+        if n <= 0:
+            raise ValueError(f"layer selector {selector!r} must request at least one layer")
+        return list(lightning_indices[-n:])
+
+    out: set[int] = set()
+    for part in value.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_s, end_s = part.split("-", 1)
+            start, end = int(start_s), int(end_s)
+            if end < start:
+                raise ValueError(f"invalid descending layer range {part!r}")
+            out.update(range(start, end + 1))
+        else:
+            out.add(int(part))
+
+    if not out:
+        raise ValueError(f"layer selector {selector!r} resolved to no layers")
+    bad = [i for i in sorted(out) if i < 0 or i >= total_layers]
+    if bad:
+        raise ValueError(
+            f"layer selector {selector!r} has out-of-range layer(s) {bad}; "
+            f"valid range is 0..{total_layers - 1}"
+        )
+    return sorted(out)
+
+
+def parse_module_groups(value: str) -> tuple[str, ...]:
+    """Parse --modules into a normalized tuple.
+
+    `mlp` restores gate/up/down. `attn` restores q/k/v/o. The helper also
+    accepts qkv/o_proj/down aliases for quick ablation variants.
+    """
+    aliases = {
+        "mlp": "mlp",
+        "attn": "attn",
+        "attention": "attn",
+        "qkv": "qkv",
+        "o": "o_proj",
+        "o_proj": "o_proj",
+        "down": "down_proj",
+        "down_proj": "down_proj",
+    }
+    groups: list[str] = []
+    for raw in (value or "mlp").split(","):
+        item = raw.strip().lower().replace("-", "_")
+        if not item:
+            continue
+        if item not in aliases:
+            raise ValueError(
+                f"unknown module group {raw!r}; expected one of "
+                "mlp, attn, qkv, o_proj, down_proj"
+            )
+        normalized = aliases[item]
+        if normalized not in groups:
+            groups.append(normalized)
+    if not groups:
+        raise ValueError("--modules resolved to an empty module set")
+    return tuple(groups)
+
+
+def tensor_bases_for_layer(layer_idx: int, modules: tuple[str, ...]) -> list[str]:
+    bases: list[str] = []
+    if "attn" in modules or "qkv" in modules:
+        bases.extend(
+            f"model.layers.{layer_idx}.self_attn.{proj}"
+            for proj in ("q_proj", "k_proj", "v_proj")
+        )
+    if "attn" in modules or "o_proj" in modules:
+        bases.append(f"model.layers.{layer_idx}.self_attn.o_proj")
+    if "mlp" in modules:
+        bases.extend(
+            f"model.layers.{layer_idx}.mlp.{proj}"
+            for proj in ("gate_proj", "up_proj", "down_proj")
+        )
+    elif "down_proj" in modules:
+        bases.append(f"model.layers.{layer_idx}.mlp.down_proj")
+    return bases
+
+
+def sglang_dynamic_skip_rules_for_layer(
+    layer_idx: int, modules: tuple[str, ...]
+) -> dict[str, bool]:
+    rules: dict[str, bool] = {}
+    if "attn" in modules or "qkv" in modules:
+        rules[f"-:model.layers.{layer_idx}.self_attn.qkv_proj$"] = True
+    if "attn" in modules or "o_proj" in modules:
+        rules[f"-:model.layers.{layer_idx}.self_attn.o_proj$"] = True
+    if "mlp" in modules:
+        rules[f"-:model.layers.{layer_idx}.mlp.gate_up_proj$"] = True
+        rules[f"-:model.layers.{layer_idx}.mlp.down_proj$"] = True
+    elif "down_proj" in modules:
+        rules[f"-:model.layers.{layer_idx}.mlp.down_proj$"] = True
+    return rules
+
+
+def quantized_tensor_names_for_modules(
+    layer_indices: list[int], modules: tuple[str, ...]
+) -> set[str]:
+    """Return all selected quantized/plain tensor names that must disappear.
+
+    SGLang filters safetensors at the shard/file level using the index, then
+    iterates every physical key in the selected shard. Therefore the physical
+    cleanup must not depend only on names currently present in index.json: a
+    stale key that is missing from the index can still be read by SGLang if its
+    shard remains selected for any other tensor.
+    """
+    suffixes = (
+        # gptq_marlin format
+        ".qweight",
+        ".qzeros",
+        ".scales",
+        ".g_idx",
+        ".bias",
+        # compressed-tensors format
+        ".weight_packed",
+        ".weight_scale",
+        ".weight_zero_point",
+        ".weight_shape",
+        ".weight_g_idx",
+        # plain fallback if a prior run or format left it behind
+        ".weight",
+    )
+    names: set[str] = set()
+    for layer_idx in layer_indices:
+        for base in tensor_bases_for_layer(layer_idx, modules):
+            for suffix in suffixes:
+                names.add(f"{base}{suffix}")
+    return names
+
+
+def collect_bf16_tensors(
+    bf16_dir: Path, layer_indices: list[int], modules: tuple[str, ...]
+) -> dict[str, "any"]:  # noqa: F821 (forward ref to torch tensor)
+    """Read BF16 source for selected layer weights.
+
+    Returns a dict mapping selected `model.layers.*.*.weight` names to
+    torch.Tensor (bfloat16, on CPU).
     """
     from safetensors.torch import load_file
 
@@ -122,9 +281,9 @@ def collect_lightning_mlp_tensors(
 
     # Group needed tensors by source shard for efficient loading
     needed: list[str] = []
-    for layer_idx in lightning_indices:
-        for proj in ("gate_proj", "up_proj", "down_proj"):
-            needed.append(f"model.layers.{layer_idx}.mlp.{proj}.weight")
+    for layer_idx in layer_indices:
+        for base in tensor_bases_for_layer(layer_idx, modules):
+            needed.append(f"{base}.weight")
 
     shard_to_tensors: dict[str, list[str]] = {}
     for tname in needed:
@@ -157,10 +316,17 @@ def collect_lightning_mlp_tensors(
     return out
 
 
-def remove_quantized_lightning_tensors_from_index(
-    quantized_dir: Path, lightning_indices: list[int]
+def collect_lightning_mlp_tensors(
+    bf16_dir: Path, lightning_indices: list[int]
+) -> dict[str, "any"]:  # noqa: F821 (forward ref to torch tensor)
+    """Backward-compatible wrapper for the original lightning MLP behavior."""
+    return collect_bf16_tensors(bf16_dir, lightning_indices, ("mlp",))
+
+
+def remove_quantized_tensors_from_index(
+    quantized_dir: Path, layer_indices: list[int], modules: tuple[str, ...]
 ) -> set[str]:
-    """Remove the quantized tensor entries for lightning MLPs from
+    """Remove quantized tensor entries for selected modules from
     model.safetensors.index.json. Returns the set of removed tensor names.
 
     The caller must also remove these names from the physical safetensors
@@ -186,47 +352,29 @@ def remove_quantized_lightning_tensors_from_index(
         idx = json.load(f)
     weight_map = idx.get("weight_map", {})
 
-    # Quantized-format tensor suffixes (both gptq_marlin and compressed-tensors)
-    suffixes = (
-        # gptq_marlin format
-        ".qweight",
-        ".qzeros",
-        ".scales",
-        ".g_idx",
-        ".bias",
-        # compressed-tensors format
-        ".weight_packed",
-        ".weight_scale",
-        ".weight_zero_point",
-        ".weight_shape",
-        ".weight_g_idx",
-    )
-    projs = ("gate_proj", "up_proj", "down_proj")
     removed: set[str] = set()
-    for layer_idx in lightning_indices:
-        for proj in projs:
-            for suf in suffixes:
-                name = f"model.layers.{layer_idx}.mlp.{proj}{suf}"
-                if name in weight_map:
-                    del weight_map[name]
-                    removed.add(name)
-            # Also remove the plain .weight (rare but possible if quant chose
-            # to retain unquantized weight alongside packed)
-            name_weight = f"model.layers.{layer_idx}.mlp.{proj}.weight"
-            if name_weight in weight_map:
-                del weight_map[name_weight]
-                removed.add(name_weight)
+    for name in quantized_tensor_names_for_modules(layer_indices, modules):
+        if name in weight_map:
+            del weight_map[name]
+            removed.add(name)
 
     idx["weight_map"] = weight_map
     with index_path.open("w", encoding="utf-8") as f:
         json.dump(idx, f, indent=2, ensure_ascii=False)
 
-    print(f"[index] removed {len(removed)} quantized tensors for lightning MLPs", flush=True)
+    print(f"[index] removed {len(removed)} quantized tensors for selected modules", flush=True)
     if removed:
         # Show first few for verification
         sample = sorted(removed)[:6]
         print(f"[index] sample removed: {sample}", flush=True)
     return removed
+
+
+def remove_quantized_lightning_tensors_from_index(
+    quantized_dir: Path, lightning_indices: list[int]
+) -> set[str]:
+    """Backward-compatible wrapper for the original lightning MLP behavior."""
+    return remove_quantized_tensors_from_index(quantized_dir, lightning_indices, ("mlp",))
 
 
 def rewrite_safetensors_without_tensors(
@@ -284,7 +432,9 @@ def rewrite_safetensors_without_tensors(
 
 
 def write_overlay_shard(
-    quantized_dir: Path, tensors: dict[str, "any"]  # noqa: F821
+    quantized_dir: Path,
+    tensors: dict[str, "any"],  # noqa: F821
+    overlay_name: str = "model-lightning-skip-overlay.safetensors",
 ) -> str:
     """Write a new safetensors file containing the BF16 lightning MLP weights.
 
@@ -292,7 +442,6 @@ def write_overlay_shard(
     """
     from safetensors.torch import save_file
 
-    overlay_name = "model-lightning-skip-overlay.safetensors"
     overlay_path = quantized_dir / overlay_name
 
     print(f"[overlay] writing {len(tensors)} BF16 tensors to {overlay_name}", flush=True)
@@ -324,10 +473,10 @@ def update_index_with_overlay(
     print(f"[index] added {len(tensor_names)} BF16 .weight pointers to {overlay_name}", flush=True)
 
 
-def update_quantize_config_dynamic(
-    quantized_dir: Path, lightning_indices: list[int]
+def update_quantize_config_dynamic_for_modules(
+    quantized_dir: Path, layer_indices: list[int], modules: tuple[str, ...]
 ) -> None:
-    """Add per-layer-index MLP skip rules to quantize_config.json's dynamic field.
+    """Add per-layer skip rules to quantize_config.json's dynamic field.
 
     SGLang's get_dynamic_override reads this and routes matching modules
     through UnquantizedLinearMethod (which looks for .weight in safetensors).
@@ -357,10 +506,8 @@ def update_quantize_config_dynamic(
     rule (which matches `qkv_proj` via the substring).
     """
     new_skip_rules: dict[str, bool] = {}
-    for layer_idx in lightning_indices:
-        # Match SGLang's MergedColumnParallelLinear (fused gate + up)
-        new_skip_rules[f"-:model.layers.{layer_idx}.mlp.gate_up_proj$"] = True
-        new_skip_rules[f"-:model.layers.{layer_idx}.mlp.down_proj$"] = True
+    for layer_idx in layer_indices:
+        new_skip_rules.update(sglang_dynamic_skip_rules_for_layer(layer_idx, modules))
 
     for fname, key_path in (
         ("quantize_config.json", ("dynamic",)),
@@ -388,12 +535,25 @@ def update_quantize_config_dynamic(
         print(f"[config] added {len(new_skip_rules)} skip rules to {fname}::{'.'.join(key_path)}", flush=True)
 
 
+def update_quantize_config_dynamic(
+    quantized_dir: Path, lightning_indices: list[int]
+) -> None:
+    """Backward-compatible wrapper for the original lightning MLP behavior."""
+    update_quantize_config_dynamic_for_modules(quantized_dir, lightning_indices, ("mlp",))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("USAGE")[0])
     ap.add_argument("--quantized-dir", required=True, type=Path,
                     help="Quantized output dir (will be modified in-place)")
     ap.add_argument("--bf16-dir", required=True, type=Path,
                     help="Source BF16 model dir (read-only, for original weights)")
+    ap.add_argument("--layers", default="all-lightning",
+                    help="Layer selector: all-lightning, last4-lightning, all, or explicit 23,27,29-31")
+    ap.add_argument("--modules", default="mlp",
+                    help="Module groups to recover as BF16: mlp, attn, qkv, o_proj, down_proj, or comma list")
+    ap.add_argument("--overlay-name", default="model-lightning-skip-overlay.safetensors",
+                    help="Overlay safetensors filename written under --quantized-dir")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print plan and exit; don't modify any files")
     args = ap.parse_args()
@@ -416,14 +576,32 @@ def main() -> int:
         return 0
     print(f"[result] lightning layers ({len(lightning_indices)} of {total}): {lightning_indices}",
           flush=True)
+    try:
+        selected_indices = parse_layer_selector(args.layers, lightning_indices, total)
+        modules = parse_module_groups(args.modules)
+    except ValueError as e:
+        print(f"[fatal] {e}", file=sys.stderr)
+        return 2
+    print(
+        f"[result] selected layers ({len(selected_indices)}): {selected_indices}; "
+        f"modules={','.join(modules)}",
+        flush=True,
+    )
 
     if args.dry_run:
-        n_tensors = len(lightning_indices) * 3
+        n_tensors = sum(
+            len(tensor_bases_for_layer(layer_idx, modules))
+            for layer_idx in selected_indices
+        )
         est_bytes = n_tensors * 4096 * 4096 * 2  # rough BF16 estimate per MLP proj
         print(f"\n[dry-run] would write ~{n_tensors} tensors (~{est_bytes / 1e9:.1f} GB total)")
-        print(f"[dry-run] would remove .qweight/.qzeros/.scales for layers {lightning_indices}")
+        print(f"[dry-run] would remove quant tensors for layers {selected_indices}")
         print("[dry-run] would physically rewrite affected safetensors shards")
-        print(f"[dry-run] would add {len(lightning_indices) * 2} dynamic skip rules")
+        n_rules = sum(
+            len(sglang_dynamic_skip_rules_for_layer(layer_idx, modules))
+            for layer_idx in selected_indices
+        )
+        print(f"[dry-run] would add {n_rules} dynamic skip rules")
         return 0
 
     # Late imports (torch + safetensors only needed for actual work)
@@ -435,28 +613,35 @@ def main() -> int:
         return 2
 
     # 2. Collect BF16 tensors from source
-    print(f"\n[2/5] collecting BF16 lightning MLP tensors from {bdir.name}", flush=True)
-    tensors = collect_lightning_mlp_tensors(bdir, lightning_indices)
+    print(f"\n[2/5] collecting BF16 selected tensors from {bdir.name}", flush=True)
+    tensors = collect_bf16_tensors(bdir, selected_indices, modules)
 
     # 3. Remove quantized lightning MLP entries from index and from the physical
     #    safetensors shards. SGLang iterates physical shard keys after file-level
     #    filtering, so both steps are required.
-    print(f"\n[3/5] removing quantized entries for lightning MLPs", flush=True)
-    removed = remove_quantized_lightning_tensors_from_index(qdir, lightning_indices)
-    rewrite_safetensors_without_tensors(qdir, removed)
+    print(f"\n[3/5] removing quantized entries for selected modules", flush=True)
+    expected_stale_names = quantized_tensor_names_for_modules(selected_indices, modules)
+    removed = remove_quantized_tensors_from_index(qdir, selected_indices, modules)
+    if expected_stale_names - removed:
+        print(
+            "[rewrite] also scanning for selected stale physical keys that "
+            "were absent from index.json",
+            flush=True,
+        )
+    rewrite_safetensors_without_tensors(qdir, expected_stale_names)
 
     # 4. Write overlay shard containing BF16 lightning MLP tensors
     print(f"\n[4/5] writing overlay shard with {len(tensors)} BF16 tensors", flush=True)
-    overlay_name = write_overlay_shard(qdir, tensors)
+    overlay_name = write_overlay_shard(qdir, tensors, overlay_name=args.overlay_name)
 
     # 5. Update index + quantize_config dynamic rules
     print(f"\n[5/5] updating index + quantize_config.json dynamic rules", flush=True)
     update_index_with_overlay(qdir, overlay_name, list(tensors.keys()))
-    update_quantize_config_dynamic(qdir, lightning_indices)
+    update_quantize_config_dynamic_for_modules(qdir, selected_indices, modules)
 
-    print(f"\n[done] Lightning-skip overlay applied to {qdir.name}")
-    print(f"[done] {len(lightning_indices)} lightning layers' MLPs reverted to BF16")
-    print(f"[done] Quant-time + load-time alignment: both reference layer indices {lightning_indices}")
+    print(f"\n[done] selective BF16 overlay applied to {qdir.name}")
+    print(f"[done] {len(selected_indices)} layers' {','.join(modules)} modules reverted to BF16")
+    print(f"[done] Quant-time + load-time alignment: both reference layer indices {selected_indices}")
     return 0
 
 

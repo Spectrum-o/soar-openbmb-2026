@@ -167,6 +167,33 @@ class TestFindLightningLayers(unittest.TestCase):
             self.assertEqual(indices, [1, 2, 3, 4])
 
 
+class TestSelectorParsing(unittest.TestCase):
+    def test_last_n_lightning_selector(self):
+        selected = overlay.parse_layer_selector(
+            "last4-lightning", lightning_indices=[1, 2, 3, 5, 7, 11], total_layers=12
+        )
+        self.assertEqual(selected, [3, 5, 7, 11])
+
+    def test_explicit_layers_and_ranges(self):
+        selected = overlay.parse_layer_selector(
+            "23,27,29-31", lightning_indices=[], total_layers=32
+        )
+        self.assertEqual(selected, [23, 27, 29, 30, 31])
+
+    def test_all_selector(self):
+        selected = overlay.parse_layer_selector(
+            "all", lightning_indices=[1, 2], total_layers=4
+        )
+        self.assertEqual(selected, [0, 1, 2, 3])
+
+    def test_rejects_out_of_range_layer(self):
+        with self.assertRaises(ValueError):
+            overlay.parse_layer_selector("31-32", lightning_indices=[], total_layers=32)
+
+    def test_module_group_aliases(self):
+        self.assertEqual(overlay.parse_module_groups("attention,down"), ("attn", "down_proj"))
+
+
 class TestRemoveQuantizedLightningFromIndex(unittest.TestCase):
     def test_gptq_marlin_format(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,6 +261,40 @@ class TestRemoveQuantizedLightningFromIndex(unittest.TestCase):
                 overlay.remove_quantized_lightning_tensors_from_index(Path(tmp), [1, 2])
 
 
+class TestRemoveSelectedModulesFromIndex(unittest.TestCase):
+    def test_removes_attention_quant_tensors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            idx_path = qdir / "model.safetensors.index.json"
+            write_safetensors_index(idx_path, layer_count=4, has_attn=False)
+            with idx_path.open() as f:
+                idx = json.load(f)
+            # Simulate full-W4A16 attention quant tensors.
+            for layer in range(4):
+                for proj in ("q_proj", "k_proj", "v_proj", "o_proj"):
+                    for suf in (".qweight", ".qzeros", ".scales"):
+                        idx["weight_map"][
+                            f"model.layers.{layer}.self_attn.{proj}{suf}"
+                        ] = "model-00001-of-00003.safetensors"
+            with idx_path.open("w", encoding="utf-8") as f:
+                json.dump(idx, f)
+
+            removed = overlay.remove_quantized_tensors_from_index(
+                qdir, [1, 3], ("attn",)
+            )
+
+            self.assertEqual(len(removed), 2 * 4 * 3)
+            with idx_path.open() as f:
+                new_idx = json.load(f)
+            for layer in (1, 3):
+                for proj in ("q_proj", "k_proj", "v_proj", "o_proj"):
+                    self.assertNotIn(
+                        f"model.layers.{layer}.self_attn.{proj}.qweight",
+                        new_idx["weight_map"],
+                    )
+            self.assertIn("model.layers.0.self_attn.q_proj.qweight", new_idx["weight_map"])
+
+
 class TestRewriteSafetensorsWithoutTensors(unittest.TestCase):
     def test_physically_removes_orphan_quant_tensors(self):
         try:
@@ -293,6 +354,37 @@ class TestRewriteSafetensorsWithoutTensors(unittest.TestCase):
             )
 
             self.assertEqual(by_shard, {})
+
+    def test_rewrite_can_remove_selected_keys_absent_from_index(self):
+        try:
+            import torch
+            from safetensors import safe_open
+            from safetensors.torch import save_file
+        except ImportError as exc:
+            self.skipTest(f"torch/safetensors unavailable: {exc}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            shard = qdir / "model-00001-of-00001.safetensors"
+            stale_name = "model.layers.2.self_attn.q_proj.qweight"
+            keep_name = "model.layers.1.self_attn.q_proj.qweight"
+            save_file(
+                {
+                    stale_name: torch.ones((2, 2), dtype=torch.int32),
+                    keep_name: torch.zeros((2, 2), dtype=torch.int32),
+                },
+                str(shard),
+                metadata={"format": "pt"},
+            )
+
+            names = overlay.quantized_tensor_names_for_modules([2], ("attn",))
+            by_shard = overlay.rewrite_safetensors_without_tensors(qdir, names)
+
+            self.assertEqual(by_shard, {"model-00001-of-00001.safetensors": 1})
+            with safe_open(str(shard), framework="pt", device="cpu") as f:
+                keys = set(f.keys())
+            self.assertNotIn(stale_name, keys)
+            self.assertIn(keep_name, keys)
 
 
 class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
@@ -393,6 +485,90 @@ class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
                     f"rules were {list(dyn.keys())}",
                 )
 
+    def test_attention_dynamic_rules_match_sglang_fused_linear_prefix(self):
+        """Selective full-W4A16 recovery must skip SGLang's fused qkv_proj.
+
+        The checkpoint stores BF16 q_proj/k_proj/v_proj separately, but
+        SGLang constructs one QKVParallelLinear named qkv_proj. The dynamic
+        rule therefore has to match qkv_proj, not the HF names.
+        """
+        import re
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            qcfg_path = qdir / "quantize_config.json"
+            with qcfg_path.open("w", encoding="utf-8") as f:
+                json.dump({
+                    "bits": 4,
+                    "group_size": 128,
+                    "quant_method": "gptq",
+                    "desc_act": False,
+                    "sym": True,
+                    "lm_head": False,
+                    "dynamic": {},
+                }, f)
+            overlay.update_quantize_config_dynamic_for_modules(
+                qdir, [23, 27], ("attn",)
+            )
+            with qcfg_path.open() as f:
+                cfg = json.load(f)
+            dyn = cfg["dynamic"]
+            for layer in (23, 27):
+                self.assertIn(f"-:model.layers.{layer}.self_attn.qkv_proj$", dyn)
+                self.assertIn(f"-:model.layers.{layer}.self_attn.o_proj$", dyn)
+                qkv_prefix = f"model.layers.{layer}.self_attn.qkv_proj"
+                o_prefix = f"model.layers.{layer}.self_attn.o_proj"
+                self.assertTrue(
+                    any(pat.startswith("-:") and re.match(pat[2:], qkv_prefix) for pat in dyn),
+                    f"no dynamic skip rule matches {qkv_prefix!r}; rules were {list(dyn.keys())}",
+                )
+                self.assertTrue(
+                    any(pat.startswith("-:") and re.match(pat[2:], o_prefix) for pat in dyn),
+                    f"no dynamic skip rule matches {o_prefix!r}; rules were {list(dyn.keys())}",
+                )
+
+    def test_o_proj_module_group_only_skips_o_proj(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            qcfg_path = qdir / "quantize_config.json"
+            write_quantize_config(qcfg_path)
+
+            overlay.update_quantize_config_dynamic_for_modules(
+                qdir, [23], ("o_proj",)
+            )
+
+            with qcfg_path.open() as f:
+                cfg = json.load(f)
+            dyn = cfg["dynamic"]
+            self.assertIn("-:model.layers.23.self_attn.o_proj$", dyn)
+            self.assertNotIn("-:model.layers.23.self_attn.qkv_proj$", dyn)
+
+            stale_names = overlay.quantized_tensor_names_for_modules([23], ("o_proj",))
+            self.assertIn("model.layers.23.self_attn.o_proj.qweight", stale_names)
+            self.assertNotIn("model.layers.23.self_attn.q_proj.qweight", stale_names)
+
+    def test_sequential_qkv_then_o_proj_rules_accumulate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            qdir = Path(tmp)
+            qcfg_path = qdir / "quantize_config.json"
+            write_quantize_config(qcfg_path)
+
+            overlay.update_quantize_config_dynamic_for_modules(
+                qdir, [21, 22, 23, 24], ("qkv",)
+            )
+            overlay.update_quantize_config_dynamic_for_modules(
+                qdir, [23, 24], ("o_proj",)
+            )
+
+            with qcfg_path.open() as f:
+                cfg = json.load(f)
+            dyn = cfg["dynamic"]
+            for layer in (21, 22, 23, 24):
+                self.assertIn(f"-:model.layers.{layer}.self_attn.qkv_proj$", dyn)
+            for layer in (23, 24):
+                self.assertIn(f"-:model.layers.{layer}.self_attn.o_proj$", dyn)
+            for layer in (21, 22):
+                self.assertNotIn(f"-:model.layers.{layer}.self_attn.o_proj$", dyn)
+
     def test_no_files_no_crash(self):
         with tempfile.TemporaryDirectory() as tmp:
             # Neither quantize_config.json nor config.json exists
@@ -439,6 +615,124 @@ class TestAlignmentInvariant(unittest.TestCase):
 
             self.assertEqual(removed_indices, dyn_indices,
                              "Alignment broken: index removes layers X but dynamic skips layers Y")
+
+
+class TestSelectiveAttentionEndToEnd(unittest.TestCase):
+    def test_cli_applies_selective_attention_overlay(self):
+        try:
+            import torch
+            from safetensors import safe_open
+            from safetensors.torch import save_file
+        except ImportError as exc:
+            self.skipTest(f"torch/safetensors unavailable: {exc}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bf16_dir = root / "bf16"
+            qdir = root / "quant"
+            bf16_dir.mkdir()
+            qdir.mkdir()
+
+            write_config_json(
+                bf16_dir / "config.json",
+                ["minicpm4", "lightning-attn", "lightning-attn", "lightning-attn"],
+            )
+            q_config = {
+                "model_type": "minicpm_sala",
+                "quantization_config": {
+                    "bits": 4,
+                    "group_size": 128,
+                    "quant_method": "gptq",
+                    "desc_act": False,
+                    "sym": True,
+                    "dynamic": {},
+                },
+            }
+            with (qdir / "config.json").open("w", encoding="utf-8") as f:
+                json.dump(q_config, f)
+            write_quantize_config(qdir / "quantize_config.json")
+
+            bf16_tensors = {}
+            bf16_weight_map = {}
+            for layer in (1, 2, 3):
+                for proj in ("q_proj", "k_proj", "v_proj", "o_proj"):
+                    name = f"model.layers.{layer}.self_attn.{proj}.weight"
+                    bf16_tensors[name] = torch.full((2, 2), layer, dtype=torch.bfloat16)
+                    bf16_weight_map[name] = "model-00001-of-00001.safetensors"
+            save_file(
+                bf16_tensors,
+                str(bf16_dir / "model-00001-of-00001.safetensors"),
+                metadata={"format": "pt"},
+            )
+            with (bf16_dir / "model.safetensors.index.json").open("w", encoding="utf-8") as f:
+                json.dump({"metadata": {}, "weight_map": bf16_weight_map}, f)
+
+            quant_tensors = {
+                "model.layers.2.self_attn.q_proj.qweight": torch.ones((2, 2), dtype=torch.int32),
+                "model.layers.2.self_attn.q_proj.qzeros": torch.ones((2, 2), dtype=torch.int32),
+                "model.layers.2.self_attn.q_proj.scales": torch.ones((2, 2), dtype=torch.bfloat16),
+                "model.layers.2.self_attn.o_proj.qweight": torch.ones((2, 2), dtype=torch.int32),
+                "model.layers.2.self_attn.o_proj.qzeros": torch.ones((2, 2), dtype=torch.int32),
+                "model.layers.2.self_attn.o_proj.scales": torch.ones((2, 2), dtype=torch.bfloat16),
+                "model.layers.1.self_attn.q_proj.qweight": torch.zeros((2, 2), dtype=torch.int32),
+                "model.layers.0.input_layernorm.weight": torch.zeros((2,), dtype=torch.bfloat16),
+            }
+            save_file(
+                quant_tensors,
+                str(qdir / "model-00001-of-00001.safetensors"),
+                metadata={"format": "pt"},
+            )
+            q_weight_map = {
+                name: "model-00001-of-00001.safetensors"
+                for name in quant_tensors
+            }
+            with (qdir / "model.safetensors.index.json").open("w", encoding="utf-8") as f:
+                json.dump({"metadata": {}, "weight_map": q_weight_map}, f)
+
+            old_argv = sys.argv
+            try:
+                sys.argv = [
+                    "apply_lightning_skip_overlay.py",
+                    "--quantized-dir", str(qdir),
+                    "--bf16-dir", str(bf16_dir),
+                    "--layers", "2",
+                    "--modules", "attn",
+                    "--overlay-name", "selective.safetensors",
+                ]
+                self.assertEqual(overlay.main(), 0)
+            finally:
+                sys.argv = old_argv
+
+            with (qdir / "model.safetensors.index.json").open() as f:
+                idx = json.load(f)
+            weight_map = idx["weight_map"]
+            self.assertEqual(
+                weight_map["model.layers.2.self_attn.q_proj.weight"],
+                "selective.safetensors",
+            )
+            self.assertEqual(
+                weight_map["model.layers.2.self_attn.o_proj.weight"],
+                "selective.safetensors",
+            )
+            self.assertNotIn("model.layers.2.self_attn.q_proj.qweight", weight_map)
+            self.assertIn("model.layers.1.self_attn.q_proj.qweight", weight_map)
+
+            with safe_open(str(qdir / "model-00001-of-00001.safetensors"), framework="pt", device="cpu") as f:
+                keys = set(f.keys())
+            self.assertNotIn("model.layers.2.self_attn.q_proj.qweight", keys)
+            self.assertNotIn("model.layers.2.self_attn.o_proj.qweight", keys)
+            self.assertIn("model.layers.1.self_attn.q_proj.qweight", keys)
+
+            with safe_open(str(qdir / "selective.safetensors"), framework="pt", device="cpu") as f:
+                overlay_keys = set(f.keys())
+            self.assertIn("model.layers.2.self_attn.q_proj.weight", overlay_keys)
+            self.assertIn("model.layers.2.self_attn.o_proj.weight", overlay_keys)
+
+            with (qdir / "quantize_config.json").open() as f:
+                qcfg = json.load(f)
+            dyn = qcfg["dynamic"]
+            self.assertIn("-:model.layers.2.self_attn.qkv_proj$", dyn)
+            self.assertIn("-:model.layers.2.self_attn.o_proj$", dyn)
 
 
 if __name__ == "__main__":
