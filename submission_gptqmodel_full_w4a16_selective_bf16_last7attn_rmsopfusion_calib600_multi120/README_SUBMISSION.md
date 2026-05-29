@@ -1,7 +1,8 @@
-# Full-W4A16 Selective BF16 Recovery: Last7 Attention
+# Full-W4A16 Selective BF16 Recovery: Last7 Attention + RMS Op-Fusion + Calib600 Multi
 
-This variant starts from `submission_gptqmodel_full_w4a16/` and adds a narrow
-post-quant overlay.
+This variant starts from the platform-proven
+`submission_gptqmodel_full_w4a16_selective_bf16_last7attn_rmsopfusion/` package
+and changes only the GPTQ calibration recipe.
 
 ## Platform Anchor
 
@@ -12,6 +13,15 @@ post-quant overlay.
 
 The speed win is real (`S1` is about 13% faster than v5j), but raw accuracy is
 about 1.7pp below the likely 80 gate.
+
+## Proven Parent
+
+`soar_gptqmodel_full_w4a16_selective_bf16_last7attn_rmsopfusion_20260529_1035.tar.gz`:
+
+- `acc=99.83`, `acc_ori=79.87`, `final_score=21.73`
+- `S1=650.28`, `S8=1023.59`, `Smax=2334.43`
+- Platform reached inferencing after about 27 minutes and completed in about
+  2h29m, leaving useful headroom under the 5h platform limit.
 
 ## Default Recovery
 
@@ -31,10 +41,26 @@ attention package (`acc_ori=80.51`, `S1=708.97`). It removes one restored
 lightning layer to see whether the model stays above the 80 gate with lower
 BF16 attention cost.
 
-The direct parent for this RMS-only op-fusion variant is the platform-proven
-`last7attn` package (`acc_ori=78.71`, `final_score=20.86`, `S1=650.93`). The
-RMS fusion is a latency probe on top of that point; it is not expected to recover
-accuracy by itself.
+The direct parent for this calibration probe is the platform-proven RMS-only
+op-fusion package above. RMS fusion stays unchanged; this package tests whether
+spending more of the prepare-time budget on calibration improves the remaining
+accuracy gap.
+
+## Calibration Change
+
+Only these defaults change:
+
+```bash
+NUM_CALIB=600
+CALIB_WINDOW_MODE=multi-adaptive
+```
+
+The existing 150 public rows are still the only bundled calibration source. The
+quantizer deterministically cycles rows to reach `NUM_CALIB`, then
+`multi-adaptive` creates 1-3 windows per prompt so GPTQ sees tail, middle, and
+one extra long-context window for very long rows. This trades a longer
+`prepare_model.sh` phase for better Hessian coverage of haystack and long QA
+activations.
 
 ## Compatibility Notes
 
@@ -62,20 +88,10 @@ accuracy by itself.
 - `FULL_SELECTIVE_MODULES=attn`, `qkv`, `o_proj`, `mlp`, or comma lists such as
   `attn,down_proj`
 
-## Platform Result
-
-Submitted on 2026-05-29 10:46 and completed at 13:15:
-
-- `acc=99.83`, `acc_ori=79.87`, `final_score=21.73`
-- `S1=650.28`, `S8=1023.59`, `Smax=2334.43`
-
-This confirms that the RMS-only op-fusion overlay is compatible with
-MiniCPM-SALA on the SOAR platform. The old op-fusion collapse should be treated
-as a mixed-variable RoPE/RMS failure, not as evidence against this isolated
-RMSNorm fusion.
-
 ## Submission Risk
 
-This is now a platform-proven point. Further changes should be single-variable
-probes on top of it, such as heavier GPTQ calibration, because this package is
-the current full-selective anchor.
+This is a quality probe on top of the current best RMS-opfusion point. It should
+not replace the proven package unless platform accuracy improves enough to
+offset any extra quantization variance. If prepare time approaches the
+120-minute quant timeout, the lower-risk follow-up is `NUM_CALIB=400` with the
+same `multi-adaptive` windowing, or the already proven RMS-opfusion package.
