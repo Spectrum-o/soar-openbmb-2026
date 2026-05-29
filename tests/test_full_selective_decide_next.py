@@ -61,7 +61,7 @@ class TestFullSelectiveDecideNext(unittest.TestCase):
         with self.assertRaises(ValueError):
             decide.read_score_input('{"acc_ori": 80.0}', "score.log")
 
-    def test_current_submit_prints_calib600_multi120(self):
+    def test_current_submit_prints_calib300_multi120(self):
         out = StringIO()
         with redirect_stdout(out):
             rc = decide.print_current_submit()
@@ -69,10 +69,10 @@ class TestFullSelectiveDecideNext(unittest.TestCase):
         text = out.getvalue()
         self.assertIn("current next submit", text)
         self.assertIn(
-            "soar_gptqmodel_full_w4a16_selective_bf16_last7attn_rmsopfusion_calib600_multi120_20260529_1420.tar.gz",
+            "soar_gptqmodel_full_w4a16_selective_bf16_last7attn_rmsopfusion_calib300_multi120_20260529_1405.tar.gz",
             text,
         )
-        self.assertIn("45a28194e3daa94e6804b596d8f8bbbf", text)
+        self.assertIn("4b131944f190b56d11d6d627ba07b483", text)
 
     def test_variant_list_matches_primary_candidates(self):
         out = StringIO()
@@ -84,7 +84,7 @@ class TestFullSelectiveDecideNext(unittest.TestCase):
             variants,
             [cand.variant for cand in decide.sorted_primary_candidates()],
         )
-        self.assertEqual(len(variants), 23)
+        self.assertEqual(len(variants), 24)
         self.assertNotIn(
             decide.PROVEN_FALLBACKS["last8attn"].variant,
             variants,
@@ -103,13 +103,13 @@ class TestFullSelectiveDecideNext(unittest.TestCase):
             rc = decide.print_queue_map()
         self.assertEqual(rc, 0)
         text = out.getvalue()
-        self.assertIn("current next submit: last7attn_rmsopfusion_calib600_multi120", text)
+        self.assertIn("current next submit: last7attn_rmsopfusion_calib300_multi120", text)
         self.assertIn(
-            "- last7attn_rmsopfusion: pass -> last7attn_rmsopfusion_calib600_multi120; fail -> stop -> last7attn fallback",
+            "- last7attn_rmsopfusion: pass -> last7attn_rmsopfusion_calib300_multi120; fail -> stop -> last7attn fallback",
             text,
         )
         self.assertIn(
-            "- last7attn_rmsopfusion_calib600_multi120: pass -> last6attn; fail -> stop -> last7attn_rmsopfusion fallback",
+            "- last7attn_rmsopfusion_calib300_multi120: pass -> last6attn; fail -> stop -> last7attn_rmsopfusion fallback",
             text,
         )
         self.assertIn("- last7attn: pass -> last6attn; fail -> last7attn_g64", text)
@@ -147,12 +147,12 @@ class TestFullSelectiveDecideNext(unittest.TestCase):
         )
 
     def test_current_submit_md5_is_pinned(self):
-        cand = decide.candidate_by_key("last7attn_rmsopfusion_calib600_multi120")
+        cand = decide.candidate_by_key("last7attn_rmsopfusion_calib300_multi120")
         self.assertIsNotNone(cand)
         path = decide.REPO_ROOT / cand.tarball
         self.assertEqual(
             decide.md5_file(path),
-            decide.EXPECTED_MD5_BY_KEY["last7attn_rmsopfusion_calib600_multi120"],
+            decide.EXPECTED_MD5_BY_KEY["last7attn_rmsopfusion_calib300_multi120"],
         )
 
     def test_last8attn_recommends_last7attn(self):
@@ -208,8 +208,16 @@ class TestFullSelectiveDecideNext(unittest.TestCase):
             },
         )
         self.assertEqual(decision.action, "submit")
-        self.assertEqual(decision.candidate.key, "last7attn_rmsopfusion_calib600_multi120")
+        self.assertEqual(decision.candidate.key, "last7attn_rmsopfusion_calib300_multi120")
         self.assertIn("final_score=21.73", decision.reason)
+
+    def test_calib300_multi120_failure_falls_back_to_proven_rms_opfusion(self):
+        decision = decide.decide_next(
+            "last7attn_rmsopfusion_calib300_multi120",
+            {"acc_ori": 77.9, "final_score": 19.0},
+        )
+        self.assertEqual(decision.action, "stop")
+        self.assertEqual(decision.candidate.key, "last7attn_rmsopfusion")
 
     def test_calib600_multi120_failure_falls_back_to_proven_rms_opfusion(self):
         decision = decide.decide_next(

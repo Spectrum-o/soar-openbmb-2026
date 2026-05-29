@@ -92,11 +92,26 @@ CANDIDATES: tuple[Candidate, ...] = (
         tarball="soar_gptqmodel_full_w4a16_selective_bf16_last7attn_rmsopfusion_calib600_multi120_20260529_1420.tar.gz",
         variant="submission_gptqmodel_full_w4a16_selective_bf16_last7attn_rmsopfusion_calib600_multi120",
         strategy="last7-lightning / attn + RMSNorm opfusion + NUM_CALIB=600 multi-adaptive",
-        when="current quality probe: spend more prepare-time budget on GPTQ calibration",
-        risk="single-variable calibration change on current best; may improve acc, may lengthen prepare_model",
+        when="do not submit: platform prepare_model OOM at 83GB during GPTQModel replay",
+        risk="failed on 2026-05-29 13:56 with torch.OutOfMemoryError in FLA chunk_simple_gla",
         priority=27,
         expected_lines=(
             'NUM_CALIB="${NUM_CALIB:-600}"',
+            'CALIB_WINDOW_MODE="${CALIB_WINDOW_MODE:-multi-adaptive}"',
+            'FULL_SELECTIVE_LAYERS="${FULL_SELECTIVE_LAYERS:-last7-lightning}"',
+            'FULL_SELECTIVE_MODULES="${FULL_SELECTIVE_MODULES:-attn}"',
+        ),
+    ),
+    Candidate(
+        key="last7attn_rmsopfusion_calib300_multi120",
+        tarball="soar_gptqmodel_full_w4a16_selective_bf16_last7attn_rmsopfusion_calib300_multi120_20260529_1405.tar.gz",
+        variant="submission_gptqmodel_full_w4a16_selective_bf16_last7attn_rmsopfusion_calib300_multi120",
+        strategy="last7-lightning / attn + RMSNorm opfusion + NUM_CALIB=300 multi-adaptive",
+        when="current quality probe after calib600 OOM: moderate GPTQ calibration without changing runtime",
+        risk="single-variable calibration change on current best; lower memory peak than calib600, still may lengthen prepare_model",
+        priority=28,
+        expected_lines=(
+            'NUM_CALIB="${NUM_CALIB:-300}"',
             'CALIB_WINDOW_MODE="${CALIB_WINDOW_MODE:-multi-adaptive}"',
             'FULL_SELECTIVE_LAYERS="${FULL_SELECTIVE_LAYERS:-last7-lightning}"',
             'FULL_SELECTIVE_MODULES="${FULL_SELECTIVE_MODULES:-attn}"',
@@ -392,6 +407,7 @@ EXPECTED_MD5_BY_KEY: dict[str, str] = {
     "last6attn": "2891556e51e0aba9114ea416eb6964e7",
     "last7attn_rmsopfusion": "137d831db8cbcd684662b35e231a4fc3",
     "last7attn_rmsopfusion_calib600_multi120": "45a28194e3daa94e6804b596d8f8bbbf",
+    "last7attn_rmsopfusion_calib300_multi120": "4b131944f190b56d11d6d627ba07b483",
     "last5attn": "e15ef98c9b34229902d506fa7c366f13",
     "last6attn_g64": "45a80d0181478da91465abdf8be802b8",
     "last5attn_g64": "0cd412c07b21a8f36ae25f0644c5dc52",
@@ -445,7 +461,8 @@ PASS_FINAL_SCORE = 20.8
 
 PASS_NEXT: dict[str, str] = {
     "last7attn": "last6attn",
-    "last7attn_rmsopfusion": "last7attn_rmsopfusion_calib600_multi120",
+    "last7attn_rmsopfusion": "last7attn_rmsopfusion_calib300_multi120",
+    "last7attn_rmsopfusion_calib300_multi120": "last6attn",
     "last7attn_rmsopfusion_calib600_multi120": "last6attn",
     "last6attn": "last5attn",
     "last6attn_g64": "last5attn",
@@ -474,6 +491,7 @@ PASS_NEXT: dict[str, str] = {
 FAIL_NEXT: dict[str, str | None] = {
     "last7attn": "last7attn_g64",
     "last7attn_rmsopfusion": "last7attn",
+    "last7attn_rmsopfusion_calib300_multi120": "last7attn_rmsopfusion",
     "last7attn_rmsopfusion_calib600_multi120": "last7attn_rmsopfusion",
     "last7attn_g64": "last8qkv_last7oproj",
     "last6attn": "last6attn_g64",
@@ -503,6 +521,7 @@ FAIL_NEXT: dict[str, str | None] = {
 FAIL_NEXT_IS_FALLBACK: frozenset[str] = frozenset(
     {
         "last7attn_rmsopfusion",
+        "last7attn_rmsopfusion_calib300_multi120",
         "last7attn_rmsopfusion_calib600_multi120",
         "last8qkv_last6oproj",
         "last8qkv_last4oproj",
@@ -522,7 +541,7 @@ FAIL_NEXT_IS_FALLBACK: frozenset[str] = frozenset(
 
 QUEUE_ORDER: tuple[str, ...] = (
     "last7attn_rmsopfusion",
-    "last7attn_rmsopfusion_calib600_multi120",
+    "last7attn_rmsopfusion_calib300_multi120",
     "last7attn",
     "last7attn_g64",
     "last8qkv_last7oproj",
@@ -686,7 +705,7 @@ def print_queue_map() -> int:
         "gate: final_score >= 20.8 and acc_ori >= 78.0 => pass; "
         "otherwise acc_ori >= 80.0 => pass"
     )
-    print("current next submit: last7attn_rmsopfusion_calib600_multi120")
+    print("current next submit: last7attn_rmsopfusion_calib300_multi120")
     print("")
     ordered = list(QUEUE_ORDER)
     for key in sorted((PASS_NEXT.keys() | FAIL_NEXT.keys()) - set(ordered)):
@@ -722,9 +741,9 @@ def print_candidate_action(cand: Candidate, action: str = "submit") -> None:
 
 
 def print_current_submit() -> int:
-    cand = candidate_by_key("last7attn_rmsopfusion_calib600_multi120")
+    cand = candidate_by_key("last7attn_rmsopfusion_calib300_multi120")
     if cand is None:
-        raise RuntimeError("last7attn_rmsopfusion_calib600_multi120 candidate is missing")
+        raise RuntimeError("last7attn_rmsopfusion_calib300_multi120 candidate is missing")
     print("current next submit:")
     print_candidate_action(cand)
     return 0
