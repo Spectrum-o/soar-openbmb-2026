@@ -13,14 +13,22 @@
 # ==============================================================================
 """Inference-only MiniCPM model compatible with HuggingFace weights."""
 
+import json
+import logging
 import math
+import os
+import threading
+import time
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from sglang.srt.distributed import get_tensor_model_parallel_world_size
+from sglang.srt.distributed import (
+    get_tensor_model_parallel_rank,
+    get_tensor_model_parallel_world_size,
+)
 from sglang.srt.layers.activation import SiluAndMul
 from sglang.srt.layers.attention.hybrid_linear_attn_backend import SimpleGLAAttnBackend
 from sglang.srt.layers.attention.minicpm_sparse_utils import (
@@ -45,8 +53,92 @@ from sglang.srt.layers.vocab_parallel_embedding import (
     VocabParallelEmbedding,
 )
 from sglang.srt.model_executor.forward_batch_info import ForwardBatch
-from sglang.srt.model_loader.weight_utils import default_weight_loader
+from sglang.srt.model_loader.weight_utils import (
+    default_weight_loader,
+    kv_cache_scales_loader,
+)
 from sglang.srt.utils import add_prefix
+
+logger = logging.getLogger(__name__)
+
+_KV_CALIB_LOCK = threading.Lock()
+_KV_CALIB_STATS: dict[int, dict[str, Any]] = {}
+_KV_CALIB_LAST_FLUSH = 0.0
+
+
+def _kv_calib_stats_path() -> Optional[str]:
+    stats_dir = os.environ.get("SGLANG_MINICPM_KV_CALIB_DIR")
+    if not stats_dir:
+        return None
+    os.makedirs(stats_dir, exist_ok=True)
+    try:
+        tp_rank = get_tensor_model_parallel_rank()
+    except Exception:
+        tp_rank = 0
+    return os.path.join(
+        stats_dir, f"minicpm_kv_stats_rank{tp_rank}_pid{os.getpid()}.json"
+    )
+
+
+def _flush_kv_calib_stats_locked(force: bool = False) -> None:
+    global _KV_CALIB_LAST_FLUSH
+    path = _kv_calib_stats_path()
+    if path is None:
+        return
+    now = time.time()
+    interval = float(os.environ.get("SGLANG_MINICPM_KV_CALIB_FLUSH_SECS", "0.0"))
+    if not force and now - _KV_CALIB_LAST_FLUSH < interval:
+        return
+    try:
+        tp_rank = get_tensor_model_parallel_rank()
+        tp_size = get_tensor_model_parallel_world_size()
+    except Exception:
+        tp_rank = 0
+        tp_size = 1
+    payload = {
+        "tp_rank": tp_rank,
+        "tp_size": tp_size,
+        "pid": os.getpid(),
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "layers": {str(k): v for k, v in sorted(_KV_CALIB_STATS.items())},
+    }
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+    _KV_CALIB_LAST_FLUSH = now
+
+
+def _collect_kv_calib_stats(layer_id: int, k: torch.Tensor, v: torch.Tensor) -> None:
+    if not os.environ.get("SGLANG_MINICPM_KV_CALIB_DIR"):
+        return
+    with torch.no_grad():
+        k_detached = k.detach()
+        v_detached = v.detach()
+        k_amax = float(k_detached.abs().float().amax().item())
+        v_amax = float(v_detached.abs().float().amax().item())
+        token_count = int(k_detached.shape[0]) if k_detached.ndim > 0 else 0
+
+    with _KV_CALIB_LOCK:
+        stats = _KV_CALIB_STATS.setdefault(
+            layer_id,
+            {
+                "k_amax": 0.0,
+                "v_amax": 0.0,
+                "tokens": 0,
+                "updates": 0,
+                "k_dtype": str(k_detached.dtype),
+                "v_dtype": str(v_detached.dtype),
+            },
+        )
+        stats["k_amax"] = max(float(stats["k_amax"]), k_amax)
+        stats["v_amax"] = max(float(stats["v_amax"]), v_amax)
+        stats["tokens"] = int(stats["tokens"]) + token_count
+        stats["updates"] = int(stats["updates"]) + 1
+        stats["k_dtype"] = str(k_detached.dtype)
+        stats["v_dtype"] = str(v_detached.dtype)
+        _flush_kv_calib_stats_locked()
 
 
 class MiniCPMMLP(nn.Module):
@@ -187,6 +279,8 @@ class MiniCPMAttention(nn.Module):
             q, k = q.float(), k.float()
             q, k = self.rotary_emb(positions, q, k)
             q, k = q.to(orig_dtype), k.to(orig_dtype)
+
+        _collect_kv_calib_stats(self.layer_id, k, v)
 
         attn_output = self.attn(q, k, v, forward_batch)
 
@@ -560,6 +654,69 @@ class MiniCPMModel(nn.Module):
         hidden_states = self.norm(hidden_states)
         return hidden_states
 
+    def load_kv_cache_scales(self, quantization_param_path: str) -> None:
+        tp_size = get_tensor_model_parallel_world_size()
+        tp_rank = get_tensor_model_parallel_rank()
+        model_type = getattr(
+            self.config,
+            "model_type",
+            getattr(self.config.__class__, "model_type", None),
+        )
+        loaded_layers = []
+        skipped_layers = []
+        for layer_idx, scaling_factor in kv_cache_scales_loader(
+            quantization_param_path,
+            tp_rank,
+            tp_size,
+            self.config.num_hidden_layers,
+            model_type,
+        ):
+            layer = self.layers[layer_idx]
+            layer_self_attn = getattr(layer, "self_attn", None)
+            radix_attn = getattr(layer_self_attn, "attn", None)
+            if radix_attn is None or not hasattr(radix_attn, "k_scale"):
+                skipped_layers.append(layer_idx)
+                continue
+
+            scale = float(scaling_factor)
+            if scale <= 0.0:
+                raise RuntimeError(
+                    "KV cache scaling factor must be positive for MiniCPM "
+                    f"layer {layer_idx}, got {scale}."
+                )
+            if torch.is_tensor(radix_attn.k_scale):
+                radix_attn.k_scale.data.copy_(
+                    torch.full_like(radix_attn.k_scale.data, scale)
+                )
+            else:
+                radix_attn.k_scale = scale
+            if torch.is_tensor(radix_attn.v_scale):
+                radix_attn.v_scale.data.copy_(
+                    torch.full_like(radix_attn.v_scale.data, scale)
+                )
+            else:
+                radix_attn.v_scale = scale
+            radix_attn.k_scale_float = scale
+            radix_attn.v_scale_float = scale
+            loaded_layers.append(layer_idx)
+
+        if not loaded_layers:
+            raise RuntimeError(
+                "No MiniCPM radix-attention KV cache scales were loaded from "
+                f"{quantization_param_path}. Check model_type={model_type}, TP size, "
+                "and that the JSON includes all hidden-layer keys."
+            )
+
+        logger.info(
+            "Loaded MiniCPM KV cache scales from %s for TP rank %s/%s: "
+            "radix_layers=%s skipped_non_radix_layers=%s",
+            quantization_param_path,
+            tp_rank,
+            tp_size,
+            loaded_layers,
+            skipped_layers,
+        )
+
 
 class MiniCPMSALAForCausalLM(nn.Module):
     def __init__(
@@ -606,6 +763,9 @@ class MiniCPMSALAForCausalLM(nn.Module):
         else:
             lm_head = self.lm_head
         return self.logits_processor(input_ids, hidden_states, lm_head, forward_batch)
+
+    def load_kv_cache_scales(self, quantization_param_path: str) -> None:
+        self.model.load_kv_cache_scales(quantization_param_path)
 
     def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
         stacked_params_mapping = [

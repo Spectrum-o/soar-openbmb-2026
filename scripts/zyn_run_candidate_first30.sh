@@ -17,6 +17,7 @@ LOG_DIR="${LOG_DIR:-${REPO_ROOT}/zyn_logs}"
 SERVER_LOG="${SERVER_LOG:-${LOG_DIR}/${RUN_NAME}_server.log}"
 PORT="${PORT:-31111}"
 SERVER_WAIT_SECS="${SERVER_WAIT_SECS:-1200}"
+QUANTIZATION_PARAM_PATH="${QUANTIZATION_PARAM_PATH:-}"
 
 if [ ! -d "${MODEL_PATH}" ]; then
     echo "error: MODEL_PATH does not exist: ${MODEL_PATH}" >&2
@@ -34,6 +35,10 @@ if [ ! -x "${REPO_ROOT}/sglang_minicpm_sala_env/bin/python" ]; then
     echo "error: runtime venv missing; run install_minicpm_sala.sh first" >&2
     exit 1
 fi
+if [ -n "${QUANTIZATION_PARAM_PATH}" ] && [ ! -f "${QUANTIZATION_PARAM_PATH}" ]; then
+    echo "error: QUANTIZATION_PARAM_PATH does not exist: ${QUANTIZATION_PARAM_PATH}" >&2
+    exit 1
+fi
 
 mkdir -p "${RUN_DIR}" "${LOG_DIR}"
 
@@ -47,9 +52,11 @@ trap cleanup EXIT
 
 echo "[serve] model: ${MODEL_PATH}"
 echo "[serve] log:   ${SERVER_LOG}"
+echo "[serve] kv scales: ${QUANTIZATION_PARAM_PATH:-<none>}"
 (
     cd "${REPO_ROOT}"
     MODEL_PATH="${MODEL_PATH}" \
+    QUANTIZATION_PARAM_PATH="${QUANTIZATION_PARAM_PATH}" \
     KV_DTYPE=fp8_e4m3 \
     DTYPE=bfloat16 \
     QUANTIZATION=gptq_marlin \

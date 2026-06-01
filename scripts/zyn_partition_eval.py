@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -50,6 +51,22 @@ def write_json(path: Path, obj: dict[str, Any]) -> None:
         f.flush()
         os.fsync(f.fileno())
     tmp.replace(path)
+
+
+def gpu_snapshot() -> str | None:
+    try:
+        out = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,name,memory.used,memory.total,utilization.gpu",
+                "--format=csv,noheader",
+            ],
+            text=True,
+            timeout=5,
+        ).strip()
+    except Exception:
+        return None
+    return out or None
 
 
 def completed_indices(path: Path) -> set[int]:
@@ -179,16 +196,27 @@ def detect_model(api_base: str, timeout: int) -> str:
 def summarize(rows: list[dict[str, Any]], started_at: float) -> dict[str, Any]:
     ok_rows = [r for r in rows if r.get("state") == "ok"]
     score = sum(float(r.get("score", 0.0)) for r in ok_rows)
+    total_in = sum(int(r.get("input_tokens", 0)) for r in ok_rows)
     total_out = sum(int(r.get("output_tokens", 0)) for r in ok_rows)
+    request_elapsed = [float(r.get("elapsed_s", 0.0)) for r in ok_rows]
     duration = time.time() - started_at
     acc = (score / len(ok_rows) * 100.0) if ok_rows else 0.0
     return {
         "completed": len(ok_rows),
         "ori_accuracy": round(acc, 2),
         "overall_accuracy": min(round(acc / 80 * 100, 2), 100),
+        "total_input_tokens": total_in,
         "total_output_tokens": total_out,
         "duration": round(duration, 2),
         "tps": round(total_out / duration, 2) if duration > 0 else 0.0,
+        "avg_request_elapsed_s": (
+            round(sum(request_elapsed) / len(request_elapsed), 2)
+            if request_elapsed
+            else 0.0
+        ),
+        "max_request_elapsed_s": round(max(request_elapsed), 2)
+        if request_elapsed
+        else 0.0,
     }
 
 
@@ -221,6 +249,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--end-index", type=int, default=None)
     parser.add_argument("--timeout", type=int, default=3000)
     parser.add_argument("--max-failures", type=int, default=1)
+    parser.add_argument(
+        "--no-gpu-log",
+        action="store_true",
+        help="Disable nvidia-smi snapshots at startup and partition boundaries.",
+    )
     return parser.parse_args()
 
 
@@ -238,6 +271,7 @@ def main() -> int:
     target_indices = list(range(args.start_index, min(end_index, len(data))))
     done = completed_indices(result_path)
     client = Client(args.api_base, model_name, args.model_path, args.timeout)
+    initial_gpu = None if args.no_gpu_log else gpu_snapshot()
 
     write_json(
         args.run_dir / "run_config.json",
@@ -253,12 +287,23 @@ def main() -> int:
             "start_index": args.start_index,
             "end_index": end_index,
             "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "initial_gpu": initial_gpu,
         },
     )
 
     started_at = time.time()
     failures = 0
+    print(
+        f"[eval] model={model_name} data={args.data_path} "
+        f"range={args.start_index}:{end_index} target={len(target_indices)} "
+        f"concurrency={args.concurrency} part_size={args.part_size} "
+        f"timeout={args.timeout}",
+        flush=True,
+    )
+    if initial_gpu:
+        print(f"[gpu] startup {initial_gpu}", flush=True)
     for part_start in range(args.start_index, end_index, args.part_size):
+        part_started_at = time.time()
         part_end = min(part_start + args.part_size, end_index)
         part_indices = [i for i in range(part_start, part_end) if i in target_indices]
         pending = [i for i in part_indices if i not in done]
@@ -275,11 +320,18 @@ def main() -> int:
             f"completed={len(done)}",
             flush=True,
         )
+        part_gpu = None if args.no_gpu_log else gpu_snapshot()
+        if part_gpu:
+            print(f"[gpu] partition_start {part_start}:{part_end} {part_gpu}", flush=True)
 
         def infer(index: int) -> dict[str, Any]:
             item = data[index]
+            request_started_at = time.time()
+            input_tokens = client.token_len(item["question"])
             pred, usage = client.generate(item["question"], args.max_out_len)
             score, extracted = score_prediction(pred, item.get("gold"), item.get("task", "unknown"))
+            output_tokens = client.token_len(pred)
+            elapsed = time.time() - request_started_at
             row = {
                 "state": "ok",
                 "index": index,
@@ -289,8 +341,12 @@ def main() -> int:
                 "score": score,
                 "extracted": extracted,
                 "usage": usage,
-                "input_tokens": client.token_len(item["question"]),
-                "output_tokens": client.token_len(pred),
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "elapsed_s": round(elapsed, 3),
+                "output_tps": round(output_tokens / elapsed, 2)
+                if elapsed > 0
+                else 0.0,
                 "finished_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
             return row
@@ -309,6 +365,7 @@ def main() -> int:
                             "state": "error",
                             "index": index,
                             "error": repr(exc),
+                            "elapsed_since_start_s": round(time.time() - started_at, 3),
                             "finished_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                         },
                     )
@@ -323,18 +380,26 @@ def main() -> int:
                 append_jsonl(part_file, row)
                 done.add(index)
                 rows = read_success_rows(result_path)
+                latest_summary = summarize(rows, started_at)
                 write_json(
                     args.run_dir / "progress.json",
                     {
                         "completed": len(done),
                         "last_index": index,
                         "target_total": len(target_indices),
-                        "latest_accuracy": summarize(rows, started_at)["ori_accuracy"],
+                        "latest_accuracy": latest_summary["ori_accuracy"],
+                        "latest_elapsed_s": row["elapsed_s"],
+                        "latest_input_tokens": row["input_tokens"],
+                        "latest_output_tokens": row["output_tokens"],
+                        "overall_tps": latest_summary["tps"],
                         "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                     },
                 )
                 print(
-                    f"[ok] index={index} score={row['score']} "
+                    f"[ok] index={index} task={row['task']} score={row['score']} "
+                    f"elapsed={row['elapsed_s']}s in={row['input_tokens']} "
+                    f"out={row['output_tokens']} out_tps={row['output_tps']} "
+                    f"acc={latest_summary['ori_accuracy']} "
                     f"completed={len(done)}/{len(target_indices)}",
                     flush=True,
                 )
@@ -345,9 +410,12 @@ def main() -> int:
             {
                 "part_start": part_start,
                 "part_end": part_end,
-                **summarize(part_rows, started_at),
+                **summarize(part_rows, part_started_at),
             },
         )
+        part_gpu = None if args.no_gpu_log else gpu_snapshot()
+        if part_gpu:
+            print(f"[gpu] partition_end {part_start}:{part_end} {part_gpu}", flush=True)
         write_json(args.run_dir / "summary.json", summarize(read_success_rows(result_path), started_at))
 
     final_rows = read_success_rows(result_path)
