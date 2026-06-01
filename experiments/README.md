@@ -19,6 +19,10 @@ These two files cover ~95% of operational scenarios. The rest is reference.
 | `V23_PLATFORM_LOG_CHECKLIST.md` | When v23 (or any future GPTQModel) platform result comes back. 8 grep blocks attribute the result to a hypothesis. |
 | `AWQ_FEASIBILITY_ASSESSMENT.md` | Only if v23 platform acc < 10 AND H1/H2/H4 fixes don't move the needle. Then trigger the docs/awq_fallback_plan.md 4-step process. |
 | `V23_VS_RTN_TARBALL_AUDIT.md` | When inspecting why one tarball worked but another didn't. File-level diff between RTN-pass (acc=42) and v22-fail (acc=0). |
+| `FP8KV_PLATFORM_POSTMORTEM_20260527.md` | When explaining why the final FP8KV package no longer timed out but still scored 0: cache/install hardening, acc collapse, and missing speedup. |
+| `FP8KV_W4A16_PRECISION_ANALYSIS_20260531.md` | Current FP8KV+W4A16 precision queue. Read before changing `8K + multi-adaptive`, DENSEQKV, POSTQ, PERHEAD, or E4M3/E5M2 package order. |
+| `W4_SCALE_RECALIB_RUNBOOK_20260601.md` | When running the W4 `.scales` recalibration A/B on GPU or interpreting whether the bottleneck is weight-scale error, runtime pressure, or something else. |
+| `OP_FUSION_SAFETY_20260531.md` | When considering any new MiniCPM op-fusion. Records the no-accuracy-change invariant and blocks RoPE upcast removal / approximate QKNorm JIT from submit candidates. |
 | `PLATFORM_DEBUG_HANDOFF.md` | Originally for handing off to server-side Claude on a fresh instance. Still useful for context: server-side environment setup, hypothesis discipline warning. |
 
 ## Historical / less-current

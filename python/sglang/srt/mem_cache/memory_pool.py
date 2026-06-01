@@ -48,6 +48,9 @@ import triton
 import triton.language as tl
 
 from sglang.srt.constants import GPU_MEMORY_TYPE_KV_CACHE
+from sglang.srt.layers.quantization.kv_scale_utils import (
+    divide_kv_cache_by_scale_ as _divide_kv_cache_by_scale_,
+)
 from sglang.srt.layers.radix_attention import RadixAttention
 from sglang.srt.mem_cache.utils import (
     get_mla_kv_buffer_triton,
@@ -998,8 +1001,8 @@ class MHATokenToKVPool(KVCache):
         loc: torch.Tensor,
         cache_k: torch.Tensor,
         cache_v: torch.Tensor,
-        k_scale: Optional[float] = None,
-        v_scale: Optional[float] = None,
+        k_scale: Optional[Union[float, torch.Tensor]] = None,
+        v_scale: Optional[Union[float, torch.Tensor]] = None,
         layer_id_override: Optional[int] = None,
     ):
         from sglang.srt.model_executor.cuda_graph_runner import get_is_capture_mode
@@ -1009,10 +1012,18 @@ class MHATokenToKVPool(KVCache):
         else:
             layer_id = layer.layer_id
         if cache_k.dtype != self.dtype:
-            if k_scale is not None:
-                cache_k.div_(k_scale)
-            if v_scale is not None:
-                cache_v.div_(v_scale)
+            _divide_kv_cache_by_scale_(
+                cache_k,
+                k_scale,
+                num_heads=self.head_num,
+                head_dim=self.head_dim,
+            )
+            _divide_kv_cache_by_scale_(
+                cache_v,
+                v_scale,
+                num_heads=self.head_num,
+                head_dim=self.v_head_dim,
+            )
             cache_k = cache_k.to(self.dtype)
             cache_v = cache_v.to(self.dtype)
 
@@ -1177,8 +1188,8 @@ class MHATokenToKVPoolFP4(MHATokenToKVPool):
         loc: torch.Tensor,
         cache_k: torch.Tensor,
         cache_v: torch.Tensor,
-        k_scale: Optional[float] = None,
-        v_scale: Optional[float] = None,
+        k_scale: Optional[Union[float, torch.Tensor]] = None,
+        v_scale: Optional[Union[float, torch.Tensor]] = None,
         layer_id_override: Optional[int] = None,
     ):
         from sglang.srt.model_executor.cuda_graph_runner import get_is_capture_mode
@@ -1188,10 +1199,18 @@ class MHATokenToKVPoolFP4(MHATokenToKVPool):
         else:
             layer_id = layer.layer_id
         if cache_k.dtype != self.dtype:
-            if k_scale is not None:
-                cache_k.div_(k_scale)
-            if v_scale is not None:
-                cache_v.div_(v_scale)
+            _divide_kv_cache_by_scale_(
+                cache_k,
+                k_scale,
+                num_heads=self.head_num,
+                head_dim=self.head_dim,
+            )
+            _divide_kv_cache_by_scale_(
+                cache_v,
+                v_scale,
+                num_heads=self.head_num,
+                head_dim=self.v_head_dim,
+            )
 
             from sglang.srt.layers.quantization.kvfp4_tensor import KVFP4QuantizeUtil
 

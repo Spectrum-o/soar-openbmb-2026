@@ -9,6 +9,10 @@ from sglang.srt.layers.quantization.base_config import (
     QuantizeMethodBase,
 )
 from sglang.srt.layers.quantization.fp8_kernel import is_fp8_fnuz
+from sglang.srt.layers.quantization.kv_scale_utils import (
+    finalize_kv_cache_scales,
+    make_kv_cache_scale_loader,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,42 +44,17 @@ class BaseKVCacheMethod(QuantizeMethodBase):
         layer.v_scale = torch.nn.Parameter(
             torch.tensor(-1.0, dtype=torch.float32), requires_grad=False
         )
+        layer.k_scale_per_head = None
+        layer.v_scale_per_head = None
+        layer.k_scale.weight_loader = make_kv_cache_scale_loader(
+            layer, "k_scale_per_head"
+        )
+        layer.v_scale.weight_loader = make_kv_cache_scale_loader(
+            layer, "v_scale_per_head"
+        )
 
     def apply(self, layer: torch.nn.Module) -> torch.Tensor:
         raise RuntimeError(f"{self.__class__.__name__}.apply should not be called.")
 
     def process_weights_after_loading(self, layer) -> None:
-        if layer.k_scale > 0.0 and layer.v_scale > 0.0:
-            # We prefer to use separate k_scale and v_scale if present
-            k_scale = layer.k_scale.to("cpu").tolist()
-            v_scale = layer.v_scale.to("cpu").tolist()
-            if is_fp8_fnuz():
-                k_scale *= 2
-                v_scale *= 2
-        elif layer.k_scale < 0.0 and layer.v_scale < 0.0:
-            # If no scales were loaded (both scales are invalid negative
-            # values), use the default value of 1.0
-            k_scale = 1.0
-            v_scale = 1.0
-        else:
-            # If we find a single kv_scale in the checkpoint, we remap
-            # kv_scale to k_scale during weight loading, and duplicate
-            # k_scale to v_scale here
-            assert layer.k_scale > 0.0
-            scale_to_duplicate = max(layer.k_scale, layer.v_scale)
-            k_scale = scale_to_duplicate.to("cpu").tolist()
-            v_scale = scale_to_duplicate.to("cpu").tolist()
-            if is_fp8_fnuz():
-                k_scale *= 2
-                v_scale *= 2
-
-        if not isinstance(k_scale, float) or not isinstance(v_scale, float):
-            raise ValueError(
-                "Only support per-tensor scaling factor " "for fp8 KV cache"
-            )
-
-        # These are used in the final Attention.forward()
-        layer.k_scale.copy_(k_scale)
-        layer.v_scale.copy_(v_scale)
-        layer.k_scale_float = k_scale
-        layer.v_scale_float = v_scale
+        finalize_kv_cache_scales(layer, fp8_fnuz=is_fp8_fnuz())

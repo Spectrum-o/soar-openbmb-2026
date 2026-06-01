@@ -38,6 +38,11 @@ from sglang.srt.layers.attention.minicpm_sparse_utils import (
     get_compress_k_v2_padded,
     compressed_attention_tilelang,
 )
+from sglang.srt.layers.quantization.kv_scale_utils import (
+    multiply_kv_cache_by_scale_,
+    scale_flat_query_for_per_head_k,
+    scale_grouped_output_for_per_head_v,
+)
 
 
 from sglang.srt.layers.attention.minicpm_fuse_kernel import fused_attn_pooling_online_topk_prefill, fused_attn_pooling_online_topk_decode, _bucket_size
@@ -473,7 +478,51 @@ class MiniCPMSparseBackend(AttentionBackend):
     def _is_fp8_kv_cache(self) -> bool:
         return self.kv_cache_dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
 
-    def _dequant_fp8_kv_cache_for_attention(
+    def _get_kv_cache_write_scales(self, layer: RadixAttention):
+        if self._is_fp8_kv_cache():
+            k_per_head = getattr(layer, "k_scale_per_head", None)
+            v_per_head = getattr(layer, "v_scale_per_head", None)
+            if k_per_head is not None or v_per_head is not None:
+                return (
+                    k_per_head if k_per_head is not None else layer.k_scale,
+                    v_per_head if v_per_head is not None else layer.v_scale,
+                )
+        return layer.k_scale, layer.v_scale
+
+    def _scale_query_for_per_head_fp8_kv(
+        self,
+        q: torch.Tensor,
+        layer: RadixAttention,
+    ) -> torch.Tensor:
+        if not self._is_fp8_kv_cache():
+            return q
+        k_scale = getattr(layer, "k_scale_per_head", None)
+        if k_scale is None:
+            return q
+        return scale_flat_query_for_per_head_k(
+            q,
+            k_scale,
+            num_q_heads=layer.tp_q_head_num,
+            head_dim=layer.head_dim,
+        )
+
+    def _finalize_per_head_fp8_kv_output(
+        self,
+        output: torch.Tensor,
+        layer: RadixAttention,
+    ) -> torch.Tensor:
+        out_head_dim = output.shape[-1]
+        v_scale = getattr(layer, "v_scale_per_head", None)
+        if not self._is_fp8_kv_cache() or v_scale is None:
+            return output.reshape(-1, layer.tp_q_head_num * out_head_dim)
+        return scale_grouped_output_for_per_head_v(
+            output,
+            v_scale,
+            num_q_heads=layer.tp_q_head_num,
+            v_head_dim=out_head_dim,
+        )
+
+    def _prepare_kv_cache_for_attention(
         self,
         key_cache: torch.Tensor,
         value_cache: torch.Tensor,
@@ -490,12 +539,26 @@ class MiniCPMSparseBackend(AttentionBackend):
         if value_cache.dtype != target_dtype:
             value_cache = value_cache.to(target_dtype)
 
-        k_scale = getattr(layer, "k_scale_float", None)
-        v_scale = getattr(layer, "v_scale_float", None)
-        if k_scale is not None and k_scale != 1.0:
-            key_cache = key_cache * k_scale
-        if v_scale is not None and v_scale != 1.0:
-            value_cache = value_cache * v_scale
+        k_scale = getattr(layer, "k_scale_per_head", None)
+        if k_scale is None:
+            k_scale = getattr(layer, "k_scale_float", None)
+        v_scale = getattr(layer, "v_scale_per_head", None)
+        if v_scale is None:
+            v_scale = getattr(layer, "v_scale_float", None)
+        if k_scale is not None:
+            multiply_kv_cache_by_scale_(
+                key_cache,
+                k_scale,
+                num_heads=layer.tp_k_head_num,
+                head_dim=layer.head_dim,
+            )
+        if v_scale is not None:
+            multiply_kv_cache_by_scale_(
+                value_cache,
+                v_scale,
+                num_heads=layer.tp_v_head_num,
+                head_dim=layer.v_head_dim,
+            )
         return key_cache, value_cache
 
     def init_forward_metadata(self, forward_batch: ForwardBatch):
@@ -930,8 +993,9 @@ class MiniCPMSparseBackend(AttentionBackend):
             assert v is not None
             if save_kv_cache:
                 cache_loc = forward_batch.out_cache_loc
+                k_cache_scale, v_cache_scale = self._get_kv_cache_write_scales(layer)
                 forward_batch.token_to_kv_pool.set_kv_buffer(
-                    layer, cache_loc, k, v, layer.k_scale, layer.v_scale
+                    layer, cache_loc, k, v, k_cache_scale, v_cache_scale
                 )
 
         # Use precomputed metadata across all layers
@@ -1013,7 +1077,10 @@ class MiniCPMSparseBackend(AttentionBackend):
                 split_stage1=self.split_stage1,
             )
 
-        q_reshaped = q.contiguous().view(-1, layer.tp_q_head_num // 2, layer.head_dim)
+        q_for_attn = self._scale_query_for_per_head_fp8_kv(q, layer)
+        q_reshaped = q_for_attn.contiguous().view(
+            -1, layer.tp_q_head_num // 2, layer.head_dim
+        )
         if forward_batch.sparse_batch_size < bs:
             # copy dense page table for dense bs
             metadata.sparse_page_table.shape[1]
@@ -1059,6 +1126,9 @@ class MiniCPMSparseBackend(AttentionBackend):
         key_cache, value_cache = forward_batch.token_to_kv_pool.get_kv_buffer(
             layer.layer_id
         )
+        key_cache, value_cache = self._prepare_kv_cache_for_attention(
+            key_cache, value_cache, q.dtype, layer
+        )
 
         key_cache = key_cache.view(
             -1, self.page_size, layer.tp_k_head_num // 2, layer.head_dim
@@ -1066,13 +1136,9 @@ class MiniCPMSparseBackend(AttentionBackend):
         value_cache = value_cache.view(
             -1, self.page_size, layer.tp_v_head_num // 2, layer.head_dim
         )
-        key_cache, value_cache = self._dequant_fp8_kv_cache_for_attention(
-            key_cache, value_cache, q.dtype, layer
-        )
-
         # Prepare attention parameters
         attn_params = AttentionParams(
-            q=q.contiguous().view(-1, layer.tp_q_head_num // 2, layer.head_dim),
+            q=q_reshaped,
             k_cache=key_cache,
             v_cache=value_cache,
             page_table=metadata.sparse_page_table,
@@ -1119,7 +1185,7 @@ class MiniCPMSparseBackend(AttentionBackend):
                 result[ps : ps + 2 * len_ : 2, :, :] = t[0:len_, :, :]
                 result[ps + 1 : ps + 2 * len_ : 2, :, :] = t[len_ : 2 * len_, :, :]
 
-        return result.view(-1, layer.tp_q_head_num * layer.head_dim)
+        return self._finalize_per_head_fp8_kv_output(result, layer)
 
     def forward_decode(
         self,
@@ -1148,8 +1214,9 @@ class MiniCPMSparseBackend(AttentionBackend):
             assert v is not None
             if save_kv_cache:
                 cache_loc = forward_batch.out_cache_loc
+                k_cache_scale, v_cache_scale = self._get_kv_cache_write_scales(layer)
                 forward_batch.token_to_kv_pool.set_kv_buffer(
-                    layer, cache_loc, k, v, layer.k_scale, layer.v_scale
+                    layer, cache_loc, k, v, k_cache_scale, v_cache_scale
                 )
 
         # Use precomputed metadata across all layers
@@ -1191,14 +1258,14 @@ class MiniCPMSparseBackend(AttentionBackend):
         key_cache, value_cache = forward_batch.token_to_kv_pool.get_kv_buffer(
             layer.layer_id
         )
+        key_cache, value_cache = self._prepare_kv_cache_for_attention(
+            key_cache, value_cache, q.dtype, layer
+        )
         key_cache = key_cache.view(
             -1, self.page_size, layer.tp_k_head_num, layer.head_dim
         )
         value_cache = value_cache.view(
             -1, self.page_size, layer.tp_v_head_num, layer.v_head_dim
-        )
-        key_cache, value_cache = self._dequant_fp8_kv_cache_for_attention(
-            key_cache, value_cache, q.dtype, layer
         )
 
         page_table = metadata.page_table
@@ -1228,7 +1295,10 @@ class MiniCPMSparseBackend(AttentionBackend):
             sparse_page_table[:, : self.num_sparse_topk_tokens]
         )
 
-        q_reshaped_by_head_group = q_reshaped.reshape(
+        q_for_attn = self._scale_query_for_per_head_fp8_kv(q, layer)
+        q_reshaped_by_head_group = q_for_attn.contiguous().view(
+            -1, layer.tp_q_head_num, layer.head_dim
+        ).reshape(
             -1, layer.tp_q_head_num // 2, layer.head_dim
         )
         assert self.page_size == 1
@@ -1283,9 +1353,7 @@ class MiniCPMSparseBackend(AttentionBackend):
         # Use the attention kernel abstraction
         result = self.attention_kernel.forward(attn_params, layer)
 
-        o = result
-
-        return o.view(-1, layer.tp_q_head_num * layer.v_head_dim)
+        return self._finalize_per_head_fp8_kv_output(result, layer)
 
     def init_cuda_graph_state(self, max_bs: int, max_num_tokens: int):
         """Initialize CUDA graph state for the attention backend.
@@ -1682,7 +1750,7 @@ class MiniCPMSparseBackend(AttentionBackend):
                     self.head_dim,
                     self.page_size,
                     q_data_type=self.attention_kernel.q_data_type,
-                    kv_data_type=self.attention_kernel.data_type,
+                    kv_data_type=self.attention_kernel.plan_kv_data_type,
                     non_blocking=True,
                 )
 
@@ -1831,7 +1899,7 @@ class MiniCPMSparseBackend(AttentionBackend):
                     self.head_dim,
                     self.page_size,
                     q_data_type=self.attention_kernel.q_data_type,
-                    kv_data_type=self.attention_kernel.data_type,
+                    kv_data_type=self.attention_kernel.plan_kv_data_type,
                     non_blocking=True,
                 )
 

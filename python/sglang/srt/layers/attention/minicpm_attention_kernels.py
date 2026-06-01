@@ -186,12 +186,18 @@ class FlashInferKernel(AttentionKernel):
             get_tensor_model_parallel_world_size()
         )
         self.head_dim = model_runner.model_config.head_dim
-        # FlashInfer FA2 rejects fp8 queries. KV-only fp8 is supported via
-        # k_scale/v_scale, so keep query planning at model dtype.
+        # FlashInfer FA2 rejects fp8 queries, so keep query planning at model
+        # dtype. KV cache storage can still be fp8; FlashInfer handles the
+        # KV-only fp8 path with scales.
         if self.kv_cache_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
             self.q_data_type = self.model_dtype
         else:
             self.q_data_type = self.kv_cache_dtype
+        # Keep the plan KV dtype equal to the cache storage dtype. Planning it
+        # as bf16 makes CUDA graph capture expect materialized bf16 KV pages
+        # and either mismatches the runtime tensors or requires a whole-pool
+        # upcast that can OOM before the server starts.
+        self.plan_kv_data_type = self.kv_cache_dtype
 
         # Create workspace buffers for flashinfer
         workspace_size = envs.SGLANG_FLASHINFER_WORKSPACE_SIZE.get()
@@ -274,7 +280,7 @@ class FlashInferKernel(AttentionKernel):
             self.head_dim,
             self.page_size,
             q_data_type=self.q_data_type,
-            kv_data_type=self.data_type,
+            kv_data_type=self.plan_kv_data_type,
             non_blocking=True,
         )
         self.decode_wrapper_planned = True
@@ -312,7 +318,7 @@ class FlashInferKernel(AttentionKernel):
             self.head_dim,
             self.page_size,
             q_data_type=self.q_data_type,
-            kv_data_type=self.data_type,
+            kv_data_type=self.plan_kv_data_type,
             non_blocking=True,
             causal=causal,
         )
@@ -469,9 +475,13 @@ class FlashInferKernel(AttentionKernel):
         k_data = (params.k_cache, params.v_cache)
         scale_kwargs = {}
         if kv_data_type in (torch.float8_e4m3fn, torch.float8_e5m2):
-            if getattr(layer, "k_scale_float", None) is not None:
+            if getattr(layer, "k_scale_per_head", None) is not None:
+                scale_kwargs["k_scale"] = 1.0
+            elif getattr(layer, "k_scale_float", None) is not None:
                 scale_kwargs["k_scale"] = layer.k_scale_float
-            if getattr(layer, "v_scale_float", None) is not None:
+            if getattr(layer, "v_scale_per_head", None) is not None:
+                scale_kwargs["v_scale"] = 1.0
+            elif getattr(layer, "v_scale_float", None) is not None:
                 scale_kwargs["v_scale"] = layer.v_scale_float
 
         if is_prefill:

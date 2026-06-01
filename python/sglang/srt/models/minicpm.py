@@ -45,7 +45,10 @@ from sglang.srt.layers.vocab_parallel_embedding import (
     VocabParallelEmbedding,
 )
 from sglang.srt.model_executor.forward_batch_info import ForwardBatch
-from sglang.srt.model_loader.weight_utils import default_weight_loader
+from sglang.srt.model_loader.weight_utils import (
+    default_weight_loader,
+    maybe_remap_kv_scale_name,
+)
 from sglang.srt.utils import add_prefix
 
 
@@ -636,6 +639,21 @@ class MiniCPMSALAForCausalLM(nn.Module):
                 continue
             if self.config.tie_word_embeddings and "lm_head.weight" in name:
                 continue
+
+            # FP8 KV cache: remap injected k/v scale names
+            # (model.layers.{i}.self_attn.k_scale) onto the RadixAttention param
+            # (...self_attn.attn.k_scale). SALA's load_weights lacked this call
+            # that llama.py has (llama.py:632-635); without it, calibrated fp8 KV
+            # scales never load -> KeyError at startup, or silent k/v_scale=1.0
+            # -> fp8_e4m3 saturation on SALA's scale_emb=12 hot KV. maybe_remap
+            # returns None when the .attn target is absent -> skip cleanly.
+            # NOTE: only remap when the name is NOT already a real param — scales
+            # injected under the fully-qualified self_attn.attn.k_scale name load
+            # directly and must NOT be re-mangled (remap would make .attn.attn.k_scale).
+            if "scale" in name and name not in params_dict:
+                name = maybe_remap_kv_scale_name(name, params_dict)
+                if name is None:
+                    continue
 
             for param_name, weight_name, shard_id in stacked_params_mapping:
                 if weight_name not in name:
