@@ -22,7 +22,13 @@ from typing import Any
 
 ATTNSCALE_ACC_ORI = 77.24
 PASS_ACC_ORI = 80.0
-CURRENT_PACKAGE_KEY = "denseqkv_multi8k_diag"
+CURRENT_PACKAGE_KEY = ""
+CURRENT_ACTION = (
+    "No prepared FP8KV tarball is the clean current next submit. "
+    "The 101730 DENSEQKV_MULTI8K result completed below the non-FP8 W4A16 record; "
+    "if continuing the FP8KV precision queue, build a new POSTQ_MULTI8K HP224 package. "
+    "Do not submit the old 4K POSTQ/PERHEAD tarballs as the next comparison."
+)
 
 
 @dataclass(frozen=True)
@@ -737,7 +743,10 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.current:
-        print(format_pkg(PACKAGES[CURRENT_PACKAGE_KEY]))
+        if CURRENT_PACKAGE_KEY:
+            print(format_pkg(PACKAGES[CURRENT_PACKAGE_KEY]))
+        else:
+            print(CURRENT_ACTION)
         return 0
     if args.list:
         for key in PACKAGE_ORDER:

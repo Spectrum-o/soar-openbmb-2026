@@ -409,7 +409,8 @@ class TestDecideFp8kvNext(unittest.TestCase):
         with patch.object(sys, "argv", ["decide_fp8kv_next.py", "--current"]):
             with redirect_stdout(current_out):
                 self.assertEqual(decide_fp8kv.main(), 0)
-        self.assertIn(decide_fp8kv.PACKAGES["denseqkv_multi8k_diag"].tarball, current_out.getvalue())
+        self.assertIn("build a new POSTQ_MULTI8K HP224 package", current_out.getvalue())
+        self.assertIn("Do not submit the old 4K POSTQ/PERHEAD", current_out.getvalue())
 
         list_out = StringIO()
         with patch.object(sys, "argv", ["decide_fp8kv_next.py", "--list"]):

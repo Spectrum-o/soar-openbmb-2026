@@ -4,18 +4,20 @@
 
 Current FP8KV state:
 
-- The active package is
-  `soar_fp8kv_DENSEQKV_MULTI8K300_HP224_DIAG_OFFLOAD_FIXED_20260601_101730.tar.gz`
-  (`md5=3ad3f92828d5595768d6977a4e839dab`). Local audit passes and
-  `tools/decide_fp8kv_next.py --current` points to this package.
-- The last completed strong-calibration FP8KV run was
+- `soar_fp8kv_DENSEQKV_MULTI8K300_HP224_DIAG_OFFLOAD_FIXED_20260601_101730.tar.gz`
+  completed on platform: `acc_ori=78.67`, `final_score=20.87`, `S1=655.7`,
+  `S8=1023.81`, `Smax=2314.8`, with about 55 minutes of prepare time. This is
+  the DENSEQKV multi-8K result, not a 4K backup.
+- The previous strong-calibration FP8KV run was
   `soar_fp8kv_REALCALIB_MULTI8K300_HP224_DIAG_OFFLOAD_FIXED_20260531_225344.tar.gz`:
   `acc_ori=77.33`, `final_score=0.0`, `S1=650.26`, `S8=1018.16`,
   `Smax=2308.66`, with about 55 minutes of prepare time. This was real
   `300 x 8K x multi-adaptive` GPTQ replay, not the short 4K-tail shortcut.
 - Therefore the low FP8KV quality is no longer explained by weak GPTQ replay.
-  The remaining clean scalar-scale hypotheses are scale-source mismatch
-  (`101730` DENSEQKV) and then post-quantization scale measurement
+  DENSEQKV improved quality by `+1.34pp acc_ori` over `225344`, so scale-source
+  mismatch was a real issue, but it still did not beat the non-FP8 W4A16 record
+  and it was slower at S1. The remaining clean scalar-scale hypothesis is
+  post-quantization scale measurement from the final W4A16 artifact
   (POSTQ_MULTI8K, not yet packed).
 - The prepared `214103`, `215412`, and `221735` tarballs are 4K-tail backups
   only. Do not submit them directly after an 8K result, because that would mix
@@ -24,11 +26,12 @@ Current FP8KV state:
 Current interpretation:
 
 - FP8KV is working as a runtime/load path, but it is not currently a scoring
-  win. All completed FP8KV variants are around `acc_ori=77.x`, below the
-  usable W4A16 record.
-- FP8KV also has no visible end-to-end speed win on this benchmark. The best
-  non-FP8 W4A16 record had `S1=648.05`; completed FP8KV runs are
-  `S1=647.9-650.26`. This is measurement noise, not a strict speedup.
+  win. The best scalar-source FP8KV point is now DENSEQKV_MULTI8K at
+  `acc_ori=78.67`, `final_score=20.87`, still below the non-FP8 W4A16 record
+  `final_score=21.79`.
+- FP8KV still has no visible end-to-end speed win on this benchmark. The best
+  non-FP8 W4A16 record had `S1=648.05`; DENSEQKV_MULTI8K has `S1=655.7`.
+  That is slower, not a strict speedup.
 - The most likely reason is that this MiniCPM-SALA serving path is not
   dominated by dense KV cache bandwidth. FP8KV shrinks dense K/V cache storage,
   but it does not speed up Lightning attention, sparse page-table work,
@@ -51,13 +54,10 @@ Calibration status:
 
 Next decision:
 
-- If `101730` completes low without explicit range/outlier symptoms, stop the
-  prepared scalar-source queue and build a new `POSTQ_MULTI8K` package with the
-  same `300 x 8K x multi-adaptive` GPTQ replay. Do not use old 4K POSTQ or
-  PERHEAD tarballs as the next comparison.
-- If `101730` OOMs, classify the log with the `GPU DIAG` blocks: dirty GPU or
-  external memory pressure is a platform-state problem; clean GPU that grows to
-  the card limit is a package peak-memory problem.
+- `101730` completed low without explicit range/outlier symptoms. The prepared
+  scalar-source queue should stop here. If FP8KV is continued, build a new
+  `POSTQ_MULTI8K` package with the same `300 x 8K x multi-adaptive` GPTQ replay.
+  Do not use old 4K POSTQ or PERHEAD tarballs as the next comparison.
 - If a completed E4M3 result shows clear range/saturation symptoms, compare
   against an E5M2 package with comparable calibration strength. Without those
   symptoms, E4M3 remains the better default precision choice.
@@ -104,11 +104,12 @@ Next decision:
   also shows FP8KV does not produce a measurable end-to-end speed win on the
   current MiniCPM sparse path.
 - `soar_fp8kv_DENSEQKV_MULTI8K300_HP224_DIAG_OFFLOAD_FIXED_20260601_101730.tar.gz`
-  is the current next package. It preserves the same 300 x 8K multi-adaptive
-  GPTQ replay as `225344` and changes the scale-source hypothesis: dense
-  MiniCPM q/k/v are restored to BF16 before KV-scale calibration so collected
-  scales better match dense runtime K/V. Audit PASS, md5
-  `3ad3f92828d5595768d6977a4e839dab`.
+  completed: `acc_ori=78.67`, `final_score=20.87`, `S1=655.7`,
+  `S8=1023.81`, `Smax=2314.8`. It preserved the same 300 x 8K multi-adaptive
+  GPTQ replay as `225344` and changed only the scale-source hypothesis: dense
+  MiniCPM q/k/v were restored to BF16 before KV-scale calibration. The
+  `+1.34pp` gain over `225344` confirms scale-source mismatch mattered, but it
+  is still below the non-FP8 W4A16 record and slower at S1.
 - `soar_fp8kv_REALCALIB_E5M2_20260530_225432.tar.gz` completed low:
   `acc_ori=75.4`, `final_score=0.0`, `S1=647.19`, `S8=1015.29`,
   `Smax=2303.06`. It is useful signal, but it is not equivalent to the later
@@ -577,20 +578,16 @@ backend contract.
 3. `225344` completed low at 300 x 8K multi-adaptive (`acc_ori=77.33`,
    `S1=650.26`), so the low quality is not mainly the 4K-tail shortcut. It also
    showed FP8KV has no visible speed win on this MiniCPM sparse path.
-4. Current next submit:
+4. `101730` DENSEQKV_MULTI8K completed at `acc_ori=78.67`,
+   `final_score=20.87`, `S1=655.7`. Compared with `225344`, it improved
+   accuracy by `+1.34pp`, so BF16 base-scale mismatch with dense runtime K/V was
+   a real problem. But it is still below the non-FP8 W4A16 record
+   (`21.79`, `S1=648.05`) and is slower, so it is not the current scoring route.
+5. Completed DENSEQKV package:
    `soar_fp8kv_DENSEQKV_MULTI8K300_HP224_DIAG_OFFLOAD_FIXED_20260601_101730.tar.gz`
    (`md5=3ad3f92828d5595768d6977a4e839dab`). This keeps the same 300 x 8K
    multi-adaptive GPTQ coverage as `225344` and changes only the DENSEQKV
    scale-source hypothesis.
-5. If `101730` OOMs, classify from its GPU diagnostics:
-   - low free memory before quantize or unexpected external processes means
-     platform/dirty-GPU state is the dominant cause;
-   - clean GPU before quantize but current process grows to the card limit means
-     the 300 x 8K DENSEQKV package itself is still too large.
-   `tools/decide_fp8kv_next.py` implements this split as
-   `oom_classification: platform_dirty_gpu` vs
-   `oom_classification: package_peak_memory` when the log includes the new
-   `GPU DIAG` blocks.
 6. If `101730` completes low without explicit range symptoms, stop and build a
    POSTQ_MULTI8K HP224 package. Do not submit the prepared 4K POSTQ/PERHEAD
    tarballs, because that would mix scale-source and calibration-strength
@@ -606,14 +603,11 @@ backend contract.
 9. If comparable HP224/DENSEQKV/POSTQ/PERHEAD/E5M2 routes all stay below gate,
    stop the prepared FP8KV queue and fall back to the best non-FP8 package.
 
-Use `python3 tools/decide_fp8kv_next.py --last hp224_lowmem --score-json '<Score JSON>'`
-for the 141006 result. It now routes to the `174343` mid-calibration diagnostic
-package. Use `python3 tools/decide_fp8kv_next.py --current` to print the current
-tarball/md5, `--list` to inspect the queue, and `--last denseqkv_multi8k_diag`
-for the next platform result. The helper now routes `174343` low-without-range
-to `225344`, `225344` low-without-range to `101730`, and `101730`
-low-without-range to "build POSTQ_MULTI8K" rather than submitting an old 4K
-POSTQ/PERHEAD tarball.
+Use `python3 tools/decide_fp8kv_next.py --last denseqkv_multi8k_diag --score-json '<Score JSON>'`
+for the 101730 result. It now routes to "build POSTQ_MULTI8K" rather than
+submitting an old 4K POSTQ/PERHEAD tarball. `--current` intentionally no longer
+prints a prepared FP8KV tarball, because the clean next item is a new build, not
+an existing package.
 
 2026-05-31 0115 note: the original DENSEQKV offload package failed in
 `prepare_model.sh` before inference because `offload_to_disk` was passed as a
