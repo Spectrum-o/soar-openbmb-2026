@@ -324,6 +324,20 @@ run_eval() {
         echo "[eval:${tag}] missing eval script/data; set EVAL_SCRIPT and EVAL_DATA" >&2
         return 1
     fi
+    local help_log="${LOG_DIR}/eval_help_${tag}.log"
+    python3 "${EVAL_SCRIPT}" --help > "${help_log}" 2>&1 || true
+    local missing_flags=()
+    for flag in --api_base --model_path --data_path --concurrency --num_samples; do
+        if ! grep -q -- "${flag}" "${help_log}"; then
+            missing_flags+=("${flag}")
+        fi
+    done
+    if [ "${#missing_flags[@]}" -gt 0 ]; then
+        echo "[eval:${tag}] EVAL_SCRIPT help did not advertise required flags: ${missing_flags[*]}" >&2
+        echo "[eval:${tag}] help log: ${help_log}" >&2
+        sed -n '1,120p' "${help_log}" >&2 || true
+        return 1
+    fi
     local out_log="${LOG_DIR}/eval_${tag}.log"
     echo "[eval:${tag}] samples=${EVAL_SAMPLES} concurrency=${EVAL_CONCURRENCY}"
     python3 "${EVAL_SCRIPT}" \
