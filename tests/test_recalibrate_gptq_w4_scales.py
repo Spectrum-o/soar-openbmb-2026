@@ -12,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import recalibrate_gptq_w4_scales as recal  # noqa: E402
+import dequant_one_tensor as dequant  # noqa: E402
 
 
 MODULE = "model.layers.0.mlp.gate_proj"
@@ -102,6 +103,36 @@ def write_fixture(root: Path) -> tuple[Path, Path, torch.Tensor]:
 
 
 class TestRecalibrateGptqW4Scales(unittest.TestCase):
+    def test_signed_marlin_qzeros_unpack_to_eight(self):
+        qzeros = pack_qzeros(8, groups=1, out_features=8)
+        self.assertLess(int(qzeros[0, 0].item()), 0)
+        unpacked = recal.unpack_qzeros_row(qzeros, group_idx=0, out_features=8)
+        self.assertEqual(unpacked.tolist(), [8.0] * 8)
+
+    def test_recalibration_formula_matches_dequant_verifier(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact, base, _true_scales = write_fixture(Path(tmp))
+            qweight = recal.load_tensor(artifact, f"{MODULE}.qweight")
+            qzeros = recal.load_tensor(artifact, f"{MODULE}.qzeros")
+            scales = recal.load_tensor(artifact, f"{MODULE}.scales")
+            g_idx = recal.load_tensor(artifact, f"{MODULE}.g_idx")
+
+            expected, indices = dequant.dequant_gptq_sym_uint4b8(
+                qweight, qzeros, scales, g_idx
+            )
+            rows = torch.arange(qweight.shape[0] * 8, dtype=torch.int64)
+            q_unsigned = recal.unpack_qweight_rows(qweight, rows)
+            qzero = torch.stack(
+                [
+                    recal.unpack_qzeros_row(qzeros, int(g_idx[i].item()), qweight.shape[1])
+                    for i in rows
+                ]
+            )
+            actual = (q_unsigned - qzero) * scales[g_idx.to(torch.int64)]
+
+            self.assertTrue(torch.equal(indices, rows))
+            self.assertTrue(torch.allclose(actual.to(expected.dtype), expected))
+
     def test_recalibrate_module_scales_reduces_mse(self):
         with tempfile.TemporaryDirectory() as tmp:
             artifact, base, true_scales = write_fixture(Path(tmp))
