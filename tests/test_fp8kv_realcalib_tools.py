@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tarfile
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -86,6 +87,10 @@ if args.post_quant_kv_emit_per_head_scales:
     pass
 def register_minicpm_sala_hf_config():
     AutoConfig.register("minicpm_sala", MiniCPMHybridConfig)
+def _stub_transformers_for_gptqmodel_7():
+    PreTrainedConfig
+    _class_to_module
+    _objects
 """,
             encoding="utf-8",
         )
@@ -175,6 +180,26 @@ class TestAuditFp8kvRealcalibPackage(unittest.TestCase):
         self.assertIn("PASS prepare_model uses post-GPTQ KV calibration", out.getvalue())
         self.assertIn("PASS prepare_model passes post-quant truncation-side left", out.getvalue())
         self.assertIn("PASS postq registers MiniCPM HF config", out.getvalue())
+
+    def test_audit_rejects_tarball_with_critical_symlink_members(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = root / "soar_fp8kv_POSTQ_HP224_fixture"
+            write_minimal_fp8kv_package(package, postq=True)
+            (package / "sglang_target").mkdir()
+            (package / "sglang").symlink_to("sglang_target")
+            tar_path = root / "soar_fp8kv_POSTQ_HP224_fixture.tar.gz"
+            with tarfile.open(tar_path, "w:gz") as tf:
+                for item in package.iterdir():
+                    tf.add(item, arcname=item.name, recursive=True)
+
+            out = StringIO()
+            with redirect_stdout(out):
+                ok = audit_pkg.audit(tar_path)
+
+        self.assertFalse(ok)
+        self.assertIn("FAIL tarball has no critical symlink members", out.getvalue())
+        self.assertIn("sglang", out.getvalue())
 
     def test_audit_accepts_postq_perhead_hp224_fixture(self):
         with tempfile.TemporaryDirectory() as tmp:

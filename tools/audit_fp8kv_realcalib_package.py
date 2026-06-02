@@ -31,6 +31,8 @@ from pathlib import Path
 @dataclass
 class PackageText:
     names: list[str]
+    symlinks: list[str]
+    source_is_tar: bool
     kv_calibrate: str
     quantize: str
     prepare_env: str
@@ -66,6 +68,8 @@ def _read_tar_member(tf: tarfile.TarFile, member_name: str) -> str:
     member = by_name.get(member_name)
     if member is None:
         raise FileNotFoundError(f"missing {member_name} in tarball")
+    if member.issym() or member.islnk():
+        raise FileNotFoundError(f"{member_name} is a symlink in tarball")
     f = tf.extractfile(member)
     if f is None:
         raise FileNotFoundError(f"{member_name} is not a regular file")
@@ -75,7 +79,7 @@ def _read_tar_member(tf: tarfile.TarFile, member_name: str) -> str:
 def _read_tar_member_optional(tf: tarfile.TarFile, member_name: str) -> str:
     try:
         return _read_tar_member(tf, member_name)
-    except FileNotFoundError:
+    except (FileNotFoundError, KeyError):
         return ""
 
 
@@ -84,6 +88,8 @@ def read_package(path: Path) -> PackageText:
         quantize_path = path / "quantize_gptqmodel_w4a16.py"
         return PackageText(
             names=[str(p.relative_to(path)) for p in path.rglob("*")],
+            symlinks=[str(p.relative_to(path)) for p in path.rglob("*") if p.is_symlink()],
+            source_is_tar=False,
             kv_calibrate=(path / "kv_calibrate.py").read_text(errors="replace"),
             quantize=quantize_path.read_text(errors="replace") if quantize_path.exists() else "",
             prepare_env=(path / "prepare_env.sh").read_text(errors="replace"),
@@ -98,13 +104,16 @@ def read_package(path: Path) -> PackageText:
 
     with tarfile.open(path, "r:gz") as tf:
         names = [_norm_tar_name(m.name) for m in tf.getmembers()]
+        symlinks = [_norm_tar_name(m.name) for m in tf.getmembers() if m.issym() or m.islnk()]
         return PackageText(
             names=names,
-            kv_calibrate=_read_tar_member(tf, "kv_calibrate.py"),
+            symlinks=symlinks,
+            source_is_tar=True,
+            kv_calibrate=_read_tar_member_optional(tf, "kv_calibrate.py"),
             quantize=_read_tar_member_optional(tf, "quantize_gptqmodel_w4a16.py"),
-            prepare_env=_read_tar_member(tf, "prepare_env.sh"),
-            prepare_model=_read_tar_member(tf, "prepare_model.sh"),
-            calib_jsonl=_read_tar_member(tf, "perf_public_set.jsonl"),
+            prepare_env=_read_tar_member_optional(tf, "prepare_env.sh"),
+            prepare_model=_read_tar_member_optional(tf, "prepare_model.sh"),
+            calib_jsonl=_read_tar_member_optional(tf, "perf_public_set.jsonl"),
             kv_cache=_read_tar_member_optional(tf, "sglang/python/sglang/srt/layers/quantization/kv_cache.py"),
             kv_scale_utils=_read_tar_member_optional(tf, "sglang/python/sglang/srt/layers/quantization/kv_scale_utils.py"),
             memory_pool=_read_tar_member_optional(tf, "sglang/python/sglang/srt/mem_cache/memory_pool.py"),
@@ -155,6 +164,20 @@ def audit(path: Path) -> bool:
 
     checks: list[tuple[str, bool, str]] = []
     checks.append(("no __pycache__", not any("__pycache__" in n for n in pkg.names), ""))
+    if pkg.source_is_tar:
+        critical_symlinks = [
+            n for n in pkg.symlinks
+            if n == "sglang"
+            or n.startswith("sglang/")
+            or n == "perf_public_set.jsonl"
+            or n.startswith("flash_attn-")
+            or n == "apply_lightning_skip_overlay.py"
+        ]
+        checks.append((
+            "tarball has no critical symlink members",
+            not critical_symlinks,
+            ", ".join(critical_symlinks),
+        ))
     checks.append(("reads SOAR question field", 'sample.get("question")' in pkg.kv_calibrate or 'row.get("question")' in pkg.quantize, ""))
     checks.append(("sets tokenizer truncation_side", "tokenizer.truncation_side = args.truncation_side" in pkg.kv_calibrate or "tokenizer.truncation_side = args.post_quant_kv_truncation_side" in pkg.quantize, ""))
     checks.append(("default truncation_side left", 'default="left"' in pkg.kv_calibrate or 'default="left"' in pkg.quantize, ""))
@@ -162,6 +185,14 @@ def audit(path: Path) -> bool:
         checks.append(("prepare_model uses post-GPTQ KV calibration", "--post-quant-kv-only" in pkg.prepare_model and "post_gptq_qzeros_fixed" in pkg.quantize, ""))
         checks.append(("prepare_model passes post-quant truncation-side left", 'KV_CALIB_TRUNCATION_SIDE="${KV_CALIB_TRUNCATION_SIDE:-left}"' in pkg.prepare_model and "--post-quant-kv-truncation-side" in pkg.prepare_model, ""))
         checks.append(("postq registers MiniCPM HF config", "register_minicpm_sala_hf_config" in pkg.quantize and 'AutoConfig.register("minicpm_sala"' in pkg.quantize, ""))
+        checks.append((
+            "postq has GPTQModel 7 transformers compat shim",
+            "_stub_transformers_for_gptqmodel_7" in pkg.quantize
+            and "PreTrainedConfig" in pkg.quantize
+            and "_class_to_module" in pkg.quantize
+            and "_objects" in pkg.quantize,
+            "POSTQ reload imports gptqmodel after GPTQ; platform transformers 4.57.1 needs the PreTrainedConfig alias for gptqmodel 7.0",
+        ))
     else:
         checks.append(("prepare_model passes truncation-side left", 'KV_CALIB_TRUNCATION_SIDE="${KV_CALIB_TRUNCATION_SIDE:-left}"' in pkg.prepare_model and "--truncation-side" in pkg.prepare_model, ""))
     checks.append(("zero-forward hard guard", "if ran_forwards == 0" in pkg.kv_calibrate or "if ran_forwards == 0" in pkg.quantize, ""))
