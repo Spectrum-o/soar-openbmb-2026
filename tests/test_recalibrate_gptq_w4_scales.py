@@ -109,6 +109,20 @@ class TestRecalibrateGptqW4Scales(unittest.TestCase):
         unpacked = recal.unpack_qzeros_row(qzeros, group_idx=0, out_features=8)
         self.assertEqual(unpacked.tolist(), [8.0] * 8)
 
+    def test_recalibrate_rejects_unfixed_qzeros(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact, base, _true_scales = write_fixture(Path(tmp))
+            qweight = recal.load_tensor(artifact, f"{MODULE}.qweight")
+            qzeros = pack_qzeros(7, groups=2, out_features=8)
+            scales = recal.load_tensor(artifact, f"{MODULE}.scales")
+            g_idx = recal.load_tensor(artifact, f"{MODULE}.g_idx")
+            bf16 = recal.load_tensor(base, f"{MODULE}.weight")
+
+            with self.assertRaisesRegex(ValueError, "non-8 nibbles"):
+                recal.recalibrate_module_scales(
+                    qweight, qzeros, scales, g_idx, bf16, eps=1e-12
+                )
+
     def test_recalibration_formula_matches_dequant_verifier(self):
         with tempfile.TemporaryDirectory() as tmp:
             artifact, base, _true_scales = write_fixture(Path(tmp))
@@ -164,6 +178,7 @@ class TestRecalibrateGptqW4Scales(unittest.TestCase):
                         "report": "",
                         "dry_run": False,
                         "eps": 1e-12,
+                        "allow_non8_qzeros": False,
                     },
                 )()
             )

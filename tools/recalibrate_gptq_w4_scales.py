@@ -111,6 +111,24 @@ def unpack_qzeros_row(qzeros: torch.Tensor, group_idx: int, out_features: int) -
     return ((packed >> shifts) & 0xF).to(torch.float32)
 
 
+def validate_symmetric_qzeros(qzeros: torch.Tensor, num_groups: int, out_features: int) -> None:
+    bad: list[str] = []
+    for group_idx in range(num_groups):
+        row = unpack_qzeros_row(qzeros, group_idx, out_features).to(torch.int64)
+        if torch.all(row == 8):
+            continue
+        unique = sorted({int(x) for x in row.unique().tolist()})
+        bad.append(f"group={group_idx} unique={unique[:8]}")
+        if len(bad) >= 3:
+            break
+    if bad:
+        raise ValueError(
+            "qzeros contain non-8 nibbles; expected qzeros-fixed symmetric "
+            "Marlin W4 artifact. Refusing to recalibrate scales on a bad zero "
+            f"point ({'; '.join(bad)})"
+        )
+
+
 def recalibrate_module_scales(
     qweight: torch.Tensor,
     qzeros: torch.Tensor,
@@ -119,6 +137,7 @@ def recalibrate_module_scales(
     bf16_weight: torch.Tensor,
     *,
     eps: float,
+    require_qzeros_eight: bool = True,
 ) -> tuple[torch.Tensor, float, float]:
     """Return (new_scales, old_mse, new_mse).
 
@@ -140,6 +159,8 @@ def recalibrate_module_scales(
         raise ValueError(
             f"g_idx length {g_idx.numel()} incompatible with in_features={in_features}"
         )
+    if require_qzeros_eight:
+        validate_symmetric_qzeros(qzeros, scales.shape[0], out_features)
 
     g_idx_i64 = g_idx.to(torch.int64).cpu()
     qzeros_i32 = qzeros.to(torch.int32).cpu()
@@ -235,7 +256,13 @@ def run(args: argparse.Namespace) -> int:
             g_idx = load_tensor(artifact, f"{module}{GIDX_SUFFIX}")
             bf16_weight = load_tensor(base, f"{module}.weight")
             new_scales, old_mse, new_mse = recalibrate_module_scales(
-                qweight, qzeros, scales, g_idx, bf16_weight, eps=args.eps
+                qweight,
+                qzeros,
+                scales,
+                g_idx,
+                bf16_weight,
+                eps=args.eps,
+                require_qzeros_eight=not args.allow_non8_qzeros,
             )
             rel = ((new_scales.to(torch.float32) - scales.to(torch.float32)).abs() / scales.to(torch.float32).abs().clamp_min(args.eps)).max().item()
             changed = bool((new_scales != scales).any().item())
@@ -323,6 +350,11 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=None, help="Only process the first N matching modules")
     parser.add_argument("--report", default="", help="Optional JSON report path")
     parser.add_argument("--dry-run", action="store_true", help="Compute and report, but do not rewrite .scales")
+    parser.add_argument(
+        "--allow-non8-qzeros",
+        action="store_true",
+        help="Allow qzeros other than packed 8. Current SOAR Marlin W4A16 artifacts should not need this.",
+    )
     parser.add_argument("--eps", type=float, default=1e-12)
     args = parser.parse_args()
     return run(args)
