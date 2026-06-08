@@ -2,6 +2,9 @@
 
 Reading-order navigation for the docs in this directory.
 
+Repo-level map: see `../PROJECT_STRUCTURE.md` first if you need the high-level
+layout before diving into experiment docs.
+
 ## "I just opened this repo. What do I do?"
 
 | Step | Read | Purpose |

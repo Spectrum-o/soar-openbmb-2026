@@ -27,6 +27,22 @@
 
 # MiniCPM-SALA Inference Environment Setup
 
+## SOAR Workspace Navigation
+
+This branch is not just the upstream MiniCPM-SALA runtime. It is also the active
+SOAR 2026 competition workspace, so the repo contains runtime code plus submission
+variants, experiments, and operational tooling.
+
+Start here if you are working on the competition workflow:
+
+- `PROJECT_STRUCTURE.md`: repo map and where things live
+- `CLAUDE.md`: current workflow, invariants, and common commands
+- `experiments/README.md`: index of strategy docs and runbooks
+- `SUBMISSIONS.md`: canonical submission log and hard constraints
+
+Important layout note: root-level `submission_*` directories are intentionally kept
+at repo root because the pack/eval/preflight scripts reference them directly.
+
 ## Requirements
 
 - CUDA 12.x or higher
