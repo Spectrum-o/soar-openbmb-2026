@@ -1,7 +1,7 @@
 #import "@preview/touying:0.6.1": *
-#import "../../../../../ppt-template/lib.typ": *
+#import "/mnt/c/Users/zyn/OneDrive/program/2026-Spring/ppt-template/lib.typ": *
 
-#let template-root = "/ppt-template"
+#let template-root = "/mnt/c/Users/zyn/OneDrive/program/2026-Spring/ppt-template"
 
 #show: sdu-theme.with(
   assets: (
@@ -14,7 +14,7 @@
   config-info(
     title: [SOAR 2026 MiniCPM-SALA 推理优化技术复盘],
     short-title: [SOAR MiniCPM-SALA],
-    subtitle: [模型特点、方法空间、决策依据与失败复盘],
+    subtitle: [教学复盘：模型特点 · 方法空间 · 决策依据 · 失败复盘],
     author: [SOAR 2026 参赛复盘],
     institution: [MiniCPM-SALA / SGLang / W4A16 / FP8KV],
     date: datetime(year: 2026, month: 6, day: 8),
@@ -57,361 +57,364 @@
 
 #outline-slide()
 
-= 1. 先讲模型：为什么 SALA 不是普通 Transformer
 
-== 模型特点决定优化边界
+= 一、赛题与目标：先搞清楚"在比什么"
+
+== 赛题：固定模型 + 固定单卡 + 隐藏长上下文
 
 #slide(composer: (1.05fr, 1fr))[
-  #tblock(title: [核心判断])[
-    MiniCPM-SALA 的推理优化不是“选一个量化算法”这么简单。它是一个 hybrid long-context runtime：
+  #tblock(title: [我们能改的只有"推理栈"])[
+    赛题对象是 OpenBMB 的 *MiniCPM-SALA*(9B 参数 / 1M 长上下文)。参赛者*不能改模型能力*，只能在一块固定的 *RTX 6000D(84GB)* 上，用量化 / KV cache / prefill / kernel fusion 等系统手段把推理跑得更快。
 
-    - full / sparse attention 与 lightning attention 混合；
-    - dense 层和 lightning 层走不同 cache / state 路径；
-    - sparse backend 依赖 InfLLM v2 与定制 CUDA kernel；
-    - residual scaling 带有 `scale_depth / sqrt(L)`，不能套通用 Llama fusion。
+    所以这道题不是"挑一个最快的量化算法"，而是——*在不掉准确率的前提下提速*。
   ]
+  #v(0.3em)
+  #tag([注], fill: warn) "SOAR 由 OpenBMB 主办"在资料中无明确依据，这里只确定赛题对象是 MiniCPM-SALA。
 ][
+  #compact-table(
+    ([维度], [本赛设定]),
+    (
+      ([模型], [MiniCPM-SALA 9B / 1M(不可改)]),
+      ([硬件], [单卡 RTX 6000D 84GB]),
+      ([评测集], [隐藏：长文 QA / NIAH / MCQ]),
+      ([打分], [先正确性 gate，再看性能]),
+      ([可动], [量化 / KV / prefill / fusion]),
+    )
+  )
+]
+
+== 打分规则与现状：先过 gate，再比性能
+
+#slide(composer: (1fr, 1.05fr))[
+  #tblock(title: [两段式打分])[
+    + *正确性 gate*：准确率不过门槛，性能再快 `final_score=0`。
+    + *性能*：过 gate 后比三档时长 `S1 / S8 / Smax`(并发 1 / 8 / 最大，越小越快)。
+  ]
   #v(0.2em)
   #compact-table(
-    ([结构], [运行时含义], [优化影响]),
+    ([指标], [含义]),
     (
-      ([Full/Sparse attention], [RadixAttention + FlashInfer], [KV cache / qkv / RoPE 敏感]),
-      ([Lightning attention], [SimpleGLA recurrent state], [不等价于普通 KV cache]),
-      ([MLP], [gate_up_proj + down_proj], [W4A16 权重带宽主要收益源]),
-      ([SALA residual], [`residual + hidden * scale_depth/sqrt(L)`], [fusion 必须保语义]),
+      ([`acc_ori`], [原始正确率，比较实验的锚]),
+      ([`acc`], [平台加权(含免费分)，偏高]),
+      ([`final_score`], [过 gate 后的最终分]),
     )
   )
-]
-
-== 运行链路有多层系统边界
-
-#slide(composer: (1fr, 1fr))[
-  #tblock(title: [从提交包到 CUDA kernel])[
-    `submission.tar.gz`
-    $arrow.r$
-    `prepare_env / prepare_model`
-    $arrow.r$
-    HF artifact
-    $arrow.r$
-    SGLang loader
-    $arrow.r$
-    MiniCPM backend
-    $arrow.r$
-    CUDA kernels
-  ]
-
-  #v(0.8em)
-  这条链路上任何一层语义错位，都会表现成“模型坏了”：
-
-  - tokenizer 被重写；
-  - config class 不一致；
-  - qzeros 编码不匹配；
-  - dynamic skip 规则不匹配；
-  - dtype 边界不一致；
-  - FlashInfer JIT cache 不可迁移。
+  #v(0.2em)
+  #tag([注], fill: warn) gate 工作假设≈80%，真实阈值*未确认*。
 ][
   #compact-table(
-    ([边界], [典型失败], [教训]),
+    ([路线], [思路], [现状]),
     (
-      ([Tokenizer], [local 非零 / platform 0], [GPTQModel save 会重写 chat template]),
-      ([Config], [model_type / AttributeError], [AutoConfig 与 SGLang config 必须对齐]),
-      ([Quant artifact], [acc=0], [`qzeros=0x77` 必须修成 Marlin `0x88`]),
-      ([Runtime dtype], [CUDA graph dtype mismatch], [bf16 runtime 是正确边界]),
-      ([JIT cache], [prepare 卡死 / Ninja path], [不要跨机器携带 cache]),
+      ([BF16 安全网], [不量化，仅调 prefill/显存], [保底可跑，作为"地板"]),
+      ([W4A16 主线], [权重压 4-bit 提带宽], [已稳定过 gate 且超过 BF16，当前最佳]),
     )
   )
+  #v(0.3em)
+  #tag([锚点], fill: blue) 已有一个"安全基线"成绩：新变体须*明显高于它*，才值得占用一个 5h 平台 slot。
+  #v(0.2em)
+  #tag([目标], fill: good) 对齐冠军队大部分技术、冲击更高排名；主线已领先 BF16，但距目标仍有缺口。
 ]
 
-== 评分约束改变技术路线
 
-#slide(composer: (1fr, 1fr))[
-  #compact-table(
-    ([Variant], [acc_ori], [final_score], [S1], [含义]),
-    (
-      ([BF16 baseline], [--], [19.13], [--], [保底可运行]),
-      ([v5j_dtype_bf16], [82.18], [23.18], [717.76], [W4A16 质量 anchor]),
-      ([chunk32k_safe], [80.31], [22.90], [720.76], [安全但无明显收益]),
-      ([full_w4a16], [78.27], [22.85], [621.91], [快但 acc 损失抵消收益]),
-      ([FP8KV DENSEQKV], [78.67], [20.87], [655.70], [可跑但细节未兑现收益]),
-    )
-  )
-][
-  #tblock(title: [决策原则])[
-    平台分数先受正确性 gate 约束，再看性能。
+= 二、先把模型讲透：SALA 为何不是普通 Transformer
 
-    所以比赛中每个方法都要问三件事：
+== SALA 是一个"混合注意力长上下文 runtime"
 
-    1. 它能不能稳定过 gate？
-    2. 它是否真的命中当前 runtime 的主瓶颈？
-    3. 它是否值得消耗一个 platform slot？
+#slide(composer: (1.05fr, 1fr))[
+  #tblock(title: [和普通 Transformer 的根本不同])[
+    普通 Transformer：*每层都是同一种 full attention*，所有历史 token 的 K/V 进同一个不断增长的 KV cache。
+
+    SALA：*不同层换不同机制*。源码里只有*两类 mixer*——`minicpm4`(标准 GQA 注意力)与 `lightning`(SimpleGLA 线性递归)。
   ]
-]
-
-= 2. 量化方法选择：先讲方法空间，再讲为什么选 GPTQ
-
-== 可选量化方法：RTN / GPTQ / AWQ / Mixed precision
-
-#decision-table((
-  ([RTN], [round-to-nearest；无 Hessian], [实现简单；artifact 可控；适合摸格式], [4-bit 误差大；SALA 上质量不足], [诊断工具，不作为主线]),
-  ([GPTQ], [Hessian-aware PTQ；逐层误差补偿], [质量潜力高；SGLang 有 gptq_marlin 路径], [GPTQModel 与 SALA loader/env 兼容复杂], [主线；修复后过 gate]),
-  ([AWQ], [activation-aware；保护 outlier channel], [理论适合 SALA activation outlier], [llm-compressor / compressed-tensors 另开工程链], [高潜力备选，不是最快闭环]),
-  ([Mixed precision], [敏感模块 BF16，其余 W4A16], [贴合 SALA 分层敏感性], [需要 artifact surgery 和严格 loader 对齐], [后期 selective 主方向]),
-))
-
-== 为什么不是 RTN：它证明了 W4 可跑，也证明了自己不够
-
-#slide(composer: (1fr, 1fr))[
-  #tblock(title: [RTN 的价值])[
-    RTN 在早期的作用是摸清底层格式，而不是最终冲分。
-
-    它帮助确认：
-
-    - Marlin 只接受 `sym=True` 的 uint4b8；
-    - scale 应除以 7 而不是 8；
-    - 4-bit 不是必然 acc=0；
-    - 但是无 Hessian 的误差对 SALA 仍过大。
-  ]
+  #v(0.25em)
+  #tag([关键], fill: bad) `minicpm4` 层在运行时还会按序列长度*自动在 dense 与 sparse 两条路径间切换*——所以运行时表现为 full / sparse / lightning *三种行为*，但*不是*三种独立层类型。
 ][
   #compact-table(
-    ([实验], [结果], [解释]),
+    ([项], [值(据项目文档)]),
     (
-      ([RTN sym=False], [startup reject], [Marlin config 不支持]),
-      ([RTN scale /8], [acc_ori≈42.51], [scale 公式错但仍非零]),
-      ([RTN scale /7], [acc_ori≈42.18], [修格式不提升质量]),
+      ([参数量], [≈9B]),
+      ([上下文], [1M(`config.json` 不在本仓库)]),
+      ([层类型], [`minicpm4` / `lightning`]),
+      ([运行时行为], [full / sparse / lightning]),
+      ([缩放], [`scale_emb` / `scale_depth` / `scale_width`]),
     )
   )
-  #v(0.6em)
-  #tag([结论], fill: warn) RTN 是格式诊断工具；主线必须转向 Hessian-aware 的 GPTQ 或 activation-aware 的 AWQ。
+  #v(0.25em)
+  #tag([注], fill: warn) 真实层数/维度由模型自带 `config.json` 决定，仓库内无该文件，数字以文档为准。
 ]
 
-== 为什么选 GPTQ：失败逐步可解释，修复后确实过 gate
-
-#slide(composer: (1fr, 1fr))[
-  #tblock(title: [GPTQ 不是一开始就赢])[
-    早期 GPTQModel 一路失败，但失败逐步从“模型坏了”变成可定位的工程问题：
-
-    - `SUPPORTED_MODELS` 注册快照；
-    - qzeros `0x77 -> 0x88`；
-    - tokenizer 被 GPTQModel 重写；
-    - transformers / flash_attn / torchao 版本；
-    - dynamic skip 与 SGLang module name。
-  ]
-][
-  #compact-table(
-    ([阶段], [结果], [说明]),
-    (
-      ([v17/v21/v22], [platform 0], [qzeros + tokenizer + env 叠加问题]),
-      ([1849 fix stack], [acc_ori=46.89], [首次非零，证明方向成立]),
-      ([bf16 runtime], [acc_ori=82.18], [首次稳定过 gate]),
-    )
-  )
-  #v(0.6em)
-  #tag([选择理由], fill: good) GPTQ 的失败可以被单变量修复和验证；AWQ 虽有潜力，但当时工程闭环更长。
-]
-
-= 3. 模块选择：不是问“要不要 W4”，而是问“哪里能 W4”
-
-== MLP-only / Full W4 / Selective BF16 的取舍
-
-#decision-table((
-  ([MLP-only W4], [只量化 MLP；attention 保 BF16], [风险最低；仍有权重带宽收益], [attention GEMM 加速拿不到], [最早稳定过 gate，质量 anchor]),
-  ([Full W4A16], [MLP + q/k/v/o 全量化], [S1 明显变快], [acc 损失 2--4pp，容易跌 gate], [证明可运行，但 tradeoff 不优]),
-  ([Selective BF16], [只恢复 late lightning / qkv / o_proj 等敏感模块], [可精细调 accuracy-speed 边界], [组合多，必须单变量队列], [后期最符合 SALA 结构]),
-  ([Lightning-skip], [Lightning 层 MLP 回 BF16], [针对 recurrent 长程误差], [safetensors 物理 key 与 loader 易错], [思路合理，实现需重写 shard]),
-))
-
-== 为什么先做 MLP-only
-
-#slide(composer: (1fr, 1fr))[
-  #tblock(title: [当时的核心假设])[
-    v17 full-attn GPTQ 能启动但 acc=0。可能原因有两个：
-
-    - attention projection W4A16 破坏长上下文检索与停止信号；
-    - 或者 artifact / runtime 兼容链仍然坏。
-
-    MLP-only 是最小化变量的选择：保 attention BF16，仍然压缩大量 MLP 权重。
-  ]
-][
-  #compact-table(
-    ([如果结果], [说明], [下一步]),
-    (
-      ([MLP-only 过 gate], [attention 可能是敏感区], [再逐步加 attention quant]),
-      ([MLP-only 仍 0], [问题更可能在 artifact/env/tokenizer], [先修工程链]),
-      ([full-attn 后来 78.27], [attention quant 可跑但伤质量], [改 selective BF16]),
-    )
-  )
-]
-
-== Full W4A16 的真实结论：有速度，但不是当前最优 tradeoff
-
-#slide(composer: (1fr, 1fr))[
-  #compact-table(
-    ([Variant], [acc_ori], [final_score], [S1]),
-    (
-      ([v5j_dtype_bf16], [82.18], [23.18], [717.76]),
-      ([chunk32k_safe], [80.31], [22.90], [720.76]),
-      ([full_w4a16], [78.27], [22.85], [621.91]),
-    )
-  )
-][
-  #tblock(title: [解释])[
-    Full W4A16 的 S1 明显更好，说明 attention-GEMM 加速真实存在。
-
-    但 acc_ori 下降到 78.27，低于 MLP-only 和 chunk32k_safe，最终分数被准确率损失抵消。
-
-    这不是 full W4 被否定，而是说明需要 selective BF16 或更好的 scale 校准，而不是直接全量化。
-  ]
-]
-
-= 4. Runtime 与 artifact：这些不是细节，是成败边界
-
-== Runtime dtype：bf16 是 W4A16 成功拐点
-
-#decision-table((
-  ([fp16 sed-patch], [把 SALA backend 文本替换成 fp16], [表面上对齐 Marlin fp16 输出], [破坏 sparse backend bf16 假设；query/key mismatch], [被平台 crash 否定]),
-  ([bf16 runtime], [`--dtype bfloat16`；让 SGLang 接回 bf16], [保持 sparse backend dtype 一致], [需要确认 Marlin output cast 行为], [平台 acc_ori=82.18，最终采用]),
-))
-
-== Artifact 语义：早期失败大量来自这里
-
-#compact-table(
-  ([问题], [表面现象], [真实根因], [修复策略]),
-  (
-    ([qzeros], [GPTQ acc=0], [GPTQModel 写 0x77；Marlin 期望 0x88], [post-save rewrite + inspect]),
-    ([Tokenizer], [local/platform 不一致], [GPTQModel 重写 chat_template；旧 transformers 忽略 sidecar], [强制复制 base tokenizer]),
-    ([Config], [model_type / AttributeError], [AutoConfig 与 MiniCPMHybridConfig 冲突；写入只读派生字段], [删除 AutoConfig 和 derived keys]),
-    ([Dynamic rules], [KeyError / load mismatch], [GPTQModel 与 SGLang 模块名不同], [规则、index、物理 shard 同步]),
-    ([Install/cache], [prepare 卡住], [网络下载、FlashInfer cache 绝对路径], [离线 wheel + timeout + 不搬 cache]),
-  )
-)
-
-= 5. KV cache：FP8KV 是高潜力路线，但当前实现没打对
-
-== KV cache 方法空间
-
-#decision-table((
-  ([BF16 KV], [原始 KV cache 精度], [质量稳定；实现简单], [显存和带宽贵], [作为稳定 baseline]),
-  ([FP8 E4M3/E5M2 KV], [KV cache 低精度存储], [理论显存减半；长上下文潜力大], [scale / dtype / backend 细节复杂], [高潜力但当前未打通收益]),
-  ([Scalar scale], [每层或每 tensor 一个 scale], [实现简单；接近官方路径], [粒度粗；可能压坏 head 分布], [已尝试但不够]),
-  ([Per-head/group scale], [更细粒度校准 KV range], [更贴近 GQA/head 分布], [需要 runtime bridge，易错], [后续重点怀疑点]),
-  ([POSTQ scale], [从最终 W4 artifact 测 KV scale], [测量源更接近服务源], [GPTQModel reload gauntlet 复杂], [值得继续查细节]),
-))
-
-== FP8KV 现有结果说明：方向能跑，收益没兑现
-
-#slide(composer: (1fr, 1fr))[
-  #compact-table(
-    ([实验], [acc_ori], [final_score], [S1], [说明]),
-    (
-      ([hardened FP8KV], [76.31], [0.0], [720.98], [完整 eval；质量掉 gate]),
-      ([REALCALIB multi8K], [77.33], [0.0], [650.26], [强 replay 仍低]),
-      ([DENSEQKV multi8K], [78.67], [20.87], [655.70], [scale-source 有效但不够]),
-    )
-  )
-][
-  #tblock(title: [解释口径])[
-    这些结果不能写成“FP8KV 没前途”。
-
-    更准确是：FP8KV 已从 plumbing 问题进入数值与热路径问题。当前实现没有把 KV cache 容量/带宽收益转化为平台速度或分数。
-  ]
-]
-
-== FP8KV 下一步应该怀疑哪些细节
-
-#slide(composer: (1fr, 1fr))[
-  #tblock(title: [精度细节])[
-    - `k_scale / v_scale` 测量源：BF16 base、DENSEQKV、最终 W4 artifact 哪个更接近服务时分布？
-    - scalar scale 是否太粗，需要 per-head / per-group？
-    - GQA / head-group bridge 是否严格正确？
-    - e4m3 / e5m2 的 range-precision 是否匹配 SALA activation？
-  ]
-][
-  #tblock(title: [性能细节])[
-    - FP8 写入和 attention 读取是否被额外 scale/dequant 抵消？
-    - `dense-as-sparse` 是否让 benchmark 走到 FP8KV 覆盖不到的热路径？
-    - Lightning attention、MLP GEMM、sampling 是否才是主瓶颈？
-    - local smoke 是否覆盖了真正导致平台掉分的长输出任务？
-  ]
-]
-
-= 6. Prefill、fusion 与验证体系
-
-== Chunked prefill：是性能 knob，但内存预算会被“模型答对”改变
-
-#decision-table((
-  ([chunk 8K], [保守 prefill 分块], [稳定；v5j 成功], [prefill 吞吐空间有限], [质量 anchor]),
-  ([chunk 32K], [更大 prefill 分块], [理论更高吞吐], [需要动态内存余量], [mem-frac 0.70 safe anchor]),
-  ([chunk 65K], [激进 prefill], [理论吞吐更高], [长输出 activation / workspace OOM], [平台 OOM；不能盲交]),
-))
-
-== Kernel fusion：SALA residual 不能套通用 Llama 模式
-
-#slide(composer: (1fr, 1fr))[
-  #tblock(title: [候选方法])[
-    - RoPE upcast removal；
-    - RMSNorm fusion；
-    - fused add_rmsnorm；
-    - attention backend path tuning。
-  ]
-
-  #v(0.5em)
-  通用 LLM 上成立的 fusion，在 SALA 上必须重新验证 residual 语义。
-][
-  #tblock(title: [平台教训])[
-    opfusion v1 平台 `acc_ori=24.67`。
-
-    根因：把 SALA 的 `residual + hidden * scale_depth/sqrt(L)` 改成 Llama 类 fused residual path，单层 CPU 等价测试没有覆盖 32 层长上下文累计误差。
-  ]
-]
-
-== 验证体系：每层验证回答不同问题
-
-#compact-table(
-  ([验证层], [能证明什么], [不能证明什么], [本比赛教训]),
-  (
-    ([3-prompt endpoint smoke], [server/API 基本可跑], [不能证明质量], [Path Y 可 smoke，平台仍低分]),
-    ([30-sample local], [快速发现明显错误], [容易被短任务误导], [opfusion smoke 假阳性]),
-    ([60/150 long canary], [发现 QA/CWE/NIAH 长输出风险], [仍不等于 hidden set], [FP8KV 后 30 条掉到 78]),
-    ([platform run], [最终 gate + benchmark], [成本高，不适合盲试], [必须靠 preflight 降低浪费]),
-  )
-)
-
-= 7. 结论与建议
-
-== 如果重新做一次：推荐实验顺序
+== 三种注意力：各自怎么"记忆"
 
 #slide[
-  + 固定模型语义边界：tokenizer / config / qzeros / dtype / dynamic rules 先做 preflight。
-  + 建立质量 anchor：GPTQ MLP-only + bf16 runtime，先证明 W4A16 能稳定过 gate。
-  + 做 selective quant：围绕 SALA layer type 和 qkv/o_proj/MLP 做单变量边界实验。
-  + 深挖 FP8KV：POSTQ scale、per-head/group scale、GQA bridge、dense-as-sparse hot path。
-  + 做严格安全 fusion：只做不改 residual 语义的优化，并用长输出 canary 验证。
+  #compact-table(
+    ([行为], [类比], [怎么存"记忆"], [优化含义]),
+    (
+      ([Full / 标准], [每问一词就把整本书重读一遍], [全量 KV cache，随长度线性增长], [精度基准；KV 是带宽/显存大头]),
+      ([Sparse(InfLLM-v2)], [先做摘要卡片，只翻最相关几页], [仍存 KV，但 top-k 只读一小部分块], [长上下文核心路径；依赖定制 CUDA kernel，硬假设 bf16]),
+      ([Lightning(线性)], [不留全书，只滚动更新一份"笔记"], [固定大小递归 `state`，走 mamba pool], [`state` 不随长度增长；*不走 KV cache*，KV 量化对它无效]),
+    )
+  )
+  #v(0.4em)
+  - *Sparse 不是独立层*：它是 `minicpm4` 层在 `seq_len ≥ dense_len` 时走的运行时路径(`--dense-as-sparse` 让所有 batch 都走稀疏)；两级 key 压缩做块摘要，再选 top-k 块做 full attention。
+  - *Lightning 数学上 ≠ KV cache*：它是 Gated Delta Rule / SimpleGLA 递归(用 ALiBi 斜率做衰减)，量化噪声沿*时间步*累积，是长上下文下的精度敏感区。
 ]
 
-== 最终汇报结构建议
+== SALA 特有的缩放语义：通用 Llama 优化为何会"翻车"
 
-#matrix-slide(
-  columns: 2,
-  rows: 3,
-  align(center + horizon)[*1. 模型特点* \
-  hybrid attention / lightning / sparse backend],
-  align(center + horizon)[*2. 量化方法* \
-  RTN / GPTQ / AWQ / mixed precision],
-  align(center + horizon)[*3. 模块选择* \
-  MLP-only / full W4 / selective BF16],
-  align(center + horizon)[*4. Runtime 工程* \
-  dtype / tokenizer / config / qzeros],
-  align(center + horizon)[*5. 性能路线* \
-  FP8KV / prefill / fusion],
-  align(center + horizon)[*6. 验证方法* \
-  smoke / canary / platform],
-)
+#slide(composer: (1fr, 1fr))[
+  #tblock(title: [SALA 专有缩放(源码核实)])[
+    - 每个子层残差：`residual + hidden * (scale_depth / sqrt(L))`，attention 与 MLP 各一次。
+    - 词嵌入 `× scale_emb`；出 logits 前 `÷ scale_width`。
+    - RoPE 在 fp32 内计算再 cast 回。
+  ]
+  #v(0.25em)
+  #tag([结论], fill: bad) 这些是 SALA 特有语义：把通用 Llama 的 fused-residual / `add_rmsnorm` 直接套上会破坏语义，必须用长上下文 canary 重新验证。
+][
+  #tblock(title: [结构决定优化边界])[
+    *敏感、别乱动：*
+    - lightning 递归(噪声沿时间步累积)
+    - sparse kernel(硬假设 bf16，改 dtype 易在 kernel 边界 crash)
+    - `scale_depth` 残差语义
 
-== 结束页
+    *可压、收益大：*
+    - full/sparse 层的 KV cache(FP8-KV 主战场)
+    - 权重 GEMM(W4A16 带宽收益)
+  ]
+]
+
+
+= 三、量化：为什么能压，以及压什么
+
+== 为什么 decode 阶段量化能提速
+
+#slide(composer: (1fr, 1fr))[
+  #tblock(title: [decode 是"访存受限"的])[
+    每生成一个 token，都要把*全部权重*从显存搬一遍——瓶颈在*带宽*不在算力。
+
+    把权重从 16-bit 压到 4-bit，模型体积降到约 1/4(本赛 *18GB → ~5GB*，实测)，理论上接近 *4× 带宽节省*。
+  ]
+  #v(0.25em)
+  #tag([注], fill: warn) "4× 带宽"是冠军队(智算一队)笔记的论断，本队未独立测量；本队实测到的是 GPTQ MLP-only 路线 `S1` 解码时延 *−30%*。
+][
+  #tblock(title: [量化的几个维度])[
+    - *压什么*：weight-only `W4A16` / weight+act `W8A8` / `FP8`。
+    - *粒度*：per-tensor / per-channel / *per-group*。
+    - *对称 vs 非对称*。
+  ]
+  #v(0.2em)
+  #tag([硬约束], fill: bad) SGLang `gptq_marlin` 只认 `bits=4, sym=True`(uint4b8)，且 `scale = max(abs(w)) / 7`(*不是 /8*，否则正向 outlier 幅度损失约 12.5%)。
+]
+
+== 四种量化算法：方法空间一览
+
+#decision-table((
+  ([RTN], [直接四舍五入到 4-bit 网格，无校准、无误差补偿], [实现极简、无需校准、产物可控、跑得快], [4-bit 误差无补偿，对 SALA 质量明显不足], [仅作格式/链路诊断，非主线]),
+  ([GPTQ], [用 Hessian 逐层把量化误差补偿到未量化权重], [质量潜力高；SGLang 原生 `gptq_marlin` 路径], [与 SALA 自定义 loader/环境兼容复杂], [*主线*；修复后稳定过 gate]),
+  ([AWQ], [按激活幅度找缩放，先保护显著 outlier 通道再量化], [理论契合 SALA 激活-outlier(`scale_emb=12`)], [走 llm-compressor，另一条工程链], [高潜力*备选*，未上平台验证]),
+  ([混合精度], [敏感模块留 BF16，其余 W4A16], [用少量高精度层换回 acc，针对性强], [量化端与加载端 skip 规则须逐字对齐], [`MLP-only` 即实际过 gate 配置]),
+))
+
+== 为什么主线是 GPTQ：失败可单变量定位
+
+#slide(composer: (1fr, 1fr))[
+  #compact-table(
+    ([算法], [本赛实测], [结论]),
+    (
+      ([RTN], [质量明显不足(远低于门槛)], [只能做格式 / 链路诊断]),
+      ([GPTQ], [修复后稳定过 gate], [本赛主线]),
+      ([AWQ], [仅打包，未上平台], [潜力大但未验证]),
+    )
+  )
+  #v(0.25em)
+  #tag([注], fill: warn) AWQ 仅有预估、未上平台，不宜与主线直接比较。
+][
+  #tblock(title: [选 GPTQ 的真正理由])[
+    不是因为它最简单，而是因为它的*每个失败都能单变量定位与修复*：
+
+    - `qzeros`：`0x77 → 0x88`
+    - tokenizer 被重写 → 强制覆盖回 base
+    - 版本钉：`transformers == 4.57.1`
+
+    逐个 hard constraint 复现 / 修复，最终从 acc=0 走到稳定过 gate。
+  ]
+]
+
+
+= 四、量化范围：不是"要不要 W4"，而是"哪里能 W4"
+
+== 四种量化范围方案
+
+#slide[
+  #decision-table((
+    ([MLP-only W4], [只量化 MLP，attention 全保 BF16], [风险最低、变量最少；避开已知敏感的 attention], [拿不到 attention GEMM 的加速], [*最先稳定过 gate*，质量 anchor]),
+    ([Full W4A16], [MLP + q/k/v/o 全量化], [`S1` 明显更快(attention-GEMM 加速真实)], [acc 掉 2--4pp，易跌破门槛], [可跑但 trade 不优]),
+    ([Selective BF16], [只把敏感模块恢复 BF16], [可在 acc-速度边界精细调], [组合爆炸，需单变量队列 + artifact surgery], [后期最贴 SALA 的主方向]),
+    ([Lightning-skip], [把 lightning 层 MLP 回退 BF16], [针对递归长程误差累积假设], [需物理重写 shard，否则 loader `KeyError`], [思路合理，实现未过平台]),
+  ))
+  #v(0.3em)
+  #tag([注], fill: warn) "MLP 最耐量化"是通用经验；本赛只直接验证了 *attention 投影敏感*，故"保 attention BF16"。
+]
+
+== 数据说话：MLP-only 是当前更优 trade
+
+#slide(composer: (1.05fr, 1fr))[
+  #compact-table(
+    ([变体], [正确率], [解码速度], [最终分]),
+    (
+      ([MLP-only(anchor)], [✓ 过 gate], [基准], [基准]),
+      ([+ 更大 prefill], [≈ 基准], [≈ 基准], [≈ 基准]),
+      ([Full W4(含注意力)], [↓ 掉 2--4pp], [↑ 快约 13--14%], [≈ 持平 / 略降]),
+    )
+  )
+  #v(0.3em)
+  #tag([读数], fill: blue) full W4 的解码确实更快(attention-GEMM 加速真实)，但正确率掉 2--4pp，最终分被抵消。
+][
+  #tblock(title: [关键直觉])[
+    - MLP-only 的量化代价*很小*(相对 BF16 不到 1pp)，且稳稳高于门槛。
+    - Full W4 多换来的速度，被多掉的正确率吃掉。
+  ]
+  #v(0.25em)
+  #tag([结论], fill: good) 加速 ≠ 涨分：本赛打分里准确率权重大到能把延迟收益吃光，所以 MLP-only 这种混合精度才是更优 trade。
+]
+
+
+= 五、工程边界：artifact 与 runtime 决定早期成败
+
+== "模型坏了"往往是工程链语义错位
+
+#slide(composer: (1fr, 1fr))[
+  #tblock(title: [一条极易错的链路])[
+    `submission.tar.gz` $arrow.r$ `prepare_env` $arrow.r$ `prepare_model` $arrow.r$ 量化产物 $arrow.r$ SGLang loader $arrow.r$ MiniCPM backend $arrow.r$ CUDA kernel
+
+    #v(0.3em)
+    *任何一层语义对不齐，都表现成"模型坏了"。* 同一份 W4A16 权重，只是换个 runtime dtype，就能从 startup crash 变成稳定过 gate。
+  ]
+][
+  #compact-table(
+    ([runtime dtype], [结果]),
+    (
+      ([fp16(sed-patch / `--dtype float16`)], [平台 CUDA-graph crash：query/key dtype 不一致 → Path 1 不可行]),
+      ([*bf16*(`--dtype bfloat16`)], [稳定过 gate，W4A16 成功拐点]),
+    )
+  )
+  #v(0.25em)
+  #tag([注], fill: warn) bf16 能成，靠 SGLang 把 Marlin 的 fp16 输出 cast 回 bf16——这是*实测推断*的行为，非文档保证。
+]
+
+== Hard Constraints：用平台 slot 烧出来的
+
+#slide[
+  #compact-table(
+    ([边界], [表面现象], [真实根因], [修复]),
+    (
+      ([`qzeros`], [acc=0], [写 `0x77`，Marlin 要 `0x88`(每权重 +1 偏置)], [后处理改写(幂等)]),
+      ([Tokenizer], [本地对 / 平台乱码], [`save()` 重写模板，旧 transformers 忽略 sidecar], [强制覆盖回 base]),
+      ([Config], [`model_type` / AttrError], [`auto_map.AutoConfig` 抢占；派生只读属性被序列化], [删除二者(`v3/v5/v5c` 三连败证实)]),
+      ([Dynamic skip], [`KeyError`], [规则没匹配 fused `gate_up_proj`；残留 orphan 量化张量], [按 SGLang 名写 + 物理清张量]),
+      ([版本 / 网络], [PREPARING 卡死], [版本不一致；平台连不上 GitHub], [钉 `transformers==4.57.1` + 离线 wheel]),
+    )
+  )
+  #v(0.3em)
+  #tag([教训], fill: good) 先用 preflight 把这些语义边界*机械化锁死*，再谈量化质量——*本地通过 ≠ 平台通过*。
+]
+
+
+= 六、KV cache：FP8KV 高潜力，但当前没打对
+
+== KV cache 为何是长上下文瓶颈
+
+#slide(composer: (1.05fr, 1fr))[
+  #tblock(title: [瓶颈与省法])[
+    KV cache(缓存历史 K/V 避免重算)随序列长度*线性膨胀*，是显存容量 + 带宽的双重瓶颈：decode 每生成一个 token 都要把整段 KV 读一遍。
+
+    最直接的省法：把 KV 从 BF16 量化到 *FP8*，容量与带宽各省一半。
+  ]
+  #v(0.25em)
+  #tag([注], fill: warn) 只有 full/sparse 层有 KV；*lightning 层走递归 `state`，没有 KV*——FP8-KV 只省一部分层。
+][
+  #compact-table(
+    ([FP8 格式], [范围 / 精度]),
+    (
+      ([`e4m3`], [max=448，精度高(尾数多 1 位)]),
+      ([`e5m2`], [范围 ±57344，但更糙]),
+    )
+  )
+  #v(0.3em)
+  本队判断 SALA 失败更像*精度损失*而非范围溢出 → 选 `e4m3` + 逐层标定(HP224)，`e5m2` 仅作范围备份。
+]
+
+== 两道关：先"跑起来"，再"过精度"
+
+#slide(composer: (1fr, 1fr))[
+  #tblock(title: [第一关 · 工程(已过)])[
+    旧结论"sparse backend 拒绝 FP8"被自己的实验*推翻*：真因是 SALA 把 KV 的 fp8 dtype *传染给了 Q*，触发 FlashInfer FA2 的 fp8 断言。
+
+    *Path Y*：Q 保持 bf16、KV pool 仍存 fp8、读取时反量化回 bf16，server 起得来、长 prompt 通过。
+  ]
+][
+  #tblock(title: [第二关 · 精度(未过)])[
+    默认 `scale=1.0` × `scale_emb=12` → FP8 饱和 → 长输出复读崩溃。标定路线(ATTNSCALE / HP224 / DENSEQKV / POSTQ)逐步逼近，但最好的标定变体*仍低于安全锚点*，没打赢 BF16 路线。
+  ]
+  #v(0.25em)
+  #tag([硬件], fill: bad) Blackwell SM 12.0 上两个 backend 都拒绝真正的 FP8 FA 计算 → FP8-KV 当前*结构性受限*，省下的显存还没换成吞吐。
+]
+
+
+= 七、性能旋钮与验证体系
+
+== 两类旋钮：调度/显存 vs 数值计算图
+
+#slide(composer: (1fr, 1fr))[
+  #tblock(title: [只动调度/显存(基本不掉精度)])[
+    - *Chunked prefill*：切块送 prefill。`chunk32k_safe` + `mem-frac 0.70` → 稳定过 gate；`chunk65K` + 0.80 *中途 OOM*，分数几乎归零。
+    - *`--dense-as-sparse`*：所有 batch 走稀疏路径(baseline 默认)。
+  ]
+  #v(0.2em)
+  #tag([注], fill: warn) chunk32K"预期 `S1` 明显下降"只是*事前预测*；平台实测与 chunk8K *基本持平*。
+][
+  #tblock(title: [动数值计算图(会悄悄改输出)])[
+    *Kernel fusion*：
+    - 安全子集：仅去 RoPE 的冗余 fp32 upcast(仍需长 canary 验)。
+    - 危险：`fused add_rmsnorm` 把 `scale_depth` 残差改成 Llama 式，误差沿 32 子层累积。
+  ]
+  #v(0.2em)
+  #tag([反例], fill: bad) opfusion v1 平台正确率*塌方约 55pp*、最终分归零，而三档速度仅差约 1%——服务器健康，纯精度塌方。
+]
+
+== 四层验证：每层证明什么、不能证明什么
+
+#slide[
+  #compact-table(
+    ([验证层], [能证明], [不能证明 / 教训]),
+    (
+      ([3-prompt smoke], [服务起得来、长 prompt 不崩], [不能证明质量]),
+      ([30 条本地], [快速发现明显崩坏], [对 per-token 漂移*假阳性*(opfusion 即栽在此)]),
+      ([≥100 长上下文 canary], [暴露长输出数值漂移累积], [仍不等于隐藏集]),
+      ([平台 150 样本], [唯一权威分数], [5h/次，不能盲试]),
+    )
+  )
+  #v(0.3em)
+  #tag([核心教训], fill: good) *smoke 通过 ≠ 平台不掉分*：opfusion 本地 30 条看着没问题，平台却塌方。凡触及 RoPE / RMSNorm / residual / scale 的改动，必须用 ≥100 样本含长上下文(≥16K)验证。
+]
+
+
+= 八、复盘与建议：如果重来一次
+
+== 推荐实验顺序：先稳后快，单变量推进
+
+#slide[
+  + *固定语义边界*：tokenizer / config / `qzeros` / dtype / dynamic 规则先做 *preflight* 机械化锁死(`v3/v5/v5c` 三连败就毁在没 preflight)。
+  + *建质量 anchor*：GPTQ *MLP-only + bf16 runtime*，先证明 W4A16 能稳定过 gate，作为后续所有变体的对照。
+  + *单变量 selective quant*：围绕 layer type 与 qkv / o_proj / MLP 做边界实验，每次只改一个变量。
+  + *深挖 FP8KV*：POSTQ / per-head 或 per-group scale / GQA bridge / dense-as-sparse 热路径(注意 Blackwell 硬件目前结构性受限)。
+  + *只做安全 fusion*：不改 `scale_depth` 残差语义，并用长输出 canary(而非 30 条 smoke)验证。
+]
+
+== 一句话收束
 
 #focus-slide[
-  MiniCPM-SALA 优化的难点不是“选一个量化算法”，\
-  而是让量化、KV cache、runtime 和验证体系同时与模型结构对齐。
+  SALA 优化的难点不是"选一个量化算法"，\
+  而是让*量化、KV cache、runtime 与验证体系*同时与模型结构对齐。
 ]
 
 #end-slide()
