@@ -59,6 +59,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def find_lightning_layer_indices(config_path: Path) -> tuple[list[int], int]:
@@ -203,17 +204,19 @@ def tensor_bases_for_layer(layer_idx: int, modules: tuple[str, ...]) -> list[str
 
 def sglang_dynamic_skip_rules_for_layer(
     layer_idx: int, modules: tuple[str, ...]
-) -> dict[str, bool]:
-    rules: dict[str, bool] = {}
+) -> dict[str, dict[str, Any]]:
+    # Negative GPTQ/SGLang dynamic rules skip by key prefix. SGLang ignores the
+    # value for "-:" rules, while GPTQModel 7 requires it to be a dict.
+    rules: dict[str, dict[str, Any]] = {}
     if "attn" in modules or "qkv" in modules:
-        rules[f"-:model.layers.{layer_idx}.self_attn.qkv_proj$"] = True
+        rules[f"-:model.layers.{layer_idx}.self_attn.qkv_proj$"] = {}
     if "attn" in modules or "o_proj" in modules:
-        rules[f"-:model.layers.{layer_idx}.self_attn.o_proj$"] = True
+        rules[f"-:model.layers.{layer_idx}.self_attn.o_proj$"] = {}
     if "mlp" in modules:
-        rules[f"-:model.layers.{layer_idx}.mlp.gate_up_proj$"] = True
-        rules[f"-:model.layers.{layer_idx}.mlp.down_proj$"] = True
+        rules[f"-:model.layers.{layer_idx}.mlp.gate_up_proj$"] = {}
+        rules[f"-:model.layers.{layer_idx}.mlp.down_proj$"] = {}
     elif "down_proj" in modules:
-        rules[f"-:model.layers.{layer_idx}.mlp.down_proj$"] = True
+        rules[f"-:model.layers.{layer_idx}.mlp.down_proj$"] = {}
     return rules
 
 
@@ -505,7 +508,7 @@ def update_quantize_config_dynamic_for_modules(
     that's been working for base MLP-only quant via the `-:.*self_attn.*`
     rule (which matches `qkv_proj` via the substring).
     """
-    new_skip_rules: dict[str, bool] = {}
+    new_skip_rules: dict[str, dict[str, Any]] = {}
     for layer_idx in layer_indices:
         new_skip_rules.update(sglang_dynamic_skip_rules_for_layer(layer_idx, modules))
 

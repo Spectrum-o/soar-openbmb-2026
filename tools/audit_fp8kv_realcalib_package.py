@@ -35,6 +35,7 @@ class PackageText:
     source_is_tar: bool
     kv_calibrate: str
     quantize: str
+    overlay_tool: str
     prepare_env: str
     prepare_model: str
     calib_jsonl: str
@@ -92,6 +93,11 @@ def read_package(path: Path) -> PackageText:
             source_is_tar=False,
             kv_calibrate=(path / "kv_calibrate.py").read_text(errors="replace"),
             quantize=quantize_path.read_text(errors="replace") if quantize_path.exists() else "",
+            overlay_tool=(
+                (path / "apply_lightning_skip_overlay.py").read_text(errors="replace")
+                if (path / "apply_lightning_skip_overlay.py").exists()
+                else ""
+            ),
             prepare_env=(path / "prepare_env.sh").read_text(errors="replace"),
             prepare_model=(path / "prepare_model.sh").read_text(errors="replace"),
             calib_jsonl=(path / "perf_public_set.jsonl").read_text(errors="replace"),
@@ -111,6 +117,7 @@ def read_package(path: Path) -> PackageText:
             source_is_tar=True,
             kv_calibrate=_read_tar_member_optional(tf, "kv_calibrate.py"),
             quantize=_read_tar_member_optional(tf, "quantize_gptqmodel_w4a16.py"),
+            overlay_tool=_read_tar_member_optional(tf, "apply_lightning_skip_overlay.py"),
             prepare_env=_read_tar_member_optional(tf, "prepare_env.sh"),
             prepare_model=_read_tar_member_optional(tf, "prepare_model.sh"),
             calib_jsonl=_read_tar_member_optional(tf, "perf_public_set.jsonl"),
@@ -184,7 +191,49 @@ def audit(path: Path) -> bool:
     if postq_mode:
         checks.append(("prepare_model uses post-GPTQ KV calibration", "--post-quant-kv-only" in pkg.prepare_model and "post_gptq_qzeros_fixed" in pkg.quantize, ""))
         checks.append(("prepare_model passes post-quant truncation-side left", 'KV_CALIB_TRUNCATION_SIDE="${KV_CALIB_TRUNCATION_SIDE:-left}"' in pkg.prepare_model and "--post-quant-kv-truncation-side" in pkg.prepare_model, ""))
-        checks.append(("postq registers MiniCPM HF config", "register_minicpm_sala_hf_config" in pkg.quantize and 'AutoConfig.register("minicpm_sala"' in pkg.quantize, ""))
+        checks.append((
+            "postq reload uses remote AutoConfig then restores SGLang config",
+            "_temporarily_restore_remote_autoconfig_for_postq_reload" in pkg.quantize
+            and "_infer_remote_autoconfig_value" in pkg.quantize
+            and "_restore_postq_reload_config" in pkg.quantize
+            and 'auto_map["AutoConfig"]' in pkg.quantize
+            and "finally:" in pkg.quantize
+            and "_restore_postq_reload_config(output_dir, original_config_text)" in pkg.quantize,
+            "GPTQModel.load uses HF AutoModel trust_remote_code; config must be remote MiniCPMSALAConfig during POSTQ reload, then final serving config must drop AutoConfig again for SGLang MiniCPMHybridConfig",
+        ))
+        checks.append((
+            "postq reload config window wraps GPTQModel.load and tokenizer fallback",
+            _contains_in_order(
+                pkg.quantize,
+                "original_config_text = _temporarily_restore_remote_autoconfig_for_postq_reload",
+                "qmodel = GPTQModel.load(",
+                "tokenizer = AutoTokenizer.from_pretrained(str(output_dir), trust_remote_code=True)",
+                "finally:",
+                "_restore_postq_reload_config(output_dir, original_config_text)",
+            ),
+            "AutoConfig must be remote while HF AutoModel and tokenizer fallback inspect the artifact, and must be restored before final serving",
+        ))
+        checks.append((
+            "postq reload adds HF-name skip aliases before config snapshot",
+            "_augment_dynamic_skip_aliases_for_reload" in pkg.quantize
+            and '"qkv_proj": ("q_proj", "k_proj", "v_proj")' in pkg.quantize
+            and '"gate_up_proj": ("gate_proj", "up_proj")' in pkg.quantize
+            and "quantize_config.json" in pkg.quantize
+            and "quantization_config" in pkg.quantize
+            and _contains_in_order(
+                pkg.quantize,
+                "_augment_dynamic_skip_aliases_for_reload(output_dir)",
+                "original_config_text = _temporarily_restore_remote_autoconfig_for_postq_reload",
+                "qmodel = GPTQModel.load(",
+            ),
+            "selective overlay writes SGLang fused qkv_proj/gate_up_proj skip rules, but GPTQModel reload sees HF q_proj/k_proj/v_proj and gate_proj/up_proj names",
+        ))
+        checks.append((
+            "postq does not mix MiniCPMHybridConfig with remote HF model class",
+            "register_minicpm_sala_hf_config()" not in pkg.quantize
+            and 'AutoConfig.register("minicpm_sala", MiniCPMHybridConfig)' not in pkg.quantize,
+            "this legacy POSTQ reload pattern caused HF auto_factory config_class mismatch on 2026-06-02",
+        ))
         checks.append((
             "postq has GPTQModel 7 transformers compat shim",
             "_stub_transformers_for_gptqmodel_7" in pkg.quantize
@@ -192,6 +241,25 @@ def audit(path: Path) -> bool:
             and "_class_to_module" in pkg.quantize
             and "_objects" in pkg.quantize,
             "POSTQ reload imports gptqmodel after GPTQ; platform transformers 4.57.1 needs the PreTrainedConfig alias for gptqmodel 7.0",
+        ))
+        bool_dynamic_fragments = [
+            '"-:.*o_gate$": True',
+            '"-:.*z_proj$": True',
+            '"-:.*o_norm$": True',
+            '"-:.*q_norm$": True',
+            '"-:.*k_norm$": True',
+            '] = True',
+            "dict[str, bool]",
+        ]
+        bad_dynamic = [
+            frag for frag in bool_dynamic_fragments
+            if frag in pkg.quantize or frag in pkg.overlay_tool
+        ]
+        checks.append((
+            "postq dynamic skip values are GPTQModel-dict compatible",
+            not bad_dynamic,
+            ", ".join(bad_dynamic)
+            or "GPTQModel 7 reload normalizes dynamic values with .items(); use {} for -: skip values, not true",
         ))
     else:
         checks.append(("prepare_model passes truncation-side left", 'KV_CALIB_TRUNCATION_SIDE="${KV_CALIB_TRUNCATION_SIDE:-left}"' in pkg.prepare_model and "--truncation-side" in pkg.prepare_model, ""))

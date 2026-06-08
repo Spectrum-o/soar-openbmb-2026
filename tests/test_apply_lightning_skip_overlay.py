@@ -94,7 +94,7 @@ def write_quantize_config(path: Path, fmt: str = "gptq_marlin") -> None:
             "sym": True,
             "lm_head": False,
             "dynamic": {
-                "-:.*self_attn.*": True,
+                "-:.*self_attn.*": {},
             },
         }
     else:
@@ -109,7 +109,7 @@ def write_quantize_config(path: Path, fmt: str = "gptq_marlin") -> None:
             "ignore": ["lm_head"],
             "quant_method": "compressed-tensors",
             "dynamic": {
-                "-:.*self_attn.*": True,
+                "-:.*self_attn.*": {},
             },
         }
     with path.open("w", encoding="utf-8") as f:
@@ -412,6 +412,8 @@ class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
             for layer in (1, 3, 5):
                 self.assertIn(f"-:model.layers.{layer}.mlp.gate_up_proj$", dyn)
                 self.assertIn(f"-:model.layers.{layer}.mlp.down_proj$", dyn)
+                self.assertEqual(dyn[f"-:model.layers.{layer}.mlp.gate_up_proj$"], {})
+                self.assertEqual(dyn[f"-:model.layers.{layer}.mlp.down_proj$"], {})
             # Original self_attn skip rule preserved
             self.assertIn("-:.*self_attn.*", dyn)
 
@@ -515,6 +517,8 @@ class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
             for layer in (23, 27):
                 self.assertIn(f"-:model.layers.{layer}.self_attn.qkv_proj$", dyn)
                 self.assertIn(f"-:model.layers.{layer}.self_attn.o_proj$", dyn)
+                self.assertEqual(dyn[f"-:model.layers.{layer}.self_attn.qkv_proj$"], {})
+                self.assertEqual(dyn[f"-:model.layers.{layer}.self_attn.o_proj$"], {})
                 qkv_prefix = f"model.layers.{layer}.self_attn.qkv_proj"
                 o_prefix = f"model.layers.{layer}.self_attn.o_proj"
                 self.assertTrue(
@@ -540,6 +544,7 @@ class TestUpdateQuantizeConfigDynamic(unittest.TestCase):
                 cfg = json.load(f)
             dyn = cfg["dynamic"]
             self.assertIn("-:model.layers.23.self_attn.o_proj$", dyn)
+            self.assertEqual(dyn["-:model.layers.23.self_attn.o_proj$"], {})
             self.assertNotIn("-:model.layers.23.self_attn.qkv_proj$", dyn)
 
             stale_names = overlay.quantized_tensor_names_for_modules([23], ("o_proj",))

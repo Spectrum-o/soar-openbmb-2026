@@ -24,6 +24,7 @@ def write_minimal_fp8kv_package(
     include_question: bool = True,
     postq: bool = False,
     perhead: bool = False,
+    bool_dynamic: bool = False,
     gptq_calib_defaults: tuple[int, int, str] | None = None,
 ) -> None:
     path.mkdir(parents=True, exist_ok=True)
@@ -85,12 +86,38 @@ def _build_scale_tensor_values():
     return {"output_tensor_granularity": "per_head_when_available", "k_tensor_granularity": "per_head"}
 if args.post_quant_kv_emit_per_head_scales:
     pass
-def register_minicpm_sala_hf_config():
-    AutoConfig.register("minicpm_sala", MiniCPMHybridConfig)
+def _infer_remote_autoconfig_value(input_dir, output_config):
+    return "configuration_minicpm_sala.MiniCPMSALAConfig"
+def _temporarily_restore_remote_autoconfig_for_postq_reload(output_dir, input_dir):
+    auto_map = {}
+    auto_map["AutoConfig"] = _infer_remote_autoconfig_value(input_dir, {})
+    return "original config"
+def _restore_postq_reload_config(output_dir, original_text):
+    pass
+def _augment_dynamic_skip_aliases_for_reload(output_dir):
+    fused_to_hf = {
+        "qkv_proj": ("q_proj", "k_proj", "v_proj"),
+        "gate_up_proj": ("gate_proj", "up_proj"),
+    }
+    print("quantize_config.json quantization_config", fused_to_hf)
+_augment_dynamic_skip_aliases_for_reload(output_dir)
+original_config_text = _temporarily_restore_remote_autoconfig_for_postq_reload(output_dir, input_dir)
+try:
+    qmodel = GPTQModel.load(output_dir, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(str(output_dir), trust_remote_code=True)
+finally:
+    _restore_postq_reload_config(output_dir, original_config_text)
 def _stub_transformers_for_gptqmodel_7():
     PreTrainedConfig
     _class_to_module
     _objects
+""" + (
+                'dynamic = {"-:.*o_gate$": True}\n'
+                'def sglang_dynamic_skip_rules_for_layer():\n'
+                '    rules: dict[str, bool] = {}\n'
+                '    rules["-:model.layers.23.self_attn.qkv_proj$"] = True\n'
+                if bool_dynamic else ""
+            ) + """
 """,
             encoding="utf-8",
         )
@@ -179,7 +206,88 @@ class TestAuditFp8kvRealcalibPackage(unittest.TestCase):
         self.assertTrue(ok, out.getvalue())
         self.assertIn("PASS prepare_model uses post-GPTQ KV calibration", out.getvalue())
         self.assertIn("PASS prepare_model passes post-quant truncation-side left", out.getvalue())
-        self.assertIn("PASS postq registers MiniCPM HF config", out.getvalue())
+        self.assertIn("PASS postq reload uses remote AutoConfig then restores SGLang config", out.getvalue())
+        self.assertIn("PASS postq reload config window wraps GPTQModel.load and tokenizer fallback", out.getvalue())
+        self.assertIn("PASS postq reload adds HF-name skip aliases before config snapshot", out.getvalue())
+        self.assertIn("PASS postq does not mix MiniCPMHybridConfig with remote HF model class", out.getvalue())
+
+    def test_audit_rejects_postq_bool_dynamic_skip_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp) / "soar_fp8kv_POSTQ_HP224_fixture"
+            write_minimal_fp8kv_package(package, postq=True, bool_dynamic=True)
+            out = StringIO()
+            with redirect_stdout(out):
+                ok = audit_pkg.audit(package)
+        self.assertFalse(ok)
+        self.assertIn(
+            "FAIL postq dynamic skip values are GPTQModel-dict compatible",
+            out.getvalue(),
+        )
+
+    def test_audit_rejects_postq_legacy_hybrid_config_reload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp) / "soar_fp8kv_POSTQ_HP224_fixture"
+            write_minimal_fp8kv_package(package, postq=True)
+            quantize = package / "quantize_gptqmodel_w4a16.py"
+            quantize.write_text(
+                quantize.read_text(encoding="utf-8")
+                + '\ndef register_minicpm_sala_hf_config():\n'
+                + '    AutoConfig.register("minicpm_sala", MiniCPMHybridConfig)\n'
+                + "register_minicpm_sala_hf_config()\n",
+                encoding="utf-8",
+            )
+            out = StringIO()
+            with redirect_stdout(out):
+                ok = audit_pkg.audit(package)
+        self.assertFalse(ok)
+        self.assertIn(
+            "FAIL postq does not mix MiniCPMHybridConfig with remote HF model class",
+            out.getvalue(),
+        )
+
+    def test_audit_rejects_postq_restore_before_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp) / "soar_fp8kv_POSTQ_HP224_fixture"
+            write_minimal_fp8kv_package(package, postq=True)
+            quantize = package / "quantize_gptqmodel_w4a16.py"
+            text = quantize.read_text(encoding="utf-8").replace(
+                "try:\n    qmodel = GPTQModel.load(output_dir, trust_remote_code=True)\n    tokenizer = AutoTokenizer.from_pretrained(str(output_dir), trust_remote_code=True)\nfinally:\n    _restore_postq_reload_config(output_dir, original_config_text)",
+                "_restore_postq_reload_config(output_dir, original_config_text)\ntry:\n    qmodel = GPTQModel.load(output_dir, trust_remote_code=True)\n    tokenizer = AutoTokenizer.from_pretrained(str(output_dir), trust_remote_code=True)\nfinally:\n    pass",
+            )
+            quantize.write_text(text, encoding="utf-8")
+            out = StringIO()
+            with redirect_stdout(out):
+                ok = audit_pkg.audit(package)
+        self.assertFalse(ok)
+        self.assertIn(
+            "FAIL postq reload config window wraps GPTQModel.load and tokenizer fallback",
+            out.getvalue(),
+        )
+
+    def test_audit_rejects_postq_missing_hf_name_skip_aliases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package = Path(tmp) / "soar_fp8kv_POSTQ_HP224_fixture"
+            write_minimal_fp8kv_package(package, postq=True)
+            quantize = package / "quantize_gptqmodel_w4a16.py"
+            text = quantize.read_text(encoding="utf-8").replace(
+                'def _augment_dynamic_skip_aliases_for_reload(output_dir):\n'
+                '    fused_to_hf = {\n'
+                '        "qkv_proj": ("q_proj", "k_proj", "v_proj"),\n'
+                '        "gate_up_proj": ("gate_proj", "up_proj"),\n'
+                '    }\n'
+                '    print("quantize_config.json quantization_config", fused_to_hf)\n'
+                '_augment_dynamic_skip_aliases_for_reload(output_dir)\n',
+                "",
+            )
+            quantize.write_text(text, encoding="utf-8")
+            out = StringIO()
+            with redirect_stdout(out):
+                ok = audit_pkg.audit(package)
+        self.assertFalse(ok)
+        self.assertIn(
+            "FAIL postq reload adds HF-name skip aliases before config snapshot",
+            out.getvalue(),
+        )
 
     def test_audit_rejects_tarball_with_critical_symlink_members(self):
         with tempfile.TemporaryDirectory() as tmp:
